@@ -6,6 +6,25 @@
 #include <expression/expressions.h>
 
 namespace omniruntime {
+namespace {
+struct EmitInfo {
+    std::vector<TypedExprPtr> expressions;
+};
+
+EmitInfo getEmitInfo(const ::substrait::RelCommon &relCommon, const PlanNodePtr &node)
+{
+    const auto &emit = relCommon.emit();
+    int emitSize = emit.output_mapping_size();
+    EmitInfo emitInfo;
+    emitInfo.expressions.reserve(emitSize);
+    const auto &outputType = node->OutputType();
+    for (int i = 0; i < emitSize; i++) {
+        int32_t mapId = emit.output_mapping(i);
+        emitInfo.expressions[i] = new FieldExpr(i, outputType->GetType(i));
+    }
+    return emitInfo;
+}
+} // namespace
 SortOrder ToSortOrder(const ::substrait::SortField &sortField)
 {
     switch (sortField.direction()) {
@@ -18,16 +37,16 @@ SortOrder ToSortOrder(const ::substrait::SortField &sortField)
         case ::substrait::SortField_SortDirection_SORT_DIRECTION_DESC_NULLS_LAST:
             return K_DESC_NULLS_LAST;
         default:
-            OMNI_THROW("2", "Sort direction is not supported.");
+            OMNI_THROW("PARSE_ERROR", "Sort direction is not supported.");
     }
 }
 
 std::string SubstraitToOmniPlanConverter::FindFuncSpec(uint64_t id) {}
 
-void SubstraitToOmniPlanConverter::ExtractJoinKeys(
-    const ::substrait::Expression &joinExpression,
-    std::vector<const ::substrait::Expression::FieldReference*> &leftExprs,
-    std::vector<const ::substrait::Expression::FieldReference*> &rightExprs) {}
+void SubstraitToOmniPlanConverter::ExtractJoinKeys(const ::substrait::Expression &joinExpression,
+    std::vector<const ::substrait::Expression::FieldReference *> &leftExprs,
+    std::vector<const ::substrait::Expression::FieldReference *> &rightExprs)
+{}
 
 PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::WriteRel &writeRel) {}
 
@@ -61,42 +80,83 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::CrossRel
 
 PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::AggregateRel &aggRel) {}
 
-PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::ProjectRel &projectRel) {}
+PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::ProjectRel &projectRel)
+{
+    auto childNode = ConvertSingleInput<::substrait::ProjectRel>(projectRel);
+    const auto &projectExprs = projectRel.expressions();
+    std::vector<TypedExprPtr> expressions;
+    expressions.reserve(projectExprs.size());
+    const auto &inputType = childNode->OutputType();
+    //  Noted that Substrait projection adds the project expressions on top of the
+    //  input to the projection node. Thus we need to add the input columns first
+    //  and then add the projection expressions.
+    //
+    //  First, adding the project names and expressions from the input to the project node
+    for (uint32_t idx = 0; idx < inputType->GetSize(); idx++) {
+        expressions.emplace_back(new FieldExpr(idx, inputType->GetType(idx)));
+    }
 
-PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::FilterRel &filterRel) {}
+    // Then, adding project expression related project names and expressions.
+    for (const auto &expr : projectExprs) {
+        expressions.emplace_back(exprConverter->ToOmniExpr(expr, inputType));
+    }
+
+    if (projectRel.has_common()) {
+        auto relCommon = projectRel.common();
+        const auto &emit = relCommon.emit();
+        int emitSize = emit.output_mapping_size();
+        std::vector<TypedExprPtr> emitExpressions(emitSize);
+        for (int i = 0; i < emitSize; i++) {
+            int32_t mapId = emit.output_mapping(i);
+            emitExpressions[i] = expressions[mapId];
+        }
+        return std::make_shared<ProjectNode>(NextPlanNodeId(), std::move(emitExpressions), std::move(childNode));
+    } else {
+        return std::make_shared<ProjectNode>(NextPlanNodeId(), std::move(expressions), std::move(childNode));
+    }
+}
+
+PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::FilterRel &filterRel)
+{
+    auto childNode = ConvertSingleInput<::substrait::FilterRel>(filterRel);
+    auto filterNode = std::make_shared<FilterNode>(
+        NextPlanNodeId(), exprConverter->ToOmniExpr(filterRel.condition(), childNode->OutputType()), childNode);
+    if (filterRel.has_common()) {
+        return ProcessEmit(filterRel.common(), std::move(filterNode));
+    } else {
+        return filterNode;
+    }
+}
 
 PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::FetchRel &fetchRel)
 {
     auto childNode = ConvertSingleInput<::substrait::FetchRel>(fetchRel);
-    return std::make_shared<LimitNode>(
-        NextPlanNodeId(),
-        static_cast<int32_t>(fetchRel.offset()),
-        static_cast<int32_t>(fetchRel.count()),
-        false,
-        childNode);
+    return std::make_shared<LimitNode>(NextPlanNodeId(), static_cast<int32_t>(fetchRel.offset()),
+        static_cast<int32_t>(fetchRel.count()), false, childNode);
 }
 
 PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::TopNRel &topNRel)
 {
     auto childNode = ConvertSingleInput<::substrait::TopNRel>(topNRel);
     auto [sortingKeys, sortingOrders, sortNullFirsts] = ProcessSortField(topNRel.sorts(), childNode->OutputType());
-    return std::make_shared<TopNNode>(NextPlanNodeId(), sortingKeys,
-        sortingOrders, sortNullFirsts, static_cast<int32_t>(topNRel.n()), childNode);
+    return std::make_shared<TopNNode>(
+        NextPlanNodeId(), sortingKeys, sortingOrders, sortNullFirsts, static_cast<int32_t>(topNRel.n()), childNode);
 }
 
 PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::ReadRel &readRel, const DataTypesPtr &type) {}
 
 PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::ReadRel &readRel)
 {
-    // Check if the ReadRel specifies an input of stream. If yes, build ValueStreamNode as the data source.
+    // Check if the ReadRel specifies an input of stream. If yes, build
+    // ValueStreamNode as the data source.
     auto streamIdx = GetStreamIndex(readRel);
     if (streamIdx >= 0) {
         return ConstructValueStreamNode(readRel, streamIdx);
     }
 }
 
-PlanNodePtr SubstraitToOmniPlanConverter::ConstructValueStreamNode(const ::substrait::ReadRel &readRel,
-    int32_t streamIdx)
+PlanNodePtr SubstraitToOmniPlanConverter::ConstructValueStreamNode(
+    const ::substrait::ReadRel &readRel, int32_t streamIdx)
 {
     // Get the input schema of this iterator.
     uint64_t colNum = 0;
@@ -108,13 +168,6 @@ PlanNodePtr SubstraitToOmniPlanConverter::ConstructValueStreamNode(const ::subst
         colNum = baseSchema.names().size();
         veloxTypeList = SubstraitParser::ParseNamedStruct(baseSchema);
     }
-
-    // std::vector<std::string> outNames;
-    // outNames.reserve(colNum);
-    // for (int idx = 0; idx < colNum; idx++) {
-    //     auto colName = SubstraitParser::MakeNodeName(planNodeId_, idx);
-    //     outNames.emplace_back(colName);
-    // }
 
     auto outputType = std::make_shared<DataTypes>(veloxTypeList);
     std::shared_ptr<ResultIterator> iterator;
@@ -171,14 +224,30 @@ SubstraitToOmniPlanConverter::ProcessSortField(
     for (const auto &sort : sortFields) {
         OMNI_CHECK(sort.has_expr(), "Sort field must have expr");
         auto expression = exprConverter->ToOmniExpr(sort.expr(), inputType);
-        auto fieldExpr = std::dynamic_pointer_cast<const FieldExpr>(expression);
-        // OMNI_CHECK(fieldExpr==nullptr, "Sort Operator only supports field sorting key");
+        auto fieldExpr = dynamic_cast<const FieldExpr *>(expression);
+        // OMNI_CHECK(fieldExpr==nullptr, "Sort Operator only supports field sorting
+        // key");
         sortingKeys.emplace_back(fieldExpr->colVal);
         auto sortOrder = ToSortOrder(sort);
         sortingOrders.emplace_back(sortOrder.IsAscending());
         sortNullFirsts.emplace_back(sortOrder.IsNullsFirst());
     }
     return {sortingKeys, sortingOrders, sortNullFirsts};
+}
+
+PlanNodePtr SubstraitToOmniPlanConverter::ProcessEmit(
+    const ::substrait::RelCommon &relCommon, const PlanNodePtr &noEmitNode)
+{
+    switch (relCommon.emit_kind_case()) {
+        case ::substrait::RelCommon::EmitKindCase::kDirect:
+            return noEmitNode;
+        case ::substrait::RelCommon::EmitKindCase::kEmit: {
+            auto emitInfo = getEmitInfo(relCommon, noEmitNode);
+            return std::make_shared<ProjectNode>(NextPlanNodeId(), std::move(emitInfo.expressions), noEmitNode);
+        }
+        default:
+            OMNI_THROW("Substrait error:", "unrecognized emit kind");
+    }
 }
 
 AggregationNode::Step SubstraitToOmniPlanConverter::ToAggregationFunctionStep(
@@ -254,9 +323,9 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::RelRoot 
 
 PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::Plan &substraitPlan)
 {
-    // OMNI_CHECK(checkTypeExtension(substraitPlan), "The type extension only have unknown type.");
-    // Construct the function map based on the Substrait representation,
-    // and initialize the expression converter with it.
+    // OMNI_CHECK(checkTypeExtension(substraitPlan), "The type extension only have
+    // unknown type."); Construct the function map based on the Substrait
+    // representation, and initialize the expression converter with it.
     ConstructFunctionMap(substraitPlan);
 
     // In fact, only one RelRoot or Rel is expected here.
@@ -291,4 +360,4 @@ std::string SubstraitToOmniPlanConverter::NextPlanNodeId()
     planNodeId++;
     return id;
 }
-}
+} // namespace omniruntime

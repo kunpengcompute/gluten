@@ -1,19 +1,20 @@
 /*
-* Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
  * Description: print expression tree methods
  */
 
 #pragma once
 #include <memory>
 #include <optional>
-#include "util/type_util.h"
-#include "plannode/planNode.h"
-#include "expression/expressions.h"
 #include "SubstraitParser.h"
+#include "expression/expressions.h"
+#include "plannode/planNode.h"
+#include "util/type_util.h"
 
 namespace omniruntime {
 using namespace expressions;
-using TypedExprPtr = std::shared_ptr<const expressions::Expr>;
+using TypedExprPtr = expressions::Expr *;
+const int RLIKE_INPUT = 2;
 
 class SubstraitOmniExprConverter {
 public:
@@ -21,36 +22,34 @@ public:
     /// into recognizable representations. functionMap: A pre-constructed map
     /// storing the relations between the function id and the function name.
     explicit SubstraitOmniExprConverter(const std::unordered_map<uint64_t, std::string> &functionMap)
-        : functionMap_(functionMap) {}
+        : functionMap_(functionMap)
+    {}
 
     /// Stores the variant and its type.
     // struct TypedVariant {
-    //   variant veloxVariant;
+    //   variant OmniVariant;
     //   DataTypePtr variantType;
     // };
 
-    /// Convert Substrait Field into Velox Field Expression.
-    static std::shared_ptr<const FieldExpr> ToOmniExpr(const ::substrait::Expression::FieldReference &substraitField,
-        const DataTypesPtr &inputType);
+    /// Convert Substrait Field into Omni Field Expression.
+    TypedExprPtr ToOmniExpr(
+        const ::substrait::Expression::FieldReference &substraitField, const DataTypesPtr &inputType);
 
-    /// Convert Substrait ScalarFunction into Velox Expression.
-    TypedExprPtr ToOmniExpr(const ::substrait::Expression::ScalarFunction &substraitFunc,
-        const DataTypesPtr &inputType);
+    /// Convert Substrait ScalarFunction into Omni Expression.
+    TypedExprPtr ToOmniExpr(
+        const ::substrait::Expression::ScalarFunction &substraitFunc, const DataTypesPtr &inputType);
 
-    /// Convert Substrait SingularOrList into Velox Expression.
-    TypedExprPtr ToOmniExpr(const ::substrait::Expression::SingularOrList &singularOrList,
-        const DataTypesPtr &inputType);
+    /// Convert Substrait SingularOrList into Omni Expression.
+    TypedExprPtr ToOmniExpr(
+        const ::substrait::Expression::SingularOrList &singularOrList, const DataTypesPtr &inputType);
 
-    /// Convert Substrait CastExpression to Velox Expression.
+    /// Convert Substrait CastExpression to Omni Expression.
     TypedExprPtr ToOmniExpr(const ::substrait::Expression::Cast &castExpr, const DataTypesPtr &inputType);
 
-    /// Create expression for extract.
-    static TypedExprPtr toExtractExpr(const std::vector<TypedExprPtr> &params, const DataTypePtr &outputType);
+    /// Used to convert Substrait Literal into Omni Expression.
+    TypedExprPtr ToOmniExpr(const ::substrait::Expression::Literal &substraitLit);
 
-    /// Used to convert Substrait Literal into Velox Expression.
-    std::shared_ptr<const LiteralExpr> ToOmniExpr(const ::substrait::Expression::Literal &substraitLit);
-
-    /// Convert Substrait Expression into Velox Expression.
+    /// Convert Substrait Expression into Omni Expression.
     TypedExprPtr ToOmniExpr(const ::substrait::Expression &substraitExpr, const DataTypesPtr &inputType);
 
     /// Convert Substrait IfThen into switch or if expression.
@@ -62,8 +61,8 @@ public:
         const std::vector<::substrait::Expression::Literal> &literals);
 
     /// Create expression for lambda.
-    std::shared_ptr<const Expr> toLambdaExpr(const ::substrait::Expression::ScalarFunction &substraitFunc,
-        const DataTypesPtr &inputType);
+    std::shared_ptr<const Expr> toLambdaExpr(
+        const ::substrait::Expression::ScalarFunction &substraitFunc, const DataTypesPtr &inputType);
 
 private:
     /// Memory pool.
@@ -72,9 +71,5 @@ private:
     /// The map storing the relations between the function id and the function
     /// name.
     std::unordered_map<uint64_t, std::string> functionMap_;
-
-    // The map storing the Substrait extract function input field and velox
-    // function name.
-    static std::unordered_map<std::string, std::string> extractDatetimeFunctionMap_;
 };
-}
+} // namespace omniruntime

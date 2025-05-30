@@ -1,5 +1,5 @@
 /*
-* Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
  * Description: print expression tree methods
  */
 
@@ -7,25 +7,23 @@
 #include <google/protobuf/wrappers.pb.h>
 #include <re2/re2.h>
 #include <string>
-#include "expression/expressions.h"
 #include "expression/expr_verifier.h"
+#include "expression/expressions.h"
 
 namespace omniruntime {
 namespace {
-const char *ExtractFileName(const char *file)
-{
-    return strrchr(file, '/') ? strrchr(file, '/') + 1 : file;
-}
+const char *ExtractFileName(const char *file) { return strrchr(file, '/') ? strrchr(file, '/') + 1 : file; }
 
 std::unique_ptr<re2::RE2> CompilePattern(const std::string &pattern)
 {
     return std::make_unique<re2::RE2>(re2::StringPiece(pattern), RE2::Quiet);
 }
 
-// Note: This method is mostly copied from velox/functions/sparksql/RegexFunctions.cpp
-// Blocks patterns that contain character class union, intersection, or
-// difference because these are not understood by RE2 and will be parsed as a
-// different pattern than in java.util.regex.
+// Note: This method is mostly copied from
+// velox/functions/sparksql/RegexFunctions.cpp Blocks patterns that contain
+// character class union, intersection, or difference because these are not
+// understood by RE2 and will be parsed as a different pattern than in
+// java.util.regex.
 bool EnsureRegexIsCompatible(const std::string &pattern, std::string &error)
 {
     // If in a character class, points to the [ at the beginning of that class.
@@ -36,9 +34,8 @@ bool EnsureRegexIsCompatible(const std::string &pattern, std::string &error)
             ++c;
         } else if (*c == '[') {
             if (charClassStart != pattern.cend()) {
-                error =
-                    "Not support character class union, intersection, "
-                    "or difference ([a[b]], [a&&[b]], [a&&[^b]])";
+                error = "Not support character class union, intersection, "
+                        "or difference ([a[b]], [a&&[b]], [a&&[^b]])";
                 return false;
             }
             charClassStart = c;
@@ -61,49 +58,26 @@ bool ValidatePattern(const std::string &pattern, std::string &error)
     return EnsureRegexIsCompatible(pattern, error);
 }
 
-#define LOG_VALIDATION_MSG_FROM_EXCEPTION(err)                                    \
-    LogValidateMsg(Format(                                                        \
-      "Validation failed due to exception caught at file:{} line:{} function:{}," \
-      "thrown from file:{} line:{} function:{}, reason:{}",                       \
-      ExtractFileName(__FILE__),                                                  \
-      __LINE__,                                                                   \
-      __FUNCTION__,                                                               \
-      "err.file()",                                                               \
-      "err.line()",                                                               \
-      "err.function()",                                                           \
-      err.message()))
+#define LOG_VALIDATION_MSG_FROM_EXCEPTION(err)                                                                         \
+    LogValidateMsg(Format("Validation failed due to exception caught at "                                              \
+                          "file:{} line:{} function:{},"                                                               \
+                          "thrown from file:{} line:{} function:{}, reason:{}",                                        \
+        ExtractFileName(__FILE__), __LINE__, __FUNCTION__, "err.file()", "err.line()", "err.function()",               \
+        err.message()))
 
-#define LOG_VALIDATION_MSG(reason)                                     \
-    LogValidateMsg(Format(                                             \
-      "Validation failed at file:{}, line:{}, function:{}, reason:{}", \
-      ExtractFileName(__FILE__),                                       \
-      __LINE__,                                                        \
-      __FUNCTION__,                                                    \
-      reason))
+#define LOG_VALIDATION_MSG(reason)                                                                                     \
+    LogValidateMsg(Format("Validation failed at file:{}, line:{}, function:{}, reason:{}", ExtractFileName(__FILE__),  \
+        __LINE__, __FUNCTION__, reason))
 
 const std::unordered_set<std::string> kRegexFunctions = {
-    "regexp_extract",
-    "regexp_extract_all",
-    "regexp_replace",
-    "rlike"
-};
+    "regexp_extract", "regexp_extract_all", "regexp_replace", "rlike"};
 
-const std::unordered_set<std::string> kBlackList = {
-    "split_part",
-    "factorial",
-    "from_json",
-    "json_array_length",
-    "trunc",
-    "sequence",
-    "approx_percentile",
-    "get_array_struct_fields",
-    "map_from_arrays"
-};
+const std::unordered_set<std::string> kBlackList = {"split_part", "factorial", "from_json", "json_array_length",
+    "trunc", "sequence", "approx_percentile", "get_array_struct_fields", "map_from_arrays"};
 } // namespace
 
 bool SubstraitToOmniPlanValidator::ParseOmniType(
-    const ::substrait::extensions::AdvancedExtension &extension,
-    DataTypePtr &out)
+    const ::substrait::extensions::AdvancedExtension &extension, DataTypePtr &out)
 {
     ::substrait::Type substraitType;
     // The input type is wrapped in enhancement.
@@ -139,8 +113,7 @@ bool SubstraitToOmniPlanValidator::FlattenSingleLevel(const DataTypePtr &type, s
 }
 
 bool SubstraitToOmniPlanValidator::ValidateRound(
-    const ::substrait::Expression::ScalarFunction &scalarFunction,
-    const DataTypesPtr &inputType)
+    const ::substrait::Expression::ScalarFunction &scalarFunction, const DataTypesPtr &inputType)
 {
     const auto &arguments = scalarFunction.arguments();
     if (arguments.size() < 2) {
@@ -172,7 +145,7 @@ bool SubstraitToOmniPlanValidator::ValidateExtractExpr(const std::vector<TypedEx
         return false;
     }
 
-    auto functionArg = std::dynamic_pointer_cast<const LiteralExpr>(params[0]);
+    auto functionArg = dynamic_cast<const LiteralExpr *>(params[0]);
     if (functionArg) {
         return true;
     }
@@ -181,8 +154,7 @@ bool SubstraitToOmniPlanValidator::ValidateExtractExpr(const std::vector<TypedEx
 }
 
 bool SubstraitToOmniPlanValidator::ValidateRegexExpr(
-    const std::string &name,
-    const ::substrait::Expression::ScalarFunction &scalarFunction)
+    const std::string &name, const ::substrait::Expression::ScalarFunction &scalarFunction)
 {
     if (scalarFunction.arguments().size() < 2) {
         LOG_VALIDATION_MSG("Wrong number of arguments for " + name);
@@ -203,8 +175,8 @@ bool SubstraitToOmniPlanValidator::ValidateRegexExpr(
     return true;
 }
 
-bool SubstraitToOmniPlanValidator::ValidateScalarFunction(const ::substrait::Expression::ScalarFunction &scalarFunction,
-    const DataTypesPtr &inputType)
+bool SubstraitToOmniPlanValidator::ValidateScalarFunction(
+    const ::substrait::Expression::ScalarFunction &scalarFunction, const DataTypesPtr &inputType)
 {
     std::vector<TypedExprPtr> params;
     params.reserve(scalarFunction.arguments().size());
@@ -248,8 +220,7 @@ bool SubstraitToOmniPlanValidator::ValidateScalarFunction(const ::substrait::Exp
 }
 
 bool SubstraitToOmniPlanValidator::ValidateLiteral(
-    const ::substrait::Expression_Literal &literal,
-    const DataTypesPtr &inputType)
+    const ::substrait::Expression_Literal &literal, const DataTypesPtr &inputType)
 {
     if (literal.has_list()) {
         for (auto child : literal.list().values()) {
@@ -270,8 +241,7 @@ bool SubstraitToOmniPlanValidator::ValidateLiteral(
 }
 
 bool SubstraitToOmniPlanValidator::ValidateCast(
-    const ::substrait::Expression::Cast &castExpr,
-    const DataTypesPtr &inputType)
+    const ::substrait::Expression::Cast &castExpr, const DataTypesPtr &inputType)
 {
     if (!ValidateExpression(castExpr.input(), inputType)) {
         return false;
@@ -282,9 +252,8 @@ bool SubstraitToOmniPlanValidator::ValidateCast(
 
     // Only support cast from date to timestamp
     if (toType->GetId() == OMNI_TIMESTAMP && input->dataType->GetId() != OMNI_DATE64) {
-        LOG_VALIDATION_MSG(
-            "Casting from " + TypeUtil::TypeToStringLog(input->dataType->GetId()) + " to " + TypeUtil::TypeToStringLog(
-                toType->GetId()) + " is not supported.");
+        LOG_VALIDATION_MSG("Casting from " + TypeUtil::TypeToStringLog(input->dataType->GetId()) + " to " +
+            TypeUtil::TypeToStringLog(toType->GetId()) + " is not supported.");
         return false;
     }
 
@@ -315,8 +284,7 @@ bool SubstraitToOmniPlanValidator::ValidateCast(
 }
 
 bool SubstraitToOmniPlanValidator::ValidateIfThen(
-    const ::substrait::Expression_IfThen &ifThen,
-    const DataTypesPtr &inputType)
+    const ::substrait::Expression_IfThen &ifThen, const DataTypesPtr &inputType)
 {
     for (const auto &subIfThen : ifThen.ifs()) {
         if (!ValidateExpression(subIfThen.if_(), inputType) || !ValidateExpression(subIfThen.then(), inputType)) {
@@ -330,8 +298,7 @@ bool SubstraitToOmniPlanValidator::ValidateIfThen(
 }
 
 bool SubstraitToOmniPlanValidator::ValidateSingularOrList(
-    const ::substrait::Expression::SingularOrList &singularOrList,
-    const DataTypesPtr &inputType)
+    const ::substrait::Expression::SingularOrList &singularOrList, const DataTypesPtr &inputType)
 {
     for (const auto &option : singularOrList.options()) {
         if (!option.has_literal()) {
@@ -347,8 +314,7 @@ bool SubstraitToOmniPlanValidator::ValidateSingularOrList(
 }
 
 bool SubstraitToOmniPlanValidator::ValidateExpression(
-    const ::substrait::Expression &expression,
-    const DataTypesPtr &inputType)
+    const ::substrait::Expression &expression, const DataTypesPtr &inputType)
 {
     auto typeCase = expression.rex_type_case();
     switch (typeCase) {
@@ -508,7 +474,7 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::ExpandRel &expand
                 // function or mismatched type, exception will be thrown.
                 ExprVerifier ev;
                 for (const auto &expression : expressions) {
-                    if (!ev.VisitExpr(expression)) {
+                    if (!ev.VisitExpr(*expression)) {
                         return false;
                     }
                 }
@@ -589,8 +555,8 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::WindowRel &window
             case ::substrait::WindowType::RANGE:
                 break;
             default:
-                LOG_VALIDATION_MSG(
-                    "the window type only support ROWS and RANGE, and the input type is " +
+                LOG_VALIDATION_MSG("the window type only support ROWS and RANGE, and the "
+                                   "input type is " +
                     std::to_string(windowFunction.window_type()));
                 return false;
         }
@@ -598,9 +564,9 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::WindowRel &window
         bool boundTypeSupported =
             ValidateBoundType(windowFunction.upper_bound()) && ValidateBoundType(windowFunction.lower_bound());
         if (!boundTypeSupported) {
-            LOG_VALIDATION_MSG(
-                "Found unsupported Bound Type: upper " + std::to_string(windowFunction.upper_bound().kind_case()) +
-                ", lower " + std::to_string(windowFunction.lower_bound().kind_case()));
+            LOG_VALIDATION_MSG("Found unsupported Bound Type: upper " +
+                std::to_string(windowFunction.upper_bound().kind_case()) + ", lower " +
+                std::to_string(windowFunction.lower_bound().kind_case()));
             return false;
         }
     }
@@ -611,7 +577,7 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::WindowRel &window
     expressions.reserve(groupByExprs.size());
     for (const auto &expr : groupByExprs) {
         auto expression = exprConverter_->ToOmniExpr(expr, rowType);
-        auto exprField = dynamic_cast<const FieldExpr*>(expression.get());
+        auto exprField = dynamic_cast<const FieldExpr *>(expression);
         if (exprField == nullptr) {
             LOG_VALIDATION_MSG("Only field is supported for partition key in Window Operator!");
             return false;
@@ -623,7 +589,7 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::WindowRel &window
     // mismatched type, exception will be thrown.
     ExprVerifier ev;
     for (const auto &expression : expressions) {
-        if (!ev.VisitExpr(expression)) {
+        if (!ev.VisitExpr(*expression)) {
             return false;
         }
     }
@@ -644,12 +610,13 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::WindowRel &window
 
         if (sort.has_expr()) {
             auto expression = exprConverter_->ToOmniExpr(sort.expr(), rowType);
-            auto exprField = dynamic_cast<const FieldExpr*>(expression.get());
+            auto exprField = dynamic_cast<const FieldExpr *>(expression);
             if (!exprField) {
-                LOG_VALIDATION_MSG("in windowRel, the sorting key in Sort Operator only support field.");
+                LOG_VALIDATION_MSG("in windowRel, the sorting key in Sort Operator "
+                                   "only support field.");
                 return false;
             }
-            if (!ev.VisitExpr(expression)) {
+            if (!ev.VisitExpr(*expression)) {
                 return false;
             }
         }
@@ -684,9 +651,10 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::WindowGroupLimitR
     expressions.reserve(groupByExprs.size());
     for (const auto &expr : groupByExprs) {
         auto expression = exprConverter_->ToOmniExpr(expr, rowType);
-        auto exprField = dynamic_cast<const FieldExpr*>(expression.get());
+        auto exprField = dynamic_cast<const FieldExpr *>(expression);
         if (exprField == nullptr) {
-            LOG_VALIDATION_MSG("Only field is supported for partition key in Window Group Limit Operator!");
+            LOG_VALIDATION_MSG("Only field is supported for partition key in Window "
+                               "Group Limit Operator!");
             return false;
         } else {
             expressions.emplace_back(expression);
@@ -696,7 +664,7 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::WindowGroupLimitR
     // mismatched type, exception will be thrown.
     ExprVerifier ev;
     for (const auto &expression : expressions) {
-        if (!ev.VisitExpr(expression)) {
+        if (!ev.VisitExpr(*expression)) {
             return false;
         }
     }
@@ -717,13 +685,14 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::WindowGroupLimitR
 
         if (sort.has_expr()) {
             auto expression = exprConverter_->ToOmniExpr(sort.expr(), rowType);
-            auto exprField = dynamic_cast<const FieldExpr*>(expression.get());
+            auto exprField = dynamic_cast<const FieldExpr *>(expression);
             if (!exprField) {
-                LOG_VALIDATION_MSG("in windowGroupLimitRel, the sorting key in Sort Operator only support field.");
+                LOG_VALIDATION_MSG("in windowGroupLimitRel, the sorting key in Sort "
+                                   "Operator only support field.");
                 return false;
             }
             ExprVerifier ev;
-            if (!ev.VisitExpr(expression)) {
+            if (!ev.VisitExpr(*expression)) {
                 return false;
             }
         }
@@ -767,8 +736,8 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::SetRel &setRel)
 
             for (auto i = 1; i < childrenRowTypes.size(); ++i) {
                 if (childrenRowTypes[i] != childrenRowTypes[0]) {
-                    LOG_VALIDATION_MSG(
-                        "All sources of the Set operation must have the same output type: ");
+                    LOG_VALIDATION_MSG("All sources of the Set operation must have the "
+                                       "same output type: ");
                     return false;
                 }
             }
@@ -817,13 +786,13 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::SortRel &sortRel)
 
         if (sort.has_expr()) {
             auto expression = exprConverter_->ToOmniExpr(sort.expr(), rowType);
-            auto exprField = dynamic_cast<const FieldExpr*>(expression.get());
+            auto exprField = dynamic_cast<const FieldExpr *>(expression);
             if (!exprField) {
                 LOG_VALIDATION_MSG("in SortRel, the sorting key in Sort Operator only support field.");
                 return false;
             }
             ExprVerifier ev;
-            if (!ev.VisitExpr(expression)) {
+            if (!ev.VisitExpr(*expression)) {
                 return false;
             }
         }
@@ -875,7 +844,7 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::ProjectRel &proje
     // mismatched type, exception will be thrown.
     ExprVerifier ev;
     for (const auto &expression : expressions) {
-        if (!ev.VisitExpr(expression)) {
+        if (!ev.VisitExpr(*expression)) {
             return false;
         }
     }
@@ -920,7 +889,7 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::FilterRel &filter
     // or mismatched type, exception will be thrown.
     ExprVerifier ev;
     for (const auto &expression : expressions) {
-        if (!ev.VisitExpr(expression)) {
+        if (!ev.VisitExpr(*expression)) {
             return false;
         }
     }
@@ -986,15 +955,15 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::JoinRel &joinRel)
     auto rowType = std::make_shared<DataTypes>(std::move(types));
 
     if (joinRel.has_expression()) {
-        std::vector<const ::substrait::Expression::FieldReference*> leftExprs;
-        std::vector<const ::substrait::Expression::FieldReference*> rightExprs;
+        std::vector<const ::substrait::Expression::FieldReference *> leftExprs;
+        std::vector<const ::substrait::Expression::FieldReference *> rightExprs;
         planConverter.ExtractJoinKeys(joinRel.expression(), leftExprs, rightExprs);
     }
 
     if (joinRel.has_post_join_filter()) {
         auto expression = exprConverter_->ToOmniExpr(joinRel.post_join_filter(), rowType);
         ExprVerifier ev;
-        if (!ev.VisitExpr(expression)) {
+        if (!ev.VisitExpr(*expression)) {
             return false;
         }
     }
@@ -1004,18 +973,21 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::JoinRel &joinRel)
 bool SubstraitToOmniPlanValidator::Validate(const ::substrait::CrossRel &crossRel)
 {
     if (crossRel.has_left() && !Validate(crossRel.left())) {
-        LogValidateMsg("Native validation failed due to: validation fails for cross join left input. ");
+        LogValidateMsg("Native validation failed due to: validation fails for "
+                       "cross join left input. ");
         return false;
     }
 
     if (crossRel.has_right() && !Validate(crossRel.right())) {
-        LogValidateMsg("Native validation failed due to: validation fails for cross join right input. ");
+        LogValidateMsg("Native validation failed due to: validation fails for "
+                       "cross join right input. ");
         return false;
     }
 
     // Validate input types.
     if (!crossRel.has_advanced_extension()) {
-        LogValidateMsg("Native validation failed due to: Input types are expected in CrossRel.");
+        LogValidateMsg("Native validation failed due to: Input types are expected "
+                       "in CrossRel.");
         return false;
     }
 
@@ -1032,7 +1004,8 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::CrossRel &crossRe
     DataTypePtr inputRowType;
     std::vector<DataTypePtr> types;
     if (!ParseOmniType(extension, inputRowType)) {
-        LogValidateMsg("Native validation failed due to: Validation failed for input types in CrossRel");
+        LogValidateMsg("Native validation failed due to: Validation failed for "
+                       "input types in CrossRel");
         return false;
     }
 
@@ -1041,7 +1014,7 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::CrossRel &crossRe
     if (crossRel.has_expression()) {
         auto expression = exprConverter_->ToOmniExpr(crossRel.expression(), rowType);
         ExprVerifier ev;
-        if (!ev.VisitExpr(expression)) {
+        if (!ev.VisitExpr(*expression)) {
             return false;
         }
     }
@@ -1069,8 +1042,8 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::AggregateRel &agg
         DataTypePtr inputRowType;
         std::vector<DataTypePtr> types;
         const auto &extension = aggRel.advanced_extension();
-        // Aggregate always has advanced extension for streaming aggregate optimization,
-        // but only some of them have enhancement for validation.
+        // Aggregate always has advanced extension for streaming aggregate
+        // optimization, but only some of them have enhancement for validation.
         if (extension.has_enhancement() &&
             (!ParseOmniType(extension, inputRowType) || !FlattenSingleLevel(inputRowType, types))) {
             LOG_VALIDATION_MSG("Validation failed for input types in AggregateRel.");
@@ -1135,42 +1108,13 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::AggregateRel &agg
         }
     }
 
-    // The supported aggregation functions. Remove this set when Presto aggregate functions in Omni are not
-    // needed to be registered.
-    static const std::unordered_set<std::string> supportedAggFuncs = {
-        "sum",
-        "collect_set",
-        "collect_list",
-        "count",
-        "avg",
-        "min",
-        "max",
-        "min_by",
-        "max_by",
-        "stddev_samp",
-        "stddev_pop",
-        "bloom_filter_agg",
-        "var_samp",
-        "var_pop",
-        "bit_and",
-        "bit_or",
-        "bit_xor",
-        "first",
-        "first_ignore_null",
-        "last",
-        "last_ignore_null",
-        "corr",
-        "regr_r2",
-        "covar_pop",
-        "covar_samp",
-        "approx_distinct",
-        "skewness",
-        "kurtosis",
-        "regr_slope",
-        "regr_intercept",
-        "regr_sxy",
-        "regr_replacement"
-    };
+    // The supported aggregation functions. Remove this set when Presto aggregate
+    // functions in Omni are not needed to be registered.
+    static const std::unordered_set<std::string> supportedAggFuncs = {"sum", "collect_set", "collect_list", "count",
+        "avg", "min", "max", "min_by", "max_by", "stddev_samp", "stddev_pop", "bloom_filter_agg", "var_samp", "var_pop",
+        "bit_and", "bit_or", "bit_xor", "first", "first_ignore_null", "last", "last_ignore_null", "corr", "regr_r2",
+        "covar_pop", "covar_samp", "approx_distinct", "skewness", "kurtosis", "regr_slope", "regr_intercept",
+        "regr_sxy", "regr_replacement"};
 
     for (const auto &funcSpec : funcSpecs) {
         auto funcName = SubstraitParser::GetNameBeforeDelimiter(funcSpec);
@@ -1230,7 +1174,7 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::ReadRel &readRel)
         // or mismatched type, exception will be thrown.
         ExprVerifier ev;
         for (const auto &expression : expressions) {
-            if (!ev.VisitExpr(expression)) {
+            if (!ev.VisitExpr(*expression)) {
                 return false;
             }
         }
@@ -1304,4 +1248,4 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::Plan &plan)
         return false;
     }
 }
-} // namespace gluten
+} // namespace omniruntime

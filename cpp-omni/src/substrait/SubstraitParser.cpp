@@ -1,15 +1,15 @@
 /*
-* Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
  * Description: print expression tree methods
  */
 
+#include "SubstraitParser.h"
 #include <string>
 #include "google/protobuf/wrappers.pb.h"
-#include "SubstraitParser.h"
 
 namespace omniruntime {
-std::vector<type::DataTypePtr> SubstraitParser::ParseNamedStruct(const ::substrait::NamedStruct &namedStruct,
-    bool asLowerCase)
+std::vector<type::DataTypePtr> SubstraitParser::ParseNamedStruct(
+    const ::substrait::NamedStruct &namedStruct, bool asLowerCase)
 {
     // Note that "names" are not used.
 
@@ -23,7 +23,6 @@ std::vector<type::DataTypePtr> SubstraitParser::ParseNamedStruct(const ::substra
     }
     return typeList;
 }
-
 type::DataTypePtr SubstraitParser::ParseType(const ::substrait::Type &substraitType, bool asLowerCase)
 {
     switch (substraitType.kind_case()) {
@@ -65,8 +64,15 @@ type::DataTypePtr SubstraitParser::ParseType(const ::substrait::Type &substraitT
     }
 }
 
-std::string SubstraitParser::FindFunctionSpec(const std::unordered_map<uint64_t, std::string> &functionMap,
-    uint64_t id)
+std::pair<SubstraitToOmniExprType, std::string> SubstraitParser::FindOmniFunction(
+    const std::unordered_map<uint64_t, std::string> &functionMap, uint64_t id)
+{
+    std::string funcSpec = FindFunctionSpec(functionMap, id);
+    std::string funcName = GetNameBeforeDelimiter(funcSpec);
+    return MapToOmniFunction(funcName);
+}
+
+std::string SubstraitParser::FindFunctionSpec(const std::unordered_map<uint64_t, std::string> &functionMap, uint64_t id)
 {
     auto x = functionMap.find(id);
     if (x == functionMap.end()) {
@@ -113,8 +119,9 @@ std::vector<std::string> SubstraitParser::GetSubFunctionTypes(const std::string 
     return types;
 }
 
-bool SubstraitParser::ParseReferenceSegment(const ::substrait::Expression::ReferenceSegment &refSegment,
-    uint32_t &fieldIndex) {}
+bool SubstraitParser::ParseReferenceSegment(
+    const ::substrait::Expression::ReferenceSegment &refSegment, uint32_t &fieldIndex)
+{}
 
 std::string SubstraitParser::MakeNodeName(int nodeId, int colIdx)
 {
@@ -122,29 +129,18 @@ std::string SubstraitParser::MakeNodeName(int nodeId, int colIdx)
     return result;
 }
 
-std::string SubstraitParser::MapToOmniFunction(const std::string &substraitFunction, bool isDecimal)
+std::pair<SubstraitToOmniExprType, std::string> SubstraitParser::MapToOmniFunction(const std::string &substraitFunction)
 {
     auto it = substraitOmniFunctionMap.find(substraitFunction);
-    if (isDecimal) {
-        if (substraitFunction == "lt" || substraitFunction == "lte" || substraitFunction == "gt" ||
-            substraitFunction == "gte" || substraitFunction == "equal") {
-            return "decimal_" + it->second;
-        }
-        if (substraitFunction == "round") {
-            return "decimal_round";
-        }
-    }
     if (it != substraitOmniFunctionMap.end()) {
         return it->second;
     }
-    // If not finding the mapping from Substrait function name to Velox function
-    // name, the original Substrait function name will be used.
-    return substraitFunction;
+    throw omniruntime::exception::OmniException(
+        SUBSTRAIT_PARSE_ERROR, "Could not find function in function map:" + substraitFunction);
 }
 
 bool SubstraitParser::ConfigSetInOptimization(
-    const ::substrait::extensions::AdvancedExtension &extension,
-    const std::string &config)
+    const ::substrait::extensions::AdvancedExtension &extension, const std::string &config)
 {
     if (extension.has_optimization()) {
         google::protobuf::StringValue msg;
@@ -238,26 +234,22 @@ std::string SubstraitParser::GetLiteralValue(const ::substrait::Expression::Lite
     }
 }
 
-std::unordered_map<std::string, std::string> SubstraitParser::substraitOmniFunctionMap = {
-    {"is_not_null", "isnotnull"},
-    {"is_null", "isnull"},
-    {"equal", "equalto"},
-    {"equal_null_safe", "equalnullsafe"},
-    {"lt", "lessthan"},
-    {"lte", "lessthanorequal"},
-    {"gt", "greaterthan"},
-    {"gte", "greaterthanorequal"},
-    {"not_equal", "notequalto"},
-    {"char_length", "length"},
-    {"strpos", "instr"},
-    {"ends_with", "endswith"},
-    {"starts_with", "startswith"},
-    {"bit_or", "bitwise_or_agg"},
-    {"bit_and", "bitwise_and_agg"},
-    {"murmur3hash", "hash_with_seed"},
-    {"xxhash64", "xxhash64_with_seed"},
-    {"modulus", "remainder"},
-    {"date_format", "format_datetime"},
-    {"negative", "unaryminus"}
-};
-}
+std::unordered_map<std::string, std::pair<SubstraitToOmniExprType, std::string>>
+    SubstraitParser::substraitOmniFunctionMap = {{"is_not_null", {IS_NOT_NULL_OMNI_EXPR_TYPE, "IS_NOT_NULL"}},
+        {"is_null", {IS_NULL_OMNI_EXPR_TYPE, "IS_NULL"}}, {"not", {UNARY_OMNI_EXPR_TYPE, "NOT"}},
+        {"not_equal", {BINARY_OMNI_EXPR_TYPE, "NOT_EQUAL"}}, {"add", {BINARY_OMNI_EXPR_TYPE, "ADD"}},
+        {"subtract", {BINARY_OMNI_EXPR_TYPE, "SUBTRACT"}}, {"multiply", {BINARY_OMNI_EXPR_TYPE, "MULTIPLY"}},
+        {"divide", {BINARY_OMNI_EXPR_TYPE, "DIVIDE"}}, {"and", {BINARY_OMNI_EXPR_TYPE, "AND"}},
+        {"gt", {BINARY_OMNI_EXPR_TYPE, "GREATER_THAN"}}, {"gte", {BINARY_OMNI_EXPR_TYPE, "GREATER_THAN_OR_EQUAL"}},
+        {"lt", {BINARY_OMNI_EXPR_TYPE, "LESS_THAN"}}, {"lte", {BINARY_OMNI_EXPR_TYPE, "LESS_THAN_OR_EQUAL"}},
+        {"equal", {BINARY_OMNI_EXPR_TYPE, "EQUAL"}}, {"or", {BINARY_OMNI_EXPR_TYPE, "OR"}},
+        {"lower", {FUNCTION_OMNI_EXPR_TYPE, "lower"}}, {"upper", {FUNCTION_OMNI_EXPR_TYPE, "upper"}},
+        {"char_length", {FUNCTION_OMNI_EXPR_TYPE, "length"}}, {"replace", {FUNCTION_OMNI_EXPR_TYPE, "replace"}},
+        {"substring", {FUNCTION_OMNI_EXPR_TYPE, "substr"}}, {"cast", {FUNCTION_OMNI_EXPR_TYPE, "CAST"}},
+        {"abs", {FUNCTION_OMNI_EXPR_TYPE, "abs"}}, {"round", {FUNCTION_OMNI_EXPR_TYPE, "round"}},
+        {"rlike", {FUNCTION_OMNI_EXPR_TYPE, "Rlike"}}, {"md5", {FUNCTION_OMNI_EXPR_TYPE, "Md5"}},
+        {"concat", {FUNCTION_OMNI_EXPR_TYPE, "concat"}}, {"xxhash64", {FUNCTION_OMNI_EXPR_TYPE, "xxhash64"}},
+        {"starts_with", {FUNCTION_OMNI_EXPR_TYPE, "StartsWith"}}, {"ends_with", {FUNCTION_OMNI_EXPR_TYPE, "EndsWith"}},
+        {"unscaled_value", {FUNCTION_OMNI_EXPR_TYPE, "UnscaledValue"}},
+        {"coalesce", {COALESCE_OMNI_EXPR_TYPE, "COALESCE"}}};
+} // namespace omniruntime
