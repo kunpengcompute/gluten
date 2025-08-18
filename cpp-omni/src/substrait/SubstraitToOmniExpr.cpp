@@ -17,6 +17,8 @@
 
 #include "SubstraitToOmniExpr.h"
 #include "expression/parserhelper.h"
+#include "codegen/func_registry.h"
+#include "type/data_type.h"
 
 constexpr const char *SUBSTRAIT_PARSE_ERROR = "SUBSTRAIT_PARSE_ERROR";
 namespace omniruntime {
@@ -166,6 +168,11 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
         }
         return new CoalesceExpr(args[0], args[1]);
     } else if (type == HIVE_UDF_FUNCTION_OMNI_EXPR_TYPE) {
+        DataTypePtr retType;
+        auto &hiveUdfClass = omniruntime::codegen::FunctionRegistry::LookupHiveUdf(funcName);
+        if (!hiveUdfClass.empty()) {
+            return new FuncExpr(hiveUdfClass, args, std::move(retType), HIVE_UDF);
+        }
         throw omniruntime::exception::OmniException(SUBSTRAIT_PARSE_ERROR, "The UDF function Unsupported yet");
     } else {
         OMNI_THROW(
