@@ -107,11 +107,14 @@ public class OmniOrcColumnarBatchReader extends RecordReader<Void, ColumnarBatch
         }
 
         // Free vecs from templateWrappers.
-        for (int i = 0; i < templateWrappers.length; i++) {
-            org.apache.spark.sql.vectorized.ColumnVector vector = templateWrappers[i];
-            if (vector != null) {
-                ((OmniColumnVector) vector).close();
+        if (templateWrappers != null) {
+            for (int i = 0; i < templateWrappers.length; i++) {
+                org.apache.spark.sql.vectorized.ColumnVector vector = templateWrappers[i];
+                if (vector != null) {
+                    ((OmniColumnVector) vector).close();
+                }
             }
+            templateWrappers = null;
         }
     }
 
