@@ -28,8 +28,6 @@ type::DataTypePtr SubstraitParser::ParseType(const ::substrait::Type &substraitT
     switch (substraitType.kind_case()) {
         case ::substrait::Type::KindCase::kBool:
             return type::BooleanType();
-        case ::substrait::Type::KindCase::kI8:
-            return type::ByteType();
         case ::substrait::Type::KindCase::kI16:
             return type::ShortType();
         case ::substrait::Type::KindCase::kI32:

@@ -17,8 +17,6 @@ DataTypePtr GetScalarType(const ::substrait::Expression::Literal &literal)
     switch (typeCase) {
         case ::substrait::Expression_Literal::LiteralTypeCase::kBoolean:
             return BooleanType();
-        case ::substrait::Expression_Literal::LiteralTypeCase::kI8:
-            return ByteType();
         case ::substrait::Expression_Literal::LiteralTypeCase::kI16:
             return ShortType();
         case ::substrait::Expression_Literal::LiteralTypeCase::kI32:
@@ -242,10 +240,8 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(const ::substrait::Expressio
     switch (typeCase) {
         case ::substrait::Expression_Literal::LiteralTypeCase::kBoolean:
             return new LiteralExpr(substraitLit.boolean(), BooleanType());
-        case ::substrait::Expression_Literal::LiteralTypeCase::kI8:
-            return new LiteralExpr(static_cast<int8_t>(substraitLit.i8()), ByteType());
         case ::substrait::Expression_Literal::LiteralTypeCase::kI16:
-            return new LiteralExpr(static_cast<int16_t>(substraitLit.i16()), ShortType());
+            return new LiteralExpr(substraitLit.i16(), ShortType());
         case ::substrait::Expression_Literal::LiteralTypeCase::kI32:
             return new LiteralExpr(substraitLit.i32(), IntType());
         case ::substrait::Expression_Literal::LiteralTypeCase::kI64:
