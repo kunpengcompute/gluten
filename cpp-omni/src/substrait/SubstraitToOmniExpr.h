@@ -48,10 +48,10 @@ public:
     TypedExprPtr ToOmniExpr(const ::substrait::Expression::Cast &castExpr, const DataTypesPtr &inputType);
 
     /// Used to convert Substrait Literal into Omni Expression.
-    TypedExprPtr ToOmniExpr(const ::substrait::Expression::Literal &substraitLit);
+    TypedExprPtr ToOmniExpr(const ::substrait::Expression::Literal &substraitLit, const DataTypePtr defaultType = nullptr);
 
     /// Convert Substrait Expression into Omni Expression.
-    TypedExprPtr ToOmniExpr(const ::substrait::Expression &substraitExpr, const DataTypesPtr &inputType);
+    TypedExprPtr ToOmniExpr(const ::substrait::Expression &substraitExpr, const DataTypesPtr &inputType, const DataTypePtr defaultType = nullptr);
 
     /// Convert Substrait IfThen into switch or if expression.
     TypedExprPtr ToOmniExpr(const ::substrait::Expression::IfThen &substraitIfThen, const DataTypesPtr &inputType, const int32_t index = 0);

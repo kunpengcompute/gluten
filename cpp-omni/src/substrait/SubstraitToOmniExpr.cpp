@@ -206,7 +206,7 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
     const ::substrait::Expression::Cast &castExpr, const DataTypesPtr &inputType)
 {
     auto retType = SubstraitParser::ParseType(castExpr.type());
-    auto expr = ToOmniExpr(castExpr.input(), inputType);
+    auto expr = ToOmniExpr(castExpr.input(), inputType, retType);
     auto retTypeId = retType->GetId();
     auto argReturnType = expr->GetReturnType();
     if (retTypeId == argReturnType->GetId()) {
@@ -236,7 +236,7 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
     return new FuncExpr("CAST", args, std::move(retType));
 }
 
-TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(const ::substrait::Expression::Literal &substraitLit)
+TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(const ::substrait::Expression::Literal &substraitLit, const DataTypePtr defaultType)
 {
     auto typeCase = substraitLit.literal_type_case();
     switch (typeCase) {
@@ -274,7 +274,12 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(const ::substrait::Expressio
             }
         }
         case ::substrait::Expression_Literal::LiteralTypeCase::kNull: {
-            auto dataType = SubstraitParser::ParseType(substraitLit.null());
+            DataTypePtr dataType;
+            if (defaultType != nullptr) {
+                dataType = defaultType;
+            } else {
+                dataType = SubstraitParser::ParseType(substraitLit.null());
+            }
             LiteralExpr *expr;
             if (TypeUtil::IsDecimalType(dataType->GetId())) {
                 auto precision = std::dynamic_pointer_cast<DecimalDataType>(dataType)->GetPrecision();
@@ -336,12 +341,12 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
 }
 
 TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
-    const substrait::Expression &substraitExpr, const DataTypesPtr &inputType)
+    const substrait::Expression &substraitExpr, const DataTypesPtr &inputType, DataTypePtr defaultType)
 {
     auto typeCase = substraitExpr.rex_type_case();
     switch (typeCase) {
         case ::substrait::Expression::RexTypeCase::kLiteral:
-            return ToOmniExpr(substraitExpr.literal());
+            return ToOmniExpr(substraitExpr.literal(), defaultType);
         case ::substrait::Expression::RexTypeCase::kScalarFunction:
             return ToOmniExpr(substraitExpr.scalar_function(), inputType);
         case ::substrait::Expression::RexTypeCase::kSelection:
