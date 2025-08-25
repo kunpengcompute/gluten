@@ -369,5 +369,6 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"first_ignore_null", {FUNCTION_OMNI_EXPR_TYPE, "first_ignore_null"}},
     {"stddev_samp", {FUNCTION_OMNI_EXPR_TYPE, "stddev_samp"}},
     {"date_add", {FUNCTION_OMNI_EXPR_TYPE, "date_add"}},
-    {"trunc", {FUNCTION_OMNI_EXPR_TYPE, "trunc_date"}}};
+    {"trunc", {FUNCTION_OMNI_EXPR_TYPE, "trunc_date"}},
+    {"get_json_object", {FUNCTION_OMNI_EXPR_TYPE, "GetJsonObject"}}};
 } // namespace omniruntime
