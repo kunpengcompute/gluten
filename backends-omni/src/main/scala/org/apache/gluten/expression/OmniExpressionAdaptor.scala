@@ -1171,6 +1171,7 @@ object OmniExpressionAdaptor extends Logging {
         } else {
           new Decimal128DataType(dt.precision, dt.scale)
         }
+      case NullType => BooleanDataType.BOOLEAN
       case _ =>
         throw new UnsupportedOperationException(s"Unsupported datatype: $dataType")
     }

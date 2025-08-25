@@ -135,7 +135,7 @@ private object OmniRowToColumnConverter {
   private def getConverterForType(dataType: DataType, nullable: Boolean): TypeConverter = {
     val core = dataType match {
       case BinaryType => BinaryConverter
-      case BooleanType => BooleanConverter
+      case BooleanType | NullType => BooleanConverter
       case ByteType => ByteConverter
       case ShortType => ShortConverter
       case IntegerType | DateType => IntConverter

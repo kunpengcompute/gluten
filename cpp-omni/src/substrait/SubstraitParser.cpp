@@ -38,6 +38,7 @@ std::vector<type::DataTypePtr> SubstraitParser::ParseNamedStruct(
 type::DataTypePtr SubstraitParser::ParseType(const ::substrait::Type &substraitType, bool asLowerCase, bool isNest)
 {
     switch (substraitType.kind_case()) {
+        case ::substrait::Type::KindCase::kNothing:
         case ::substrait::Type::KindCase::kBool:
             return type::BooleanType();
         case ::substrait::Type::KindCase::kI16:
@@ -371,6 +372,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"min", {FUNCTION_OMNI_EXPR_TYPE, "min"}},
     {"max", {FUNCTION_OMNI_EXPR_TYPE, "max"}},
     {"avg", {FUNCTION_OMNI_EXPR_TYPE, "avg"}},
+    {"power", {FUNCTION_OMNI_EXPR_TYPE, "power"}},
     {"first", {FUNCTION_OMNI_EXPR_TYPE, "first"}},
     {"substring_index", {FUNCTION_OMNI_EXPR_TYPE, "substring_index"}},
     {"make_decimal", {FUNCTION_OMNI_EXPR_TYPE, "MakeDecimal"}},
