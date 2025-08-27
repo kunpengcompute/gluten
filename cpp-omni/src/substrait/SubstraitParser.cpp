@@ -378,6 +378,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"first", {FUNCTION_OMNI_EXPR_TYPE, "first"}},
     {"substring_index", {FUNCTION_OMNI_EXPR_TYPE, "substring_index"}},
     {"regexp_extract", {FUNCTION_OMNI_EXPR_TYPE, "regexp_extract"}},
+    {"regexp_replace", {FUNCTION_OMNI_EXPR_TYPE, "regexp_replace"}},
     {"make_decimal", {FUNCTION_OMNI_EXPR_TYPE, "MakeDecimal"}},
     {"unix_timestamp", {FUNCTION_OMNI_EXPR_TYPE, "unix_timestamp"}},
     {"from_unixtime", {FUNCTION_OMNI_EXPR_TYPE, "from_unixtime"}},
