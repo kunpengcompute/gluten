@@ -16,15 +16,14 @@
  */
 package org.apache.gluten.utils
 
-import org.apache.gluten.expression.OmniExpressionAdaptor.{checkOmniJsonWhiteList, getExprIdMap, isSimpleColumnForAll, rewriteToOmniJsonExpressionLiteral, sparkTypeToOmniType}
-
+import nova.hetu.omniruntime.`type`.{MapDataType, StructDataType}
+import org.apache.gluten.expression.OmniExpressionAdaptor.{checkOmniJsonWhiteList, getExprIdMap, isSimpleColumnForAll, rewriteToOmniJsonExpressionLiteral, sparkTypeToOmniType, sparkTypeToOmniTypeWithComplex}
 import org.apache.spark.TaskContext
 import org.apache.spark.sql.catalyst.expressions.{Attribute, ExprId, SortOrder}
 import org.apache.spark.sql.execution.metric.SQLMetric
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types._
-import org.apache.spark.sql.vectorized.{ColumnarBatch, ColumnVector}
-
+import org.apache.spark.sql.vectorized.{ColumnVector, ColumnarBatch}
 import nova.hetu.omniruntime.operator.OmniOperator
 import nova.hetu.omniruntime.operator.config.OverflowConfig
 import nova.hetu.omniruntime.vector._
@@ -210,6 +209,24 @@ object OmniAdaptorUtil {
           }
           vec
         }
+      case StructType(fields) =>
+        val vec = new StructVec(new StructDataType(fields.map(field => sparkTypeToOmniTypeWithComplex(field.dataType, Metadata.empty))), columnSize)
+        val numChildren = fields.length
+        for (i <- 0 until numChildren) {
+          vec.add (i, transColumnVector (columnVector.getChild (i), columnSize) )
+        }
+        vec
+      case MapType(keyType, valueType, valueContainsNull) =>
+        val offsets = new Array[Int](columnSize + 1)
+        offsets(0) = 0
+        for (i <- 1 until columnSize + 1) {
+          offsets(i) = offsets(i - 1) + columnVector.getMap(i - 1).numElements()
+        }
+        val vec = new MapVec(new MapDataType(sparkTypeToOmniTypeWithComplex(keyType, Metadata.empty), sparkTypeToOmniTypeWithComplex(valueType, Metadata.empty)), offsets(columnSize))
+        vec.AddKeys(transColumnVector(columnVector.getChild(0), offsets(columnSize)))
+        vec.AddValues(transColumnVector(columnVector.getChild(1), offsets(columnSize)))
+        vec.AddOffsets(offsets)
+        vec
       case _ =>
         throw new UnsupportedOperationException("unsupport column vector!")
     }
