@@ -18,7 +18,6 @@ package org.apache.gluten.expression
 
 import org.apache.gluten.config.GlutenConfig
 import org.apache.gluten.utils.Constant._
-
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.{Expression, _}
@@ -28,7 +27,6 @@ import org.apache.spark.sql.catalyst.plans._
 import org.apache.spark.sql.catalyst.util.CharVarcharUtils.getRawTypeString
 import org.apache.spark.sql.execution
 import org.apache.spark.sql.types.{DataType, _}
-
 import com.google.gson.{JsonArray, JsonElement, JsonObject, JsonParser}
 import nova.hetu.omniruntime.`type`._
 import nova.hetu.omniruntime.constants.BuildSide._
@@ -82,9 +80,6 @@ object OmniExpressionAdaptor extends Logging {
     if (!GlutenConfig.get.enableOmniUnixTimeFunc) {
       throw new UnsupportedOperationException(s"Not Enabled Omni UnixTime Function")
     }
-    if (GlutenConfig.get.timeParserPolicy == "LEGACY") {
-      throw new UnsupportedOperationException(s"Unsupported Time Parser Policy: LEGACY")
-    }
     if (!timeZoneSet.contains(timeZone)) {
       throw new UnsupportedOperationException(s"Unsupported Time Zone: $timeZone")
     }
@@ -120,6 +115,22 @@ object OmniExpressionAdaptor extends Logging {
       expr: Expression,
       exprsIndexMap: Map[ExprId, Int]): JsonObject = {
     rewriteToOmniJsonExpressionLiteralJsonObject(expr, exprsIndexMap, expr.dataType)
+  }
+
+  private def GenGetStructField(expr: Expression, exprsIndexMap: Map[ExprId, Int])
+  : JsonObject = {
+    expr match {
+      case getStructField: GetStructField =>
+        val json = GenGetStructField(getStructField.child, exprsIndexMap)
+        new JsonObject().put("exprType", "FIELD_REFERENCE")
+            .put("dataType", sparkTypeToOmniExpType(getStructField.dataType).toInt)
+            .put("ordinal", getStructField.ordinal)
+            .put("input", json)
+      case attr: Attribute =>
+        new JsonObject().put("exprType", "FIELD_REFERENCE")
+            .put("dataType", sparkTypeToOmniExpType(attr.dataType).toInt)
+            .put("colVal", exprsIndexMap(attr.exprId))
+    }
   }
 
   private def rewriteToOmniJsonExpressionLiteralJsonObject(
@@ -703,6 +714,16 @@ object OmniExpressionAdaptor extends Logging {
                       rewriteToOmniJsonExpressionLiteralJsonObject(inputExpression, exprsIndexMap)))
             }
         }
+        // TODO: review
+      case dateDiff: DateDiff =>
+        new JsonObject().put("exprType", "FUNCTION")
+            .addOmniExpJsonType("returnType", dateDiff.dataType)
+            .put("function_name", "date_diff")
+            .put("arguments", new JsonArray().put(rewriteToOmniJsonExpressionLiteralJsonObject(dateDiff.children(0), exprsIndexMap))
+                .put(rewriteToOmniJsonExpressionLiteralJsonObject(dateDiff.children(1), exprsIndexMap)))
+
+      case getStructField: GetStructField =>
+        GenGetStructField(getStructField, exprsIndexMap)
 
       case _ =>
         // TODO: Handle udf
@@ -1065,6 +1086,8 @@ object OmniExpressionAdaptor extends Logging {
         } else {
           OMNI_DECIMAL128_TYPE
         }
+      case f: StructType => OMNI_ROW_TYPE
+      case m: MapType => OMNI_MAP_TYPE
       case NullType => OMNI_BOOLEAN_TYPE
       case _ =>
         throw new UnsupportedOperationException(s"Unsupported datatype: $datatype")
@@ -1179,13 +1202,48 @@ object OmniExpressionAdaptor extends Logging {
     }
   }
 
+  def sparkTypeToOmniTypeWithComplex(dataType: DataType, metadata: Metadata = Metadata.empty):
+  nova.hetu.omniruntime.`type`.DataType = {
+    dataType match {
+      case ShortType =>
+        ShortDataType.SHORT
+      case IntegerType =>
+        IntDataType.INTEGER
+      case LongType =>
+        LongDataType.LONG
+      case TimestampType =>
+        TimestampDataType.TIMESTAMP
+      case DoubleType =>
+        DoubleDataType.DOUBLE
+      case BooleanType =>
+        BooleanDataType.BOOLEAN
+      case StringType =>
+        new VarcharDataType(getStringLength(metadata))
+      case DateType =>
+        Date32DataType.DATE32
+      case dt: DecimalType =>
+        if (DecimalType.is64BitDecimalType(dt)) {
+          new Decimal64DataType(dt.precision, dt.scale)
+        } else {
+          new Decimal128DataType(dt.precision, dt.scale)
+        }
+      case m: MapType =>
+        new MapDataType(sparkTypeToOmniTypeWithComplex(m.keyType), sparkTypeToOmniTypeWithComplex(m.valueType))
+      case s: StructType =>
+        val children = s.fields.map(f => sparkTypeToOmniTypeWithComplex(f.dataType, f.metadata))
+        new StructDataType(children)
+      case _ =>
+        throw new UnsupportedOperationException(s"Unsupported datatype: $dataType")
+    }
+  }
+
   def sparkProjectionToOmniJsonProjection(attr: Attribute, colVal: Int): String = {
     val dataType: DataType = attr.dataType
     val metadata = attr.metadata
     val omniDataType: String = sparkTypeToOmniExpType(dataType)
     dataType match {
       case ShortType | IntegerType | LongType | DoubleType | BooleanType | DateType |
-          TimestampType =>
+          TimestampType | StructType(_) | MapType(_, _, _) =>
         new JsonObject()
           .put("exprType", "FIELD_REFERENCE")
           .put("dataType", omniDataType.toInt)

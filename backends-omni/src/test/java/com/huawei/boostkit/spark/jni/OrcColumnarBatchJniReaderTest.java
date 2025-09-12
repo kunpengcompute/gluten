@@ -19,12 +19,14 @@
 package com.huawei.boostkit.spark.jni;
 
 import junit.framework.TestCase;
+import nova.hetu.omniruntime.type.DataType;
 import nova.hetu.omniruntime.vector.LongVec;
 import nova.hetu.omniruntime.vector.VarcharVec;
 import nova.hetu.omniruntime.vector.Vec;
 import org.apache.gluten.expression.OmniExpressionAdaptor;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.orc.Reader;
+import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 import org.junit.After;
@@ -51,6 +53,7 @@ public class OrcColumnarBatchJniReaderTest extends TestCase {
 
     private StructType requiredSchema;
     private int[] vecTypeIds;
+    List<DataType> dataTypes = new ArrayList<>();
 
     private long offset = 0;
 
@@ -91,6 +94,7 @@ public class OrcColumnarBatchJniReaderTest extends TestCase {
                     orcColumnarBatchScanReader.colsToGet[i] = 0;
                     orcColumnarBatchScanReader.includedColumns.add(requiredfieldNames[i]);
                     typeBuilder.add(OmniExpressionAdaptor.sparkTypeToOmniType(requiredSchema.fields()[i].dataType()));
+                    dataTypes.add(OmniExpressionAdaptor.sparkTypeToOmniType(requiredSchema.fields()[i].dataType(), Metadata.empty()));
                     is_find = true;
                     break;
                 }
@@ -137,7 +141,7 @@ public class OrcColumnarBatchJniReaderTest extends TestCase {
     @Test
     public void testNext() {
         Vec[] vecs = new Vec[2];
-        long rtn = orcColumnarBatchScanReader.next(vecs, vecTypeIds);
+        long rtn = orcColumnarBatchScanReader.next(vecs, vecTypeIds, dataTypes);
         assertTrue(rtn == 4096);
         assertTrue(((LongVec) vecs[0]).get(0) == 1);
         String str = new String(((VarcharVec) vecs[1]).get(0));
