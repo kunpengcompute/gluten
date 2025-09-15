@@ -37,6 +37,7 @@ import nova.hetu.omniruntime.vector.StructVec;
 import nova.hetu.omniruntime.vector.VarcharVec;
 import nova.hetu.omniruntime.vector.Vec;
 
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.orc.impl.writer.TimestampTreeWriter;
 import org.apache.spark.sql.catalyst.util.CharVarcharUtils;
 import org.apache.spark.sql.catalyst.util.RebaseDateTime;
@@ -367,11 +368,27 @@ public class OrcColumnarBatchScanReader {
         DATE,
         DECIMAL,
         TIMESTAMP,
-        BOOLEAN
+        BOOLEAN,
+        STRUCT
     }
 
-    private OrcPredicateDataType getOrcPredicateDataType(String attribute) {
-        StructField field = requiredSchema.apply(attribute);
+    private Pair<String, OrcPredicateDataType> getOrcPredicateDataType(String attribute, StructType inputSchema) {
+        if (attribute.contains(".")) {
+            String[] args = attribute.split("\\.");
+            StructField field = inputSchema.apply(args[0]);
+            if (field.dataType() instanceof StructType) {
+                StructType struct = (StructType) field.dataType();
+                return getOrcPredicateDataType(args[1], struct);
+            } else {
+                throw new UnsupportedOperationException("Unsupported orc push down filter data type: " +
+                        field.dataType().getClass().getSimpleName());
+            }
+        }
+        StructField field = inputSchema.apply(attribute);
+        return Pair.of(attribute, getType(field));
+    }
+
+    private OrcPredicateDataType getType(StructField field) {
         org.apache.spark.sql.types.DataType dataType = field.dataType();
         if (dataType instanceof ShortType || dataType instanceof IntegerType ||
             dataType instanceof LongType) {
@@ -389,6 +406,8 @@ public class OrcColumnarBatchScanReader {
             return OrcPredicateDataType.DECIMAL;
         } else if (dataType instanceof BooleanType) {
             return OrcPredicateDataType.BOOLEAN;
+        } else if (dataType instanceof StructType) {
+            return OrcPredicateDataType.STRUCT;
         } else {
             throw new UnsupportedOperationException("Unsupported orc push down filter data type: " +
                 dataType.getClass().getSimpleName());
@@ -397,7 +416,7 @@ public class OrcColumnarBatchScanReader {
 
     // Check the type whether is char type, which orc native does not support push down
     private boolean isCharType(Metadata metadata) {
-        if (metadata != null) {
+        if (metadata != null && !metadata.toString().equals("{}")) {
             String rawTypeString = CharVarcharUtils.getRawTypeString(metadata).getOrElse(null);
             if (rawTypeString != null) {
                 Matcher matcher = CHAR_TYPE.matcher(rawTypeString);
@@ -462,17 +481,17 @@ public class OrcColumnarBatchScanReader {
         } else if (filterPredicate instanceof IsNotNull) {
             addToJsonExpressionTree("leaf-" + leafIndex, jsonExpressionTree, true);
             addLiteralToJsonLeaves("leaf-" + leafIndex, OrcLeafOperator.IS_NULL, jsonLeaves,
-                ((IsNotNull) filterPredicate).attribute(), "", null);
+                ((IsNotNull) filterPredicate).attribute(), null, null);
             leafIndex++;
         } else if (filterPredicate instanceof IsNull) {
             addToJsonExpressionTree("leaf-" + leafIndex, jsonExpressionTree, false);
             addLiteralToJsonLeaves("leaf-" + leafIndex, OrcLeafOperator.IS_NULL, jsonLeaves,
-                ((IsNull) filterPredicate).attribute(), "", null);
+                ((IsNull) filterPredicate).attribute(), null, null);
             leafIndex++;
         } else if (filterPredicate instanceof In) {
             addToJsonExpressionTree("leaf-" + leafIndex, jsonExpressionTree, false);
             addLiteralToJsonLeaves("leaf-" + leafIndex, OrcLeafOperator.IN, jsonLeaves,
-                ((In) filterPredicate).attribute(), "", Arrays.stream(((In) filterPredicate).values()).toArray());
+                ((In) filterPredicate).attribute(), null, Arrays.stream(((In) filterPredicate).values()).toArray());
             leafIndex++;
         } else {
             throw new UnsupportedOperationException("Unsupported orc push down filter operation: " +
@@ -484,10 +503,17 @@ public class OrcColumnarBatchScanReader {
                                         String name, Object literal, Object[] literals) {
         JSONObject leafJson = new JSONObject();
         leafJson.put("op", leafOperator.ordinal());
-        leafJson.put("name", name);
-        leafJson.put("type", getOrcPredicateDataType(name).ordinal());
+        Pair<String, OrcPredicateDataType> args = getOrcPredicateDataType(name, requiredSchema);
+        leafJson.put("name", args.getKey());
 
-        leafJson.put("literal", getLiteralValue(literal));
+        if (literal != null) {
+            leafJson.put("type", args.getValue().ordinal());
+            leafJson.put("literal", getLiteralValue(literal));
+        } else {
+            // FIXME use default type
+            leafJson.put("type", 2);
+            leafJson.put("literal", "");
+        }
 
         ArrayList<String> literalList = new ArrayList<>();
         if (literals != null) {
