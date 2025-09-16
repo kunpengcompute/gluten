@@ -39,6 +39,8 @@ type::DataTypePtr SubstraitParser::ParseType(const ::substrait::Type &substraitT
             return type::LongType();
         case ::substrait::Type::KindCase::kFp64:
             return type::DoubleType();
+        case ::substrait::Type::KindCase::kFp32:
+            return type::FloatType();
         case ::substrait::Type::KindCase::kString:
             return type::VarcharType();
         case ::substrait::Type::KindCase::kDate:

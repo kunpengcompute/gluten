@@ -138,6 +138,8 @@ public class OmniColumnVector extends WritableColumnVector {
                 return new DecimalType(decimalTypeNode.precision, decimalTypeNode.scale);
             case "FP64TypeNode":
                 return DataTypes.DoubleType;
+            case "FP32TypeNode":
+                return DataTypes.FloatType;
             case "TimestampTypeNode":
                 return DataTypes.TimestampType;
             default:
@@ -156,6 +158,7 @@ public class OmniColumnVector extends WritableColumnVector {
     private IntVec intDataVec;
     private LongVec longDataVec;
     private DoubleVec doubleDataVec;
+    private FloatVec floatDataVec;
     private Decimal128Vec decimal128DataVec;
     private VarcharVec charsTypeDataVec;
     private DictionaryVec dictionaryData;
@@ -202,6 +205,8 @@ public class OmniColumnVector extends WritableColumnVector {
             }
         } else if (type instanceof DoubleType) {
             return doubleDataVec;
+        } else if (type instanceof FloatType) {
+            return floatDataVec;
         } else if (type instanceof StringType) {
             return charsTypeDataVec;
         } else if (type instanceof DateType) {
@@ -243,6 +248,8 @@ public class OmniColumnVector extends WritableColumnVector {
             this.intDataVec = (IntVec) vec;
         } else if (type instanceof DoubleType) {
             this.doubleDataVec = (DoubleVec) vec;
+        } else if (type instanceof FloatType) {
+            this.floatDataVec = (FloatVec) vec;
         } else if (type instanceof StringType) {
             this.charsTypeDataVec = (VarcharVec) vec;
         } else if (type instanceof DateType) {
@@ -292,6 +299,10 @@ public class OmniColumnVector extends WritableColumnVector {
         if (doubleDataVec != null) {
             doubleDataVec.close();
             doubleDataVec = null;
+        }
+        if (floatDataVec != null) {
+            floatDataVec.close();
+            floatDataVec = null;
         }
         if (decimal128DataVec != null) {
             decimal128DataVec.close();
@@ -347,7 +358,7 @@ public class OmniColumnVector extends WritableColumnVector {
                 || type instanceof TimestampType) {
             return longDataVec.hasNull();
         } else if (type instanceof FloatType) {
-            return false;
+            return floatDataVec.hasNull();
         } else if (type instanceof DoubleType) {
             return doubleDataVec.hasNull();
         } else if (type instanceof StringType) {
@@ -397,7 +408,7 @@ public class OmniColumnVector extends WritableColumnVector {
                 || type instanceof TimestampType) {
             longDataVec.setNull(rowId);
         } else if (type instanceof FloatType) {
-            return;
+            floatDataVec.setNull(rowId);
         } else if (type instanceof DoubleType) {
             doubleDataVec.setNull(rowId);
         } else if (type instanceof StringType) {
@@ -440,7 +451,7 @@ public class OmniColumnVector extends WritableColumnVector {
                 || type instanceof TimestampType) {
             longDataVec.setNulls(rowId, nullValue, 0, count);
         } else if (type instanceof FloatType) {
-            return;
+            floatDataVec.setNulls(rowId, nullValue, 0, count);
         } else if (type instanceof DoubleType) {
             doubleDataVec.setNulls(rowId, nullValue, 0, count);
         } else if (type instanceof StringType) {
@@ -520,7 +531,7 @@ public class OmniColumnVector extends WritableColumnVector {
                 || type instanceof TimestampType) {
             return longDataVec.isNull(rowId);
         } else if (type instanceof FloatType) {
-            return false;
+            return floatDataVec.isNull(rowId);
         } else if (type instanceof DoubleType) {
             return doubleDataVec.isNull(rowId);
         } else if (type instanceof StringType) {
@@ -860,12 +871,14 @@ public class OmniColumnVector extends WritableColumnVector {
 
     @Override
     public void putFloat(int rowId, float value) {
-        throw new UnsupportedOperationException("putFloat is not supported");
+        floatDataVec.set(rowId, value);
     }
 
     @Override
     public void putFloats(int rowId, int count, float value) {
-        throw new UnsupportedOperationException("putFloats is not supported");
+        for (int i = 0; i < count; i++) {
+            floatDataVec.set(rowId + i, value);
+        }
     }
 
     @Override
@@ -880,17 +893,34 @@ public class OmniColumnVector extends WritableColumnVector {
 
     @Override
     public void putFloatsLittleEndian(int rowId, int count, byte[] src, int srcIndex) {
-        throw new UnsupportedOperationException("putFloatsLittleEndian is not supported");
+        if (!BIG_ENDIAN_PLATFORM) {
+            putFloats(rowId, count, src, srcIndex);
+        } else {
+            ByteBuffer bb = ByteBuffer.wrap(src).order(ByteOrder.LITTLE_ENDIAN);
+            for (int i = 0; i < count; ++i) {
+                floatDataVec.set(i + rowId, bb.getFloat(srcIndex + (8 * i)));
+            }
+        }
     }
 
     @Override
     public float getFloat(int rowId) {
-        throw new UnsupportedOperationException("getFloat is not supported");
+        if (dictionary != null) {
+            return dictionary.decodeToFloat(dictionaryIds.getDictId(rowId));
+        } else if (dictionaryData != null) {
+            return dictionaryData.getFloat(rowId);
+        } else {
+            return floatDataVec.get(rowId);
+        }
     }
 
     @Override
     public float[] getFloats(int rowId, int count) {
-        throw new UnsupportedOperationException("getFloats is not supported");
+        float[] array = new float[count];
+        for (int i = 0; i < count; i++) {
+            array[i] = floatDataVec.get(rowId + i);
+        }
+        return array;
     }
 
     //
@@ -1057,7 +1087,7 @@ public class OmniColumnVector extends WritableColumnVector {
         } else if (type instanceof LongType || type instanceof TimestampType) {
             longDataVec = new LongVec(newCapacity);
         } else if (type instanceof FloatType) {
-            throw new UnsupportedOperationException("reserveInternal is not supported for type:" + type);
+            floatDataVec = new FloatVec(newCapacity);
         } else if (type instanceof DoubleType) {
             doubleDataVec = new DoubleVec(newCapacity);
         } else if (type instanceof StringType) {

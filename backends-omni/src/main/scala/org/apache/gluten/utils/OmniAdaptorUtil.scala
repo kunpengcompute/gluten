@@ -145,6 +145,18 @@ object OmniAdaptorUtil {
         }
         vec.put(values, 0, 0, columnSize)
         vec
+      case FloatType =>
+        val vec = new FloatVec(columnSize)
+        val values = new Array[Float](columnSize)
+        for (i <- 0 until columnSize) {
+          if (!columnVector.isNullAt(i)) {
+            values(i) = columnVector.getFloat(i)
+          } else {
+            vec.setNull(i)
+          }
+        }
+        vec.put(values, 0, 0, columnSize)
+        vec
       case StringType =>
         var totalSize = 0
         val offsets = new Array[Int](columnSize + 1)

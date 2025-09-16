@@ -38,7 +38,8 @@ message VecType {
         VEC_TYPE_CHAR = 16;
         VEC_TYPE_DICTIONARY = 17;
         VEC_TYPE_CONTAINER = 18;
-        VEC_TYPE_INVALID = 19;
+        VEC_TYPE_FLOAT = 19;
+        VEC_TYPE_INVALID = 20;
     }
 
     VecTypeId typeId = 1;
