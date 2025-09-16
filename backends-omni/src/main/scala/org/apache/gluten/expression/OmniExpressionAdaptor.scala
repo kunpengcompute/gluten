@@ -1088,6 +1088,7 @@ object OmniExpressionAdaptor extends Logging {
         }
       case f: StructType => OMNI_ROW_TYPE
       case m: MapType => OMNI_MAP_TYPE
+      case a: ArrayType => OMNI_ARRAY_TYPE
       case NullType => OMNI_BOOLEAN_TYPE
       case _ =>
         throw new UnsupportedOperationException(s"Unsupported datatype: $datatype")
@@ -1227,6 +1228,8 @@ object OmniExpressionAdaptor extends Logging {
         } else {
           new Decimal128DataType(dt.precision, dt.scale)
         }
+      case a: ArrayType =>
+        new ArrayDataType(sparkTypeToOmniTypeWithComplex(a.elementType))
       case m: MapType =>
         new MapDataType(sparkTypeToOmniTypeWithComplex(m.keyType), sparkTypeToOmniTypeWithComplex(m.valueType))
       case s: StructType =>
@@ -1243,7 +1246,7 @@ object OmniExpressionAdaptor extends Logging {
     val omniDataType: String = sparkTypeToOmniExpType(dataType)
     dataType match {
       case ShortType | IntegerType | LongType | DoubleType | BooleanType | DateType |
-          TimestampType | StructType(_) | MapType(_, _, _) =>
+          TimestampType | StructType(_) | MapType(_, _, _) | ArrayType(_, _) =>
         new JsonObject()
           .put("exprType", "FIELD_REFERENCE")
           .put("dataType", omniDataType.toInt)

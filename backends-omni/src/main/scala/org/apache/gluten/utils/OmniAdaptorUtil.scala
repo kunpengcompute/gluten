@@ -16,7 +16,7 @@
  */
 package org.apache.gluten.utils
 
-import nova.hetu.omniruntime.`type`.{MapDataType, StructDataType}
+import nova.hetu.omniruntime.`type`.{MapDataType, StructDataType, ArrayDataType}
 import org.apache.gluten.expression.OmniExpressionAdaptor.{checkOmniJsonWhiteList, getExprIdMap, isSimpleColumnForAll, rewriteToOmniJsonExpressionLiteral, sparkTypeToOmniType, sparkTypeToOmniTypeWithComplex}
 import org.apache.spark.TaskContext
 import org.apache.spark.sql.catalyst.expressions.{Attribute, ExprId, SortOrder}
@@ -238,6 +238,16 @@ object OmniAdaptorUtil {
         vec.AddKeys(transColumnVector(columnVector.getChild(0), offsets(columnSize)))
         vec.AddValues(transColumnVector(columnVector.getChild(1), offsets(columnSize)))
         vec.AddOffsets(offsets)
+        vec
+      case ArrayType(elementType, valueContainsNull) =>
+        val offsets = new Array[Int](columnSize + 1)
+        offsets(0) = 0
+        for (i <- 1 until columnSize + 1) {
+          offsets(i) = offsets(i - 1) + columnVector.getArray(i - 1).numElements()
+        }
+        val vec = new ArrayVec(new ArrayDataType(sparkTypeToOmniTypeWithComplex(elementType, Metadata.empty)), offsets(columnSize))
+        vec.addElements(transColumnVector(columnVector.getChild(0), offsets(columnSize)))
+        vec.addOffsets(offsets)
         vec
       case _ =>
         throw new UnsupportedOperationException("unsupport column vector!")
