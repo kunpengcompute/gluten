@@ -1185,6 +1185,8 @@ object OmniExpressionAdaptor extends Logging {
         TimestampDataType.TIMESTAMP
       case DoubleType =>
         DoubleDataType.DOUBLE
+      case FloatType =>
+        FloatDataType.FLOAT
       case BooleanType =>
         BooleanDataType.BOOLEAN
       case StringType =>

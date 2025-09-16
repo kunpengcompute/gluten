@@ -212,8 +212,8 @@ class OmniValidatorApi extends ValidatorApi {
 
   private def isPrimitiveType(dataType: DataType): Boolean = {
     dataType match {
-      case BooleanType | ByteType | ShortType | IntegerType | LongType | DoubleType | StringType |
-          _: DecimalType | DateType | TimestampType | NullType =>
+      case BooleanType | ByteType | ShortType | IntegerType | LongType | DoubleType | FloatType | StringType |
+          _: DecimalType | DateType | TimestampType | NullType | FloatType =>
         true
       case _ => false
     }

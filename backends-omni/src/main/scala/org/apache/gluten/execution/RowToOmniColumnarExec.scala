@@ -131,6 +131,7 @@ private object OmniRowToColumnConverter {
       case IntegerType | DateType => IntConverter(dataType)
       case LongType | TimestampType => LongConverter(dataType)
       case DoubleType => DoubleConverter
+      case FloatType => FloatConverter
       case StringType => StringConverter
       case CalendarIntervalType => CalendarConverter
       case dt: DecimalType => DecimalConverter(dt)
@@ -430,6 +431,29 @@ private object OmniRowToColumnConverter {
     override def add(rows: Seq[SpecializedGetters],
         column: Int, size: Int): WritableColumnVector = {
       val cv = new OmniColumnVector(size, DoubleType, true)
+      for (row <- rows) {
+        if (row == null || row.isNullAt(column)) {
+          cv.appendNull
+        } else {
+          append(row, column, cv)
+        }
+      }
+      cv
+    }
+  }
+
+  private object FloatConverter extends TypeConverter {
+    override def append(row: SpecializedGetters, column: Int, cv: WritableColumnVector): Unit = {
+      if (row == null || row.isNullAt(column)) {
+        cv.appendNull
+      } else {
+        cv.appendFloat(row.getFloat(column))
+      }
+    }
+
+    override def add(rows: Seq[SpecializedGetters],
+                     column: Int, size: Int): WritableColumnVector = {
+      val cv = new OmniColumnVector(size, FloatType, true)
       for (row <- rows) {
         if (row == null || row.isNullAt(column)) {
           cv.appendNull

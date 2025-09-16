@@ -37,6 +37,7 @@ import nova.hetu.omniruntime.vector.MapVec;
 import nova.hetu.omniruntime.vector.ShortVec;
 import nova.hetu.omniruntime.vector.StructVec;
 import nova.hetu.omniruntime.vector.VarcharVec;
+import nova.hetu.omniruntime.vector.FloatVec;
 import nova.hetu.omniruntime.vector.Vec;
 
 import org.apache.commons.lang3.tuple.Pair;
@@ -317,6 +318,10 @@ public class OrcColumnarBatchScanReader {
                 }
                 case OMNI_DOUBLE: {
                     vecList[i] = new DoubleVec(vecNativeIds[nativeGetId]);
+                    break;
+                }
+                case OMNI_FLOAT: {
+                    vecList[i] = new FloatVec(vecNativeIds[nativeGetId]);
                     break;
                 }
                 case OMNI_VARCHAR: {

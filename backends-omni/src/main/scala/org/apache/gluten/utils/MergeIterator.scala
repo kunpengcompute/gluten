@@ -20,9 +20,9 @@ package org.apache.gluten.utils
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 import nova.hetu.omniruntime.`type`.DataType
-import nova.hetu.omniruntime.vector.{BooleanVec, Decimal128Vec, DoubleVec, IntVec, LongVec, ShortVec, VarcharVec, Vec, VecBatch}
+import nova.hetu.omniruntime.vector.{BooleanVec, Decimal128Vec, DoubleVec, FloatVec, IntVec, LongVec, ShortVec, VarcharVec, Vec, VecBatch}
 import org.apache.spark.sql.execution.metric.SQLMetric
-import org.apache.spark.sql.types.{BooleanType, DateType, DecimalType, DoubleType, IntegerType, LongType, NullType, ShortType, StringType, StructType, TimestampType}
+import org.apache.spark.sql.types.{BooleanType, DateType, DecimalType, DoubleType, FloatType, IntegerType, LongType, NullType, ShortType, StringType, StructType, TimestampType}
 import org.apache.spark.sql.vectorized.ColumnarBatch
 import org.apache.gluten.config.GlutenConfig
 import org.apache.gluten.expression.OmniExpressionAdaptor.sparkTypeToOmniType
@@ -54,6 +54,8 @@ class MergeIterator(iter: Iterator[ColumnarBatch], localSchema: StructType,
             vecs(index) = new ShortVec(columnSize)
           case DoubleType =>
             vecs(index) = new DoubleVec(columnSize)
+          case FloatType =>
+            vecs(index) = new FloatVec(columnSize)
           case BooleanType | NullType =>
             vecs(index) = new BooleanVec(columnSize)
           case StringType =>
