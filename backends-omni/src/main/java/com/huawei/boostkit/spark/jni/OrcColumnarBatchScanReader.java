@@ -24,6 +24,7 @@ import com.huawei.boostkit.spark.timestamp.JulianGregorianRebase;
 import com.huawei.boostkit.spark.timestamp.TimestampUtil;
 
 import nova.hetu.omniruntime.type.DataType;
+import nova.hetu.omniruntime.type.ArrayDataType;
 import nova.hetu.omniruntime.type.MapDataType;
 import nova.hetu.omniruntime.type.StructDataType;
 import nova.hetu.omniruntime.vector.BooleanVec;
@@ -31,6 +32,7 @@ import nova.hetu.omniruntime.vector.Decimal128Vec;
 import nova.hetu.omniruntime.vector.DoubleVec;
 import nova.hetu.omniruntime.vector.IntVec;
 import nova.hetu.omniruntime.vector.LongVec;
+import nova.hetu.omniruntime.vector.ArrayVec;
 import nova.hetu.omniruntime.vector.MapVec;
 import nova.hetu.omniruntime.vector.ShortVec;
 import nova.hetu.omniruntime.vector.StructVec;
@@ -323,6 +325,10 @@ public class OrcColumnarBatchScanReader {
                 }
                 case OMNI_DECIMAL128: {
                     vecList[i] = new Decimal128Vec(vecNativeIds[nativeGetId]);
+                    break;
+                }
+                case OMNI_ARRAY: {
+                    vecList[i] = new ArrayVec(vecNativeIds[nativeGetId], (ArrayDataType) dataTypes.get(i), (int) rtn);
                     break;
                 }
                 case OMNI_MAP: {
