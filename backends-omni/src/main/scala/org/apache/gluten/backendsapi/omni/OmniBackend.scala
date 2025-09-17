@@ -63,6 +63,17 @@ object OmniBackend {
   val CONF_PREFIX: String = GlutenConfig.prefixOf(BACKEND_NAME)
 }
 
+object DataTypeUtils {
+  def isPrimitiveType(dataType: DataType): Boolean = {
+    dataType match {
+      case BooleanType | ByteType | ShortType | IntegerType | LongType | DoubleType | FloatType | StringType |
+           _: DecimalType | DateType | TimestampType | NullType | FloatType =>
+        true
+      case _ => false
+    }
+  }
+}
+
 object OmniBackendSettings extends BackendSettingsApi {
   val SHUFFLE_SUPPORTED_CODEC = Set("lz4", "zstd")
 
@@ -78,9 +89,10 @@ object OmniBackendSettings extends BackendSettingsApi {
     def checkUnsupportedDataTypes: ValidationResult = {
       //Collect unsupported types
       val unsupportedDataTypes = fields.map(_.dataType).collect {
-        case _: MapType => "MapType"
-        case _: StructType => "StructType"
-        case _: ArrayType => "ArrayType"
+        case m: MapType
+          if (!DataTypeUtils.isPrimitiveType(m.keyType) || !DataTypeUtils.isPrimitiveType(m.valueType)) => "nested MapType"
+        case a: ArrayType
+          if (!DataTypeUtils.isPrimitiveType(a.elementType)) => "nested ArrayType"
       }
       for (unsupportedDataType <- unsupportedDataTypes) {
         return ValidationResult.failed(s"Validation failed for ${this.getClass.toString}"
@@ -94,7 +106,6 @@ object OmniBackendSettings extends BackendSettingsApi {
       case _ => ValidationResult.failed(s"Unsupported file format $format")
     }
   }
-
 
   override def needOutputSchemaForPlan(): Boolean = true
 
@@ -210,29 +221,24 @@ class OmniValidatorApi extends ValidatorApi {
     doSchemaValidate(child.schema)
   }
 
-  private def isPrimitiveType(dataType: DataType): Boolean = {
-    dataType match {
-      case BooleanType | ByteType | ShortType | IntegerType | LongType | DoubleType | FloatType | StringType |
-          _: DecimalType | DateType | TimestampType | NullType | FloatType =>
-        true
-      case _ => false
-    }
-  }
-
   override def doSchemaValidate(schema: DataType): Option[String] = {
-    if (isPrimitiveType(schema)) {
+    if (DataTypeUtils.isPrimitiveType(schema)) {
       return None
     }
-    // unsupported any complex type
     schema match {
+      case map: MapType =>
+        doSchemaValidate(map.keyType).orElse(doSchemaValidate(map.valueType))
       case struct: StructType =>
         struct.fields.foreach {
           f =>
-            if (!isPrimitiveType(f.dataType)) {
-              return Some(s"Schema / data type not supported: $schema")
+            val reason = doSchemaValidate(f.dataType)
+            if (reason.isDefined) {
+              return reason
             }
         }
         None
+      case array: ArrayType =>
+        doSchemaValidate(array.elementType)
       case _ =>
         Some(s"Schema / data type not supported: $schema")
     }

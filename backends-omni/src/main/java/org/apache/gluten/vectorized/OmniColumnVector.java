@@ -988,12 +988,24 @@ public class OmniColumnVector extends WritableColumnVector {
 
     @Override
     public int getArrayLength(int rowId) {
-        return (int)mapDataVec.getSize(rowId);
+        if (type instanceof ArrayType) {
+            return (int)arrayDataVec.getSize(rowId);
+        } else if (type instanceof MapType) {
+            return (int)mapDataVec.getSize(rowId);
+        } else {
+            throw new UnsupportedOperationException("getArrayLength is not supported for other types");
+        }
     }
 
     @Override
     public int getArrayOffset(int rowId) {
-        return (int)mapDataVec.getOffset(rowId);
+        if (type instanceof ArrayType) {
+            return (int)arrayDataVec.getOffset(rowId);
+        } else if (type instanceof MapType) {
+            return (int)mapDataVec.getOffset(rowId);
+        } else {
+            throw new UnsupportedOperationException("getArrayOffset is not supported for other types");
+        }
     }
 
     @Override
