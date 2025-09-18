@@ -83,6 +83,9 @@ public:
     /// Used to convert Substrait Plan into Omni PlanNode.
     PlanNodePtr ToOmniPlan(const ::substrait::Plan &substraitPlan);
 
+    /// Used to convert Substrait GenerateRel into Velox PlanNode.
+    PlanNodePtr ToOmniPlan(const ::substrait::GenerateRel &generateRel);
+
     // return the raw ptr of ExprConverter
     SubstraitOmniExprConverter *GetExprConverter() { return this->exprConverter.get(); }
 

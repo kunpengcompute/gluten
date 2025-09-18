@@ -23,6 +23,21 @@ std::vector<type::DataTypePtr> SubstraitParser::ParseNamedStruct(
     }
     return typeList;
 }
+
+type::DataTypePtr SubstraitParser::ParseKStructType(const ::substrait::Type &substraitType, bool asLowerCase, bool isNest)
+{
+    if (isNest) {
+        OMNI_THROW("Substrait Error:", "Parsing for Substrait type not supported: {}", substraitType.DebugString());
+    }
+    const auto &substraitStruct = substraitType.struct_();
+    const auto &structTypes = substraitStruct.types();
+    std::vector<type::DataTypePtr> types;
+    for (const auto &structType : structTypes) {
+        types.emplace_back(ParseType(structType, asLowerCase, true));
+    }
+    return std::make_shared<type::RowType>(types);
+}
+
 type::DataTypePtr SubstraitParser::ParseType(const ::substrait::Type &substraitType, bool asLowerCase, bool isNest)
 {
     switch (substraitType.kind_case()) {
@@ -56,16 +71,11 @@ type::DataTypePtr SubstraitParser::ParseType(const ::substrait::Type &substraitT
             return type::Decimal128Type(precision, scale);
         }
         case ::substrait::Type::KindCase::kStruct: {
-            if (isNest) {
-                OMNI_THROW("Substrait Error:", "Parsing for Substrait type not supported: {}", substraitType.DebugString());
-            }
-            const auto &substraitStruct = substraitType.struct_();
-            const auto &structTypes = substraitStruct.types();
-            std::vector<type::DataTypePtr> types;
-            for (const auto &structType : structTypes) {
-                types.emplace_back(ParseType(structType, asLowerCase, true));
-            }
-            return std::make_shared<type::RowType>(types);
+            return ParseKStructType(substraitType, asLowerCase, isNest);
+        }
+        case ::substrait::Type::KindCase::kList: {
+            const auto& fieldType = substraitType.list().type();
+            return std::make_shared<type::ArrayType>(ParseType(fieldType, asLowerCase));
         }
         default:
             OMNI_THROW("Substrait Error:", "Parsing for Substrait type not supported: {}", substraitType.DebugString());

@@ -46,6 +46,9 @@ public:
     /// Parse Substrait Type to Omni type.
     static type::DataTypePtr ParseType(const ::substrait::Type &substraitType, bool asLowerCase = false, bool isNest = false);
 
+    /// Parse Substrait StructType to Omni type.
+    static type::DataTypePtr ParseKStructType(const ::substrait::Type &substraitType, bool asLowerCase = false, bool isNest = false);
+
     /// Make names in the format of {prefix}_{index}.
     static std::vector<std::string> MakeNames(const std::string &prefix, int size);
 

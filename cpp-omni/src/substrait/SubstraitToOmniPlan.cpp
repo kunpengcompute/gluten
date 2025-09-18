@@ -873,6 +873,8 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::Rel &rel
         return ToOmniPlan(rel.write());
     } else if (rel.has_set()) {
         return ToOmniPlan(rel.set());
+    } else if (rel.has_generate()) {
+        return ToOmniPlan(rel.generate());
     } else {
         OMNI_THROW("error", "Substrait conversion not supported for Rel.");
     }
@@ -928,5 +930,97 @@ std::string SubstraitToOmniPlanConverter::NextPlanNodeId()
     auto id = Format("{}", planNodeId);
     planNodeId++;
     return id;
+}
+
+void extractUnnestFieldExpr(
+    std::shared_ptr<const PlanNode> child,
+    int32_t index,
+    std::vector<Expr*>& unnestFields)
+{
+    auto type = child->OutputType()->GetType(index);
+    auto unnestFieldExpr = new FieldExpr(index, type);
+    unnestFields.emplace_back(unnestFieldExpr);
+}
+
+PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::GenerateRel &generateRel)
+{
+    PlanNodePtr childNode;
+    if (generateRel.has_input()) {
+        childNode = ToOmniPlan(generateRel.input());
+    } else {
+        OMNI_THROW("SUBSTRAIT_ERROR:", "Child Rel is expected in GenerateRel.");
+    }
+    const auto& inputType = childNode->OutputType();
+  
+    std::vector<Expr*> replicated;
+    std::vector<Expr*> unnest;
+  
+    const auto& generator = generateRel.generator();
+    const auto& requiredChildOutput = generateRel.child_output();
+  
+    replicated.reserve(requiredChildOutput.size());
+    for (const auto& output : requiredChildOutput) {
+        auto expression = exprConverter->ToOmniExpr(output, inputType);
+        OMNI_CHECK(expression != nullptr, " the output in Generate Operator only support field");
+  
+        replicated.emplace_back(expression);
+    }
+
+    auto injectedProject = generateRel.has_advanced_extension() &&
+        SubstraitParser::ConfigSetInOptimization(generateRel.advanced_extension(), "injectedProject=");
+    if (injectedProject) {
+        // Child should be either ProjectNode or ValueStreamNode in case of project fallback.
+        OMNI_CHECK(
+            (std::dynamic_pointer_cast<const ProjectNode>(childNode) != nullptr ||
+            std::dynamic_pointer_cast<const ValueStreamNode>(childNode) != nullptr) &&
+            childNode->OutputType()->GetSize() > requiredChildOutput.size(),
+            "injectedProject is true, but the ProjectNode or ValueStreamNode (in case of projection fallback)"
+            " is missing or does not have the corresponding projection field");
+  
+        bool isStack = generateRel.has_advanced_extension() &&
+            SubstraitParser::ConfigSetInOptimization(generateRel.advanced_extension(), "isStack=");
+        // Generator function's input is NOT a field reference.
+        if (!isStack) {
+            // For generator function which is not stack, e.g. explode(array(1,2,3)), a sample
+            // input substrait plan is like the following:
+            //
+            //  Generate explode([1,2,3] AS _pre_0#129), false, [col#126]
+            //  +- Project [fake_column#128, [1,2,3] AS _pre_0#129]
+            //   +- RewrittenNodeWall Scan OneRowRelation[fake_column#128]
+            // The last projection column in GeneratorRel's child(Project) is the column we need to unnest
+            auto index = childNode->OutputType()->GetSize() - 1;
+            extractUnnestFieldExpr(childNode, index, unnest);
+        } else {
+            // For stack function, e.g. stack(2, 1,2,3), a sample
+            // input substrait plan is like the following:
+            //
+            // Generate stack(2, id#122, name#123, id1#124, name1#125), false, [col0#137, col1#138]
+            // +- Project [id#122, name#123, id1#124, name1#125, array(id#122, id1#124) AS _pre_0#141, array(name#123,
+            // name1#125) AS _pre_1#142]
+            //   +- RewrittenNodeWall LocalTableScan [id#122, name#123, id1#124, name1#125]
+            //
+            // The last `numFields` projections are the fields we want to unnest.
+            auto generatorFunc = generator.scalar_function();
+            auto numRows = SubstraitParser::GetLiteralValue<int32_t>(generatorFunc.arguments(0).value().literal());
+            auto numFields = static_cast<int32_t>(std::ceil((generatorFunc.arguments_size() - 1.0) / numRows));
+            auto totalProjectCount = childNode->OutputType()->GetSize();
+  
+            for (auto i = totalProjectCount - numFields; i < totalProjectCount; ++i) {
+                extractUnnestFieldExpr(childNode, i, unnest);
+            }
+        }
+    } else {
+        // Generator function's input is a field reference, e.g. explode(col), generator
+        // function's first argument is the field reference we need to unnest.
+        // This assumption holds for all the supported generator function:
+        // explode, posexplode, inline.
+        auto generatorFunc = generator.scalar_function();
+        auto unnestExpr = exprConverter->ToOmniExpr(generatorFunc.arguments(0).value(), inputType);
+        OMNI_CHECK(unnestExpr != nullptr, " the key in unnest Operator only support field");
+        unnest.emplace_back(unnestExpr);
+    }
+
+    return std::make_shared<UnnestNode>(
+        NextPlanNodeId(), replicated, unnest, childNode);
 }
 } // namespace omniruntime

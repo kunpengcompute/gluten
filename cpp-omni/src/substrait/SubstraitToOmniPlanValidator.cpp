@@ -1004,6 +1004,8 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::Rel &rel)
         return Validate(rel.write());
     } else if (rel.has_set()) {
         return Validate(rel.set());
+    } else if (rel.has_generate()) {
+        return Validate(rel.generate());
     } else {
         LOG_VALIDATION_MSG("Unsupported relation type: " + rel.GetTypeName());
         return false;
@@ -1039,5 +1041,40 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::Plan &plan)
         LOG_VALIDATION_MSG(err.what());
         return false;
     }
+}
+
+bool SubstraitToOmniPlanValidator::Validate(const ::substrait::GenerateRel &generateRel)
+{
+    if (generateRel.has_input() && !Validate(generateRel.input())) {
+        LOG_VALIDATION_MSG("Input validation fails in GenerateRel.");
+        return false;
+    }
+  
+    // Get and validate the input types from extension.
+    if (!generateRel.has_advanced_extension()) {
+        LOG_VALIDATION_MSG("Input types are expected in GenerateRel.");
+        return false;
+    }
+    const auto& extension = generateRel.advanced_extension();
+    DataTypePtr inputRowType;
+    std::vector<DataTypePtr> types;
+    if (!ParseOmniType(extension, inputRowType) || !FlattenSingleLevel(inputRowType, types)) {
+        LOG_VALIDATION_MSG("Validation failed for input types in GenerateRel.");
+        return false;
+    }
+  
+    int32_t inputPlanNodeId = 0;
+    // Create the fake input names to be used in row type.
+    std::vector<std::string> names;
+    names.reserve(types.size());
+    for (uint32_t colIdx = 0; colIdx < types.size(); colIdx++) {
+        names.emplace_back(SubstraitParser::MakeNodeName(inputPlanNodeId, colIdx));
+    }
+    auto rowType = std::make_shared<DataTypes>(std::move(types));
+    if (generateRel.has_generator() && !ValidateExpression(generateRel.generator(), rowType)) {
+        LOG_VALIDATION_MSG("Input validation fails in GenerateRel.");
+        return false;
+    }
+    return true;
 }
 } // namespace omniruntime
