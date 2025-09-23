@@ -1034,7 +1034,13 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::Generate
         unnest.emplace_back(unnestExpr);
     }
 
+    bool withOrdinality = false;
+    if (generateRel.has_advanced_extension() &&
+        SubstraitParser::ConfigSetInOptimization(generateRel.advanced_extension(), "isPosExplode=")) {
+        withOrdinality = true;
+    }
+
     return std::make_shared<UnnestNode>(
-        NextPlanNodeId(), replicated, unnest, childNode);
+        NextPlanNodeId(), replicated, unnest, childNode, withOrdinality);
 }
 } // namespace omniruntime
