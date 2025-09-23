@@ -77,6 +77,12 @@ type::DataTypePtr SubstraitParser::ParseType(const ::substrait::Type &substraitT
             const auto& fieldType = substraitType.list().type();
             return std::make_shared<type::ArrayType>(ParseType(fieldType, asLowerCase));
         }
+        case ::substrait::Type::KindCase::kMap: {
+            const auto& sMap = substraitType.map();
+            const auto& keyType = sMap.key();
+            const auto& valueType = sMap.value();
+            return std::make_shared<type::MapType>(ParseType(keyType, asLowerCase), ParseType(valueType, asLowerCase));
+        }
         default:
             OMNI_THROW("Substrait Error:", "Parsing for Substrait type not supported: {}", substraitType.DebugString());
     }
