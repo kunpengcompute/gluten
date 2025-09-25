@@ -4,7 +4,7 @@ import io.substrait.proto.CrossRel
 import org.apache.gluten.extension.ValidationResult
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.expressions.Expression
-import org.apache.spark.sql.catalyst.optimizer.{BuildLeft, BuildRight, BuildSide}
+import org.apache.spark.sql.catalyst.optimizer.{BuildRight, BuildSide}
 import org.apache.spark.sql.catalyst.plans._
 import org.apache.spark.sql.execution.SparkPlan
 import org.apache.spark.sql.execution.joins.BuildSideRelation
@@ -29,16 +29,16 @@ case class OmniBroadcastNestedLoopJoinExecTransformer(
     case FullOuter =>
       CrossRel.JoinType.JOIN_TYPE_OUTER
     case LeftOuter =>
-      CrossRel.JoinType.JOIN_TYPE_LEFT
+      if (buildSide == BuildRight) CrossRel.JoinType.JOIN_TYPE_LEFT else CrossRel.JoinType.JOIN_TYPE_RIGHT
     case RightOuter =>
-      CrossRel.JoinType.JOIN_TYPE_RIGHT
+      if (buildSide == BuildRight) CrossRel.JoinType.JOIN_TYPE_RIGHT else CrossRel.JoinType.JOIN_TYPE_LEFT
     case _ =>
       CrossRel.JoinType.UNRECOGNIZED
   }
 
   override def validateJoinTypeAndBuildSide(): ValidationResult = {
     val result = joinType match {
-      case Inner | LeftOuter | RightOuter => ValidationResult.succeeded
+      case Inner | LeftOuter | RightOuter | FullOuter => ValidationResult.succeeded
       case _ =>
         ValidationResult.failed(s"$joinType join is not supported with BroadcastNestedLoopJoin")
     }
@@ -47,11 +47,7 @@ case class OmniBroadcastNestedLoopJoinExecTransformer(
       return result
     }
 
-    (joinType, buildSide) match {
-      case (LeftOuter, BuildLeft) | (RightOuter, BuildRight) =>
-        ValidationResult.failed(s"$joinType join is not supported with $buildSide")
-      case _ => ValidationResult.succeeded // continue
-    }
+    ValidationResult.succeeded // continue
   }
     
   override def columnarInputRDDs: Seq[RDD[ColumnarBatch]] = {

@@ -436,6 +436,9 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::CrossRel
         case ::substrait::CrossRel_JoinType::CrossRel_JoinType_JOIN_TYPE_RIGHT:
             joinType = omniruntime::JoinType::OMNI_JOIN_TYPE_RIGHT;
             break;
+        case ::substrait::CrossRel_JoinType::CrossRel_JoinType_JOIN_TYPE_OUTER:
+            joinType = omniruntime::JoinType::OMNI_JOIN_TYPE_FULL;
+            break;
         default:
             OMNI_THROW("Substrait Error", "Unsupported Join type: {}", std::to_string(crossRel.type()));
     }
