@@ -1,5 +1,4 @@
 /*
-* Copyright (C) 2025-2025. Huawei Technologies Co., Ltd. All rights reserved.
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -35,11 +34,6 @@ public:
 
     std::shared_ptr<const PlanNode> ToOmniPlan(const ::substrait::Plan &substraitPlan,
         std::vector<::substrait::ReadRel_LocalFiles> localFiles);
-
-    //     const std::unordered_map<omniruntime::PlanNodeId, std::shared_ptr<SplitInfo>> &splitInfos()
-    //     {
-    //         return substraitOmniPlanConverter_.splitInfos();
-    //     }
 
 private:
     std::string nextPlanNodeId();
