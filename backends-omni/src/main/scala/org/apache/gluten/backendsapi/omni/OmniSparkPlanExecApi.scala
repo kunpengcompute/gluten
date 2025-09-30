@@ -286,7 +286,9 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
       substraitExprName: String,
       child: ExpressionTransformer,
       original: PosExplode,
-      attributeSeq: Seq[Attribute]): ExpressionTransformer = null
+      attributeSeq: Seq[Attribute]): ExpressionTransformer = {
+    GenericExpressionTransformer(substraitExprName, Seq(child), attributeSeq.head)
+  }
 
   /**
    * Generate ShuffleDependency for ColumnarShuffleExchangeExec.
@@ -417,9 +419,13 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
     OmniGenerateExecTransformer(generator, requiredChildOutput, outer, generatorOutput, child)
   }
 
-  override def genPreProjectForGenerate(generate: GenerateExec): SparkPlan = null
+  override def genPreProjectForGenerate(generate: GenerateExec): SparkPlan = {
+    OmniPullOutGenerateProjectHelper.pullOutPreProject(generate)
+  }
 
-  override def genPostProjectForGenerate(generate: GenerateExec): SparkPlan = null
+  override def genPostProjectForGenerate(generate: GenerateExec): SparkPlan = {
+    OmniPullOutGenerateProjectHelper.pullOutPostProject(generate)
+  }
 
   override def maybeCollapseTakeOrderedAndProject(plan: SparkPlan): SparkPlan = {
     // This to-top-n optimization assumes exchange operators were already placed in input plan.
