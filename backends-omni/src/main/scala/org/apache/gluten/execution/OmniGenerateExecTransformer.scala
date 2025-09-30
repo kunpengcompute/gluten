@@ -162,7 +162,7 @@ object OmniGenerateExecTransformer {
   }
 }
 
-object PullOutGenerateProjectHelper extends PullOutProjectHelper {
+object OmniPullOutGenerateProjectHelper extends PullOutProjectHelper {
   val JSON_PATH_PREFIX = "$."
   def pullOutPreProject(generate: GenerateExec): SparkPlan = {
     if (OmniGenerateExecTransformer.supportsGenerate(generate.generator, generate.outer)) {

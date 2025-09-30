@@ -84,6 +84,7 @@ object OmniRuleApi {
       Seq(
         RewriteIn,
         RewriteMultiChildrenCount,
+        OmniGeneratePullOutPreProject,
         PullOutPostProject,
         ProjectColumnPruning)
     injector.injectTransform(
