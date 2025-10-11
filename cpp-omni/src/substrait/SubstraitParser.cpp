@@ -38,14 +38,11 @@ std::vector<type::DataTypePtr> SubstraitParser::ParseNamedStruct(
 
 type::DataTypePtr SubstraitParser::ParseKStructType(const ::substrait::Type &substraitType, bool asLowerCase, bool isNest)
 {
-    if (isNest) {
-        OMNI_THROW("Substrait Error:", "Parsing for Substrait type not supported: {}", substraitType.DebugString());
-    }
-    const auto &substraitStruct = substraitType.struct_();
-    const auto &structTypes = substraitStruct.types();
+    const auto& substraitStruct = substraitType.struct_();
+    const auto& structTypes = substraitStruct.types();
     std::vector<type::DataTypePtr> types;
-    for (const auto &structType : structTypes) {
-        types.emplace_back(ParseType(structType, asLowerCase, true));
+    for (int i = 0; i < structTypes.size(); i++) {
+        types.emplace_back(ParseType(structTypes[i], asLowerCase));
     }
     return std::make_shared<type::RowType>(types);
 }
@@ -369,9 +366,13 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"substring", {FUNCTION_OMNI_EXPR_TYPE, "substr"}},
     {"cast", {FUNCTION_OMNI_EXPR_TYPE, "CAST"}},
     {"abs", {FUNCTION_OMNI_EXPR_TYPE, "abs"}},
+    {"get_array_item", {FUNCTION_OMNI_EXPR_TYPE, "get_array_item"}},
     {"round", {FUNCTION_OMNI_EXPR_TYPE, "round"}},
     {"rlike", {FUNCTION_OMNI_EXPR_TYPE, "RLike"}},
     {"like", {FUNCTION_OMNI_EXPR_TYPE, "LIKE"}},
+    {"size", {FUNCTION_OMNI_EXPR_TYPE, "size"}},
+    {"element_at", {FUNCTION_OMNI_EXPR_TYPE, "element_at"}},
+    {"split", {FUNCTION_OMNI_EXPR_TYPE, "split"}},
     {"md5", {FUNCTION_OMNI_EXPR_TYPE, "Md5"}},
     {"concat", {FUNCTION_OMNI_EXPR_TYPE, "concat"}},
     {"concat_ws", {FUNCTION_OMNI_EXPR_TYPE, "concat_ws"}},

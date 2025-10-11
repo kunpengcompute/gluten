@@ -86,11 +86,28 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
     switch (typeCase) {
         case ::substrait::Expression::FieldReference::ReferenceTypeCase::kDirectReference: {
             const auto &directRef = substraitField.direct_reference();
-
+            FieldExpr *fieldAccess = nullptr;
             const auto *tmp = &directRef.struct_field();
-            auto idx = tmp->field();
-            // not support complicated types
-            return new FieldExpr(idx, inputType->GetType(idx));
+
+            auto inputColumnType = inputType;
+            for (;;) {
+                auto idx = tmp->field();
+                fieldAccess = new FieldExpr(idx, inputColumnType->GetType(idx), idx, fieldAccess);
+
+                if (!tmp->has_child()) {
+                    break;
+                }
+
+                if (auto e = std::dynamic_pointer_cast<RowType>(inputType->GetType(idx))) {
+                    inputColumnType = std::make_shared<DataTypes>(e->Children());
+                } else {
+                    OMNI_THROW("SUBSTRAIT_ERROR:", "Substrait conversion not supported for Reference '{}'",
+                        std::to_string(typeCase));
+                }
+
+                tmp = &tmp->child().struct_field();
+            }
+            return fieldAccess;
         }
         default:
             OMNI_THROW(
@@ -110,6 +127,9 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
     args.reserve(substraitFunc.arguments().size());
     for (const auto &sArg : substraitFunc.arguments()) {
         args.emplace_back(ToOmniExpr(sArg.value(), inputType));
+    }
+    if (funcName == "get_array_item") {
+        //
     }
     if (type == IS_NOT_NULL_OMNI_EXPR_TYPE) {
         OMNI_CHECK(args[0] != nullptr, "args[0] is null");

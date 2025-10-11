@@ -19,7 +19,7 @@ package org.apache.gluten.backendsapi.omni
 import org.apache.gluten.backendsapi.SparkPlanExecApi
 import org.apache.gluten.config.GlutenConfig
 import org.apache.gluten.execution._
-import org.apache.gluten.expression.{ExpressionConverter, ExpressionMappings, ExpressionTransformer, GenericExpressionTransformer, OmniAliasTransformer, OmniFromUnixTimeTransformer, OmniHashExpressionTransformer, OmniUnixTimestampTransformer}
+import org.apache.gluten.expression.{ExpressionConverter, ExpressionMappings, ExpressionTransformer, GenericExpressionTransformer, OmniAliasTransformer, OmniFromUnixTimeTransformer, OmniGetStructFieldTransformer, OmniHashExpressionTransformer, OmniUnixTimestampTransformer}
 import org.apache.gluten.extension.columnar.FallbackTags
 import org.apache.spark.{ShuffleDependency, SparkException}
 import org.apache.spark.rdd.RDD
@@ -27,7 +27,7 @@ import org.apache.spark.serializer.Serializer
 import org.apache.spark.shuffle.{GenShuffleWriterParameters, GlutenShuffleWriterWrapper, OmniColumnarBatchSerializer, OmniColumnarShuffleWriter, OmniShuffleUtil}
 import org.apache.spark.sql.catalyst.catalog.BucketSpec
 import org.apache.spark.sql.catalyst.catalog.CatalogTypes.TablePartitionSpec
-import org.apache.spark.sql.catalyst.expressions.{Attribute, AttributeReference, Cast, DateDiff, ElementAt, Expression, FromUnixTime, Generator, GetMapValue, HashExpression, Like, Md5, NamedExpression, PosExplode, PythonUDF, UnixTimestamp}
+import org.apache.spark.sql.catalyst.expressions.{Attribute, AttributeReference, Cast, DateDiff, ElementAt, Expression, FromUnixTime, Generator, GetMapValue, GetStructField, HashExpression, Like, Md5, NamedExpression, PosExplode, PythonUDF, UnixTimestamp}
 import org.apache.spark.sql.catalyst.expressions.aggregate.AggregateExpression
 import org.apache.spark.sql.catalyst.optimizer.BuildSide
 import org.apache.spark.sql.catalyst.plans.JoinType
@@ -35,7 +35,7 @@ import org.apache.spark.sql.catalyst.plans.physical.{AllTuples, BroadcastMode, P
 import org.apache.spark.sql.execution.{ColumnarWriteFilesExec, FileSourceScanExec, GenerateExec, OmniColumnarShuffleExchangeExec, OmniExecUtil, SparkPlan}
 import org.apache.spark.sql.execution.datasources.{FileFormat, HadoopFsRelation}
 import org.apache.spark.sql.execution.exchange.{BroadcastExchangeExec, ShuffleExchangeExec}
-import org.apache.spark.sql.execution.joins.{BuildSideRelation}
+import org.apache.spark.sql.execution.joins.BuildSideRelation
 import org.apache.spark.sql.execution.metric.SQLMetric
 import org.apache.spark.sql.types.{BinaryType, StringType, StructType}
 import org.apache.spark.sql.vectorized.ColumnarBatch
@@ -137,6 +137,15 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
           throw new GlutenNotSupportException(s"Not supported: $expr.")
       }
     case _ => None
+  }
+
+  /** Generate an ExpressionTransformer to transform GetStructFiled expression. */
+  override def genGetStructFieldTransformer(
+                                             substraitExprName: String,
+                                             childTransformer: ExpressionTransformer,
+                                             ordinal: Int,
+                                             original: GetStructField): ExpressionTransformer = {
+    OmniGetStructFieldTransformer(substraitExprName, childTransformer, ordinal, original)
   }
 
   /** Generate HashAggregateExecPullOutHelper */

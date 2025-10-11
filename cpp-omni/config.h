@@ -1,2 +1,2 @@
-/* #undef DEBUG_RUNTIME */
+//#define DEBUG_RUNTIME
 /* #undef TRACE_RUNTIME */
