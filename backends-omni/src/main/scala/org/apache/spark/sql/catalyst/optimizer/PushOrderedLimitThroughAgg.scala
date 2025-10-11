@@ -20,7 +20,7 @@ package org.apache.spark.sql.catalyst.optimizer
 
 import org.apache.gluten.config.GlutenConfig
 import org.apache.gluten.execution.OmniTopNTransformer
-
+import org.apache.gluten.sql.shims.SparkShimLoader
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.plans.physical.Partitioning
@@ -35,19 +35,15 @@ case class PushOrderedLimitThroughAgg(session: SparkSession)
   private object TakeOrderedAndProjectExecShim {
     def unapply(exec: TakeOrderedAndProjectExec)
         : Option[(Int, Seq[SortOrder], Seq[NamedExpression], SparkPlan, Int)] = {
-      TakeOrderedAndProjectExec.unapply(exec).map {
-        case (limit, sortOrder, projectList, child) => (limit, sortOrder, projectList, child, 0)
-      }
+      val (limit, offset) = SparkShimLoader.getSparkShims.getLimitAndOffsetFromTopK(exec)
+      Some(limit, exec.sortOrder, exec.projectList, exec.child, offset)
     }
   }
 
   private object ShuffleExchangeExecShim {
     def unapply(exchange: ShuffleExchangeExec)
         : Option[(Partitioning, SparkPlan, ShuffleOrigin, Option[Long])] = {
-      ShuffleExchangeExec.unapply(exchange).map {
-        case (outputPartitioning, child, shuffleOrigin) =>
-          (outputPartitioning, child, shuffleOrigin, None)
-      }
+      Some(exchange.outputPartitioning, exchange.child, exchange.shuffleOrigin, None)
     }
   }
 

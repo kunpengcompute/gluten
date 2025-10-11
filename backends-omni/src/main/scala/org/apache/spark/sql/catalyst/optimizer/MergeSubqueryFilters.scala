@@ -1,6 +1,7 @@
 package org.apache.spark.sql.catalyst.optimizer
 
 import org.apache.gluten.config.GlutenConfig
+import org.apache.gluten.sql.shims.SparkShimLoader
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.catalyst.expressions.aggregate.AggregateExpression
 import org.apache.spark.sql.catalyst.expressions.{Alias, And, Attribute, AttributeMap, BinaryArithmetic, BinaryComparison, CreateNamedStruct, Expression, GetStructField, IsNotNull, IsNull, Literal, NamedExpression, Or, ScalarSubquery, UnaryExpression, Unevaluable}
@@ -57,7 +58,7 @@ case class MergeSubqueryFilters(spark: SparkSession) extends Rule[LogicalPlan] {
     cache.zipWithIndex.foreach {
       case (header, i) =>
         cache(i) = cache(i).copy(plan = if (header.merged) {
-          ShimUtil.createCTERelationDef(
+          CTERelationDef(
             createProject(
               header.attributes,
               removeReferences(removePropagatedFilters(header.plan), cache)),
@@ -618,13 +619,13 @@ case class MergeSubqueryFilters(spark: SparkSession) extends Rule[LogicalPlan] {
     val Seq(newPlanSupportsHashAggregate, cachedPlanSupportsHashAggregate) =
       aggregateExpressionsSeq.map(
         aggregateExpressions =>
-          ShimUtil.supportsHashAggregate(
+          ExtendedAggUtils.supportsHashAggregate(
             aggregateExpressions.flatMap(_.aggregateFunction.aggBufferAttributes)))
     newPlanSupportsHashAggregate && cachedPlanSupportsHashAggregate ||
     newPlanSupportsHashAggregate == cachedPlanSupportsHashAggregate && {
       val Seq(newPlanSupportsObjectHashAggregate, cachedPlanSupportsObjectHashAggregate) =
         aggregateExpressionsSeq.map(
-          aggregateExpressions => ShimUtil.supportsObjectHashAggregate(aggregateExpressions))
+          aggregateExpressions => ExtendedAggUtils.supportsObjectHashAggregate(aggregateExpressions))
       newPlanSupportsObjectHashAggregate && cachedPlanSupportsObjectHashAggregate ||
       newPlanSupportsObjectHashAggregate == cachedPlanSupportsObjectHashAggregate
     }
@@ -642,8 +643,9 @@ case class MergeSubqueryFilters(spark: SparkSession) extends Rule[LogicalPlan] {
   // - doesn't have grouping expressions and
   // - contains only the most basic aggregate functions.
   private def supportsFilterPropagation(a: Aggregate) = {
-    ShimUtil.supportsFilterPropagation(a)
+    ExtendedAggUtils.supportsFilterPropagation(a)
   }
+
 
   private def filterAggregateExpressions(
       aggregateExpressions: Seq[NamedExpression],
@@ -675,7 +677,7 @@ case class MergeSubqueryFilters(spark: SparkSession) extends Rule[LogicalPlan] {
               val subqueryCTE = header.plan.asInstanceOf[CTERelationDef]
               GetStructField(
                 ScalarSubquery(
-                  ShimUtil.createCTERelationRef(
+                  SparkShimLoader.getSparkShims.createCTERelationRef(
                     subqueryCTE.id,
                     resolved = true,
                     subqueryCTE.output,

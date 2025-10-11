@@ -78,7 +78,7 @@ class OmniOrcFileFormat extends FileFormat with DataSourceRegister with Serializ
     (file: PartitionedFile) => {
       val conf = broadcastedConf.value.value
 
-      val filePath = new Path(new URI(file.filePath))
+      val filePath = new Path(new URI(file.filePath.toString))
 
       // ORC predicate pushdown
       val pushed = filters.reduceOption(And(_, _))
