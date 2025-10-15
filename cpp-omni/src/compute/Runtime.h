@@ -47,7 +47,10 @@ public:
     {
         return confMap_;
     }
-
+    void setLocalFiles(std::vector<::substrait::ReadRel_LocalFiles> localFiles)
+    {
+        localFiles_ = localFiles;
+    }
 private:
     std::string kind_;
     std::unordered_map<std::string, std::string> confMap_;

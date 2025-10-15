@@ -26,7 +26,7 @@ import org.apache.gluten.substrait.plan.PlanNode
 import org.apache.gluten.substrait.rel.LocalFilesNode.ReadFileFormat
 import org.apache.gluten.substrait.rel.{LocalFilesBuilder, LocalFilesNode, SplitInfo}
 import org.apache.gluten.utils._
-import org.apache.gluten.vectorized.{ColumnarBatchInIterator, OmniColumnarBatchInIterator, OmniNativePlanEvaluator}
+import org.apache.gluten.vectorized.{ColumnarBatchInIterator, OmniColumnarBatchInIterator, OmniColumnarBatchOutIterator, OmniNativePlanEvaluator, VectorTransferUtils}
 import org.apache.spark.internal.Logging
 import org.apache.spark.softaffinity.SoftAffinity
 import org.apache.spark.sql.catalyst.catalog.ExternalCatalogUtils
@@ -45,6 +45,7 @@ import java.nio.charset.StandardCharsets
 import java.time.ZoneOffset
 import java.util.{UUID, ArrayList => JArrayList, HashMap => JHashMap, Map => JMap}
 import scala.collection.JavaConverters._
+
 class OmniIteratorApiImpl extends IteratorApi with Logging {
 
   override def genSplitInfo(
@@ -146,7 +147,7 @@ class OmniIteratorApiImpl extends IteratorApi with Logging {
               case _: DateType =>
                 DateFormatter.apply().format(pn.asInstanceOf[Integer])
               case _: DecimalType =>
-                pn.asInstanceOf[Decimal].toJavaBigInteger.toString
+                pn.asInstanceOf[Decimal].toString
               case _: TimestampType =>
                 TimestampFormatter
                   .getFractionFormatter(ZoneOffset.UTC)
@@ -196,7 +197,53 @@ class OmniIteratorApiImpl extends IteratorApi with Logging {
       updateInputMetrics: InputMetricsWrapper => Unit,
       updateNativeMetrics: IMetrics => Unit,
       partitionIndex: Int,
-      inputIterators: Seq[Iterator[ColumnarBatch]]): Iterator[ColumnarBatch] = null
+      inputIterators: Seq[Iterator[ColumnarBatch]]): Iterator[ColumnarBatch] = {
+
+    assert(
+      inputPartition.isInstanceOf[GlutenPartition],
+      "Omni backend only accept GlutenPartition.")
+    val columnarNativeIterator =
+      new JArrayList[ColumnarBatchInIterator](inputIterators.map {
+        iter => new OmniColumnarBatchInIterator(BackendsApiManager.getBackendName, iter.asJava)
+      }.asJava)
+
+    val transKernel = OmniNativePlanEvaluator.create(BackendsApiManager.getBackendName)
+
+    val splitInfoByteArray = inputPartition
+      .asInstanceOf[GlutenPartition]
+      .splitInfosByteArray
+    val spillDirPath = SparkDirectoryUtil
+      .get()
+      .namespace("gluten-spill")
+      .mkChildDirRoundRobin(UUID.randomUUID.toString)
+      .getAbsolutePath
+
+    val outputSchemaStruct = io.substrait.proto.Plan.parseFrom(inputPartition
+      .asInstanceOf[GlutenPartition].plan).getRelations(0).getRoot.getOutputSchema
+    val typeNodes = VectorTransferUtils.getStructNodeFromProto(outputSchemaStruct)
+
+    val resIter: OmniColumnarBatchOutIterator =
+      transKernel.createKernelWithBatchIterator(
+        inputPartition.plan,
+        splitInfoByteArray,
+        columnarNativeIterator,
+        partitionIndex,
+        BackendsApiManager.getSparkPlanExecApiInstance.rewriteSpillPath(spillDirPath),
+        typeNodes
+      )
+
+    Iterators
+      .wrap(resIter.asScala)
+      .protectInvocationFlow()
+      .recycleIterator {
+        resIter.close()
+      }
+      //.recyclePayload(batch => batch.close())
+      .collectLifeMillis(millis => pipelineTime += millis)
+      .asInterruptible(context)
+      .create()
+
+  }
 
   /**
    * Generate Iterator[ColumnarBatch] for final stage. ("Final" means it depends on other SCAN

@@ -18,7 +18,7 @@ package org.apache.gluten.extension
 
 import org.apache.gluten.config.GlutenConfig
 import org.apache.gluten.datasources.orc.OmniOrcFileFormat
-import org.apache.gluten.execution.{FileSourceScanExecTransformer, FilterExecTransformer}
+import org.apache.gluten.execution.{OmniFileSourceScanExecTransformer, FilterExecTransformer}
 import org.apache.spark.sql.catalyst.expressions.{And, Attribute, EqualTo, Expression, GreaterThan, GreaterThanOrEqual, IsNotNull, IsNull, LessThan, LessThanOrEqual, Literal, Not, Or, PredicateHelper}
 import org.apache.spark.sql.catalyst.rules.Rule
 import org.apache.spark.sql.execution.SparkPlan
@@ -35,7 +35,7 @@ object PushDownFilterToOmniScan extends Rule[SparkPlan] with PredicateHelper {
   override def apply(plan: SparkPlan): SparkPlan = plan.transformUp {
     case filter: FilterExecTransformer if enableVecPredicateFilter =>
       filter.child match {
-        case fileScan: FileSourceScanExecTransformer if fileScan.relation.fileFormat.isInstanceOf[OmniOrcFileFormat] =>
+        case fileScan: OmniFileSourceScanExecTransformer if fileScan.relation.fileFormat.isInstanceOf[OmniOrcFileFormat] =>
           val pushDownFilters = getPushedFilter(fileScan.dataFilters)
           val newScan = fileScan.copy(output = filter.output, dataFilters = pushDownFilters)
           newScan.relation.fileFormat.asInstanceOf[OmniOrcFileFormat].setVecPredicateFilter()

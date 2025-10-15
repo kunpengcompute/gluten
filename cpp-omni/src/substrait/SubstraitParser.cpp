@@ -101,6 +101,39 @@ type::DataTypePtr SubstraitParser::ParseType(const ::substrait::Type &substraitT
     }
 }
 
+void SubstraitParser::ParseColumnTypes(
+    const ::substrait::NamedStruct& namedStruct,
+    std::vector<ColumnType>& columnTypes)
+{
+    const auto& columnsTypes = namedStruct.column_types();
+    if (columnsTypes.size() == 0) {
+        // Regard all columns as regular columns.
+        columnTypes.resize(namedStruct.names().size(), ColumnType::kRegular);
+        return;
+    }
+
+    columnTypes.reserve(columnsTypes.size());
+    for (const auto& columnType : columnsTypes) {
+        switch (columnType) {
+            case ::substrait::NamedStruct::NORMAL_COL:
+                columnTypes.push_back(ColumnType::kRegular);
+                break;
+            case ::substrait::NamedStruct::PARTITION_COL:
+                columnTypes.push_back(ColumnType::kPartitionKey);
+                break;
+            case ::substrait::NamedStruct::METADATA_COL:
+                columnTypes.push_back(ColumnType::kSynthesized);
+                break;
+            case ::substrait::NamedStruct::ROWINDEX_COL:
+                columnTypes.push_back(ColumnType::kRowIndex);
+                break;
+            default:
+                std::cout << "Thread.currentThread() parseColumnTypes" ;
+        }
+    }
+    return;
+}
+
 std::pair<SubstraitToOmniExprType, std::string> SubstraitParser::FindOmniFunction(
     const std::unordered_map<uint64_t, std::string> &functionMap, uint64_t id)
 {

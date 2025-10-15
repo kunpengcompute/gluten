@@ -31,14 +31,32 @@
 #include "compute/ColumnarBatchIterator.h"
 #include "util/config/ConfigBase.h"
 
+#include "substrait/SubstraitToOmniPlan.h"
+#include "connectors/hive/HiveConnectorSplit.h"
+#include "connectors/Split.h"
+#include "connectors/hive/HiveConnector.h"
+#include "config/OmniConfig.h"
+
+using SplitInfo = omniruntime::SplitInfo;
+using ConnectorSplit = omniruntime::connector::ConnectorSplit;
+using HiveConnectorSplit = omniruntime::connector::hive::HiveConnectorSplit;
+using Split = omniruntime::connector::Split;
+using FileProperties = omniruntime::FileProperties;
+using RowIdProperties = omniruntime::connector::hive::RowIdProperties;
+using HiveConnector = omniruntime::connector::hive::HiveConnector;
+
 namespace omniruntime {
 class WholeStageResultIterator : public ColumnarBatchIterator {
 public:
     WholeStageResultIterator(MemoryManager *memoryManager, const std::shared_ptr<const PlanNode> &planNode,
         const std::vector<PlanNodeId> &scanNodeIds, const std::vector<PlanNodeId> &streamIds,
-        const std::string& spillDir, const std::unordered_map<std::string, std::string> &confMap);
+        const std::string& spillDir, const std::unordered_map<std::string, std::string> &confMap,
+        const std::vector<std::shared_ptr<SplitInfo>>& scanSplitInfos);
 
-    ~WholeStageResultIterator() override = default;
+    ~WholeStageResultIterator() override
+    {
+        omniruntime::connector::unregisterConnector(kHiveConnectorId());
+    };
 
     VectorBatch *Next() override;
 
@@ -57,6 +75,11 @@ public:
         CollectMetrics();
         return metrics_.get();
     }
+    void TryAddSplitsToTask();
+    /// Construct partition columns.
+    void ConstructPartitionColumns(
+        std::unordered_map<std::string, std::optional<std::string>>&,
+        const std::unordered_map<std::string, std::string>&);
 
 private:
     /// Get the Spark confs to Velox query context.
@@ -90,5 +113,7 @@ private:
         int& metricIndex);
     /// Collect omni metrics.
     void CollectMetrics();
+    std::vector<std::shared_ptr<SplitInfo>> scanInfos_;
+    std::vector<std::vector<Split>> splits_;
 };
 }

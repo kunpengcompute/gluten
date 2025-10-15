@@ -247,7 +247,7 @@ abstract class AbstractFileSourceScanExec(
   }
 
   @transient
-  private lazy val pushedDownFilters = {
+  protected lazy val pushedDownFilters = {
     val supportNestedPredicatePushdown = DataSourceUtils.supportNestedPredicatePushdown(relation)
     // `dataFilters` should not include any metadata col filters
     // because the metadata struct has been flatted in FileSourceStrategy

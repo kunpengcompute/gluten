@@ -30,6 +30,11 @@
 #include "operator/util/function_type.h"
 #include "util/type_util.h"
 
+#include "connectors/hive/TableHandle.h"
+
+using ColumnType = omniruntime::connector::hive::HiveColumnHandle::ColumnType;
+using HiveTableHandle = omniruntime::connector::hive::HiveTableHandle;
+
 namespace omniruntime {
 /// This class contains some common functions used to parse Substrait
 /// components, and convert them into recognizable representations.
@@ -49,6 +54,8 @@ public:
     /// Used to parse Substrait NamedStruct.
     static std::vector<type::DataTypePtr> ParseNamedStruct(
         const ::substrait::NamedStruct &namedStruct, bool asLowerCase = false);
+
+    static void ParseColumnTypes(const ::substrait::NamedStruct& namedStruct, std::vector<ColumnType>& columnTypes);
 
     /// Used to find the Omni function name according to the function id
     /// from a pre-constructed function map.

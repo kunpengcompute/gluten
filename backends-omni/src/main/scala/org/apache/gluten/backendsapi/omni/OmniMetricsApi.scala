@@ -57,11 +57,17 @@ class OmniMetricsApiImpl extends MetricsApi with Logging {
       metrics: Map[String, SQLMetric]): MetricsUpdater = new MockMetricsUpdater()
 
   override def genHiveTableScanTransformerMetrics(
-      sparkContext: SparkContext): Map[String, SQLMetric] = Map.empty[String, SQLMetric]
+      sparkContext: SparkContext): Map[String, SQLMetric] =
+    Map(
+      "outputVectors" -> SQLMetrics.createMetric(sparkContext, "number of output vectors"),
+      "outputBytes" -> SQLMetrics.createSizeMetric(sparkContext, "number of output bytes"),
+      "scanTime" -> SQLMetrics.createNanoTimingMetric(sparkContext, "time of scan"),
+      "numOutputRows" -> SQLMetrics.createMetric(sparkContext, "number of output rows")
+    )
 
   // Reuse OmniFileSourceScanMetricsUpdater for HiveTableScanTransformer
   override def genHiveTableScanTransformerMetricsUpdater(
-      metrics: Map[String, SQLMetric]): MetricsUpdater = new MockMetricsUpdater()
+      metrics: Map[String, SQLMetric]): MetricsUpdater = new OmniHiveTableScanMetricsUpdater(metrics);
 
   override def genFileSourceScanTransformerMetrics(
       sparkContext: SparkContext): Map[String, SQLMetric] =

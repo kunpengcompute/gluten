@@ -518,7 +518,7 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
       hadoopFsRelation.options)(SparkSession.active)
 
     // Avoid pushing down datFilters that OmniScan does not support.
-    FileSourceScanExecTransformer(
+    OmniFileSourceScanExecTransformer(
       newRelation,
       scanExec.output,
       scanExec.requiredSchema,
