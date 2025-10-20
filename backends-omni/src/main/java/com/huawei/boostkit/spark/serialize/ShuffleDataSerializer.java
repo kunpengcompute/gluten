@@ -28,6 +28,7 @@ import nova.hetu.omniruntime.vector.LongVec;
 import nova.hetu.omniruntime.vector.ShortVec;
 import nova.hetu.omniruntime.vector.VarcharVec;
 import nova.hetu.omniruntime.vector.FloatVec;
+import nova.hetu.omniruntime.vector.ByteVec;
 import nova.hetu.omniruntime.vector.Vec;
 import nova.hetu.omniruntime.vector.ByteVec;
 import org.apache.gluten.vectorized.OmniColumnVector;
