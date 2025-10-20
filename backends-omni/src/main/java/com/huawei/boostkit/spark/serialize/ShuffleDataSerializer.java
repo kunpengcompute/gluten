@@ -28,6 +28,7 @@ import nova.hetu.omniruntime.vector.LongVec;
 import nova.hetu.omniruntime.vector.ShortVec;
 import nova.hetu.omniruntime.vector.VarcharVec;
 import nova.hetu.omniruntime.vector.Vec;
+import nova.hetu.omniruntime.vector.ByteVec;
 import org.apache.gluten.vectorized.OmniColumnVector;
 import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DataTypes;
@@ -138,6 +139,10 @@ public class ShuffleDataSerializer {
                 type = DataTypes.DoubleType;
                 vec = new DoubleVec(vecNativeId);
                 break;
+            case OMNI_FLOAT:
+                type = DataTypes.FloatType;
+                vec = new FloatVec(vecNativeId);
+                break;    
             case OMNI_VARCHAR:
             case OMNI_CHAR:
                 type = DataTypes.StringType;
@@ -146,6 +151,10 @@ public class ShuffleDataSerializer {
             case OMNI_DECIMAL128:
                 type = DataTypes.createDecimalType(precision, scale);
                 vec = new Decimal128Vec(vecNativeId);
+                break;
+            case OMNI_BYTE:
+                type = DataTypes.ByteType;
+                vec = new ByteVec(vecNativeId);
                 break;
             case OMNI_TIME32:
             case OMNI_TIME64:
