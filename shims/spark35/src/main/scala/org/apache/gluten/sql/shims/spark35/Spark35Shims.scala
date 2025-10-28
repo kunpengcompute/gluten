@@ -527,15 +527,15 @@ class Spark35Shims extends SparkShims {
   }
 
   override def getOperatorId(plan: QueryPlan[_]): Option[Int] = {
-    plan.getTagValue(QueryPlan.OP_ID_TAG)
+    plan.getTagValue(QueryPlan.CODEGEN_ID_TAG)
   }
 
   override def setOperatorId(plan: QueryPlan[_], opId: Int): Unit = {
-    plan.setTagValue(QueryPlan.OP_ID_TAG, opId)
+    plan.setTagValue(QueryPlan.CODEGEN_ID_TAG, opId)
   }
 
   override def unsetOperatorId(plan: QueryPlan[_]): Unit = {
-    plan.unsetTagValue(QueryPlan.OP_ID_TAG)
+    plan.unsetTagValue(QueryPlan.CODEGEN_ID_TAG)
   }
 
   override def createCTERelationRef(
