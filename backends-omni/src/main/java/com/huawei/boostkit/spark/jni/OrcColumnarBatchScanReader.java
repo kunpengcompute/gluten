@@ -600,7 +600,7 @@ public class OrcColumnarBatchScanReader {
         Integer index = nameToIndex.get(attribute);
         if (index == null) {
             // fix the bug in the previously generated orc file where some fields are missing after adding new columns to the table.
-            return new LeafPredicateCondition(PredicateOperatorType.TRUE, 0, DateType.DataTypeId.OMNI_BOOLEAN, "true");
+            return new LeafPredicateCondition(PredicateOperatorType.TRUE, 0, DataType.DataTypeId.OMNI_BOOLEAN, "true");
         }
         if (op == PredicateOperatorType.IS_NOT_NULL || op == PredicateOperatorType.IS_NULL) {
             return new LeafPredicateCondition(op, index, DataType.DataTypeId.OMNI_INT, "-1");
