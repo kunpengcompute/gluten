@@ -29,7 +29,7 @@ import org.apache.gluten.substrait.rel.LocalFilesNode.ReadFileFormat
 import org.apache.gluten.validate.NativePlanValidationInfo
 import org.apache.gluten.vectorized.OmniNativePlanEvaluator
 import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, Average, Count, First, Max, Min, StddevSamp, Sum}
-import org.apache.spark.sql.catalyst.expressions.{Alias, Attribute, Literal, NamedExpression, Rank, RowNumber, WindowExpression}
+import org.apache.spark.sql.catalyst.expressions.{Alias, Attribute, CurrentRow, Literal, NamedExpression, Rank, RowNumber, SpecifiedWindowFrame, UnboundedFollowing, UnboundedPreceding, WindowExpression}
 import org.apache.spark.sql.catalyst.plans.physical.Partitioning
 import org.apache.spark.sql.connector.read.Scan
 import org.apache.spark.sql.execution.SparkPlan
@@ -149,6 +149,16 @@ object OmniBackendSettings extends BackendSettingsApi {
                 }
               case _ =>
                 isSupport = false
+            }
+            wExpression.windowSpec.frameSpecification match {
+              case swf: SpecifiedWindowFrame =>
+                if (swf.lower != UnboundedPreceding && swf.lower != CurrentRow) {
+                  isSupport = false
+                }
+                if (swf.upper != UnboundedFollowing && swf.upper != CurrentRow) {
+                  isSupport = false
+                }
+              case _ =>
             }
           case _ =>
             isSupport = false

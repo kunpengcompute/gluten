@@ -77,8 +77,17 @@ static inline std::string JStringToCString(JNIEnv *env, jstring string)
 
 static inline void CheckException(JNIEnv* env) {
     if (env->ExceptionCheck()) {
-        throw omniruntime::exception::OmniException("JNI_ERROR",
-            "Error during calling Java code from native code.");
+        jthrowable t = env->ExceptionOccurred();
+        env->ExceptionClear();
+        jclass describerClass = env->FindClass("org/apache/gluten/exception/JniExceptionDescriber");
+        jmethodID describeMethod =
+        env->GetStaticMethodID(describerClass, "describe", "(Ljava/lang/Throwable;)Ljava/lang/String;");
+        std::string description =
+            JStringToCString(env, (jstring)env->CallStaticObjectMethod(describerClass, describeMethod, t));
+        if (env->ExceptionCheck()) {
+            LogWarn("Fatal: Uncaught Java exception during calling the Java exception describer method! ");
+        }
+        throw omniruntime::exception::OmniException("Error during calling Java code from native code: " + description);
     }
 }
 

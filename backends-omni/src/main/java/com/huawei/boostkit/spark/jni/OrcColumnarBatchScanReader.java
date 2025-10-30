@@ -599,7 +599,10 @@ public class OrcColumnarBatchScanReader {
                                                            Map<String, Integer> nameToIndex) {
         Integer index = nameToIndex.get(attribute);
         if (index == null) {
-            throw new UnsupportedOperationException("Attribute is not found in nameToIndex. attribute: " + attribute);
+            // fix the bug in the previously generated orc file
+            // where some fields are missing after adding new columns to the table.
+            return new LeafPredicateCondition(
+                    PredicateOperatorType.TRUE, 0, DataType.DataTypeId.OMNI_BOOLEAN, "true");
         }
         if (op == PredicateOperatorType.IS_NOT_NULL || op == PredicateOperatorType.IS_NULL) {
             return new LeafPredicateCondition(op, index, DataType.DataTypeId.OMNI_INT, "-1");
