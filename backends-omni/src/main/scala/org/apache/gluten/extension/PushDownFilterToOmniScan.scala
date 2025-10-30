@@ -27,7 +27,7 @@ import org.apache.spark.sql.types.{BooleanType, DateType, DoubleType, IntegerTyp
 
 object PushDownFilterToOmniScan extends Rule[SparkPlan] with PredicateHelper {
 
-  private val enableVecPredicateFilter: Boolean =
+  private def enableVecPredicateFilter: Boolean =
     GlutenConfig.get.enabledVecPredicateFilter
 
   private val SUPPORTED_DATA_TYPES = Set(ShortType, IntegerType, LongType, DoubleType, BooleanType, DateType)
@@ -55,7 +55,7 @@ object PushDownFilterToOmniScan extends Rule[SparkPlan] with PredicateHelper {
   }
 
 
-  private def getPushedFilter(dataFilters: Seq[Expression]): Seq[Expression] = {
+  def getPushedFilter(dataFilters: Seq[Expression]): Seq[Expression] = {
     dataFilters.filter(isAllSupportPushDown)
   }
 
@@ -96,9 +96,9 @@ object PushDownFilterToOmniScan extends Rule[SparkPlan] with PredicateHelper {
       case lessThanOrEqual: LessThanOrEqual =>
         isBinaryExprSupported(lessThanOrEqual.left, lessThanOrEqual.right)
       case isNotNull: IsNotNull =>
-        isAttribute(isNotNull.child)
+        isAttribute(isNotNull.child) && isSingleExprDataTypeSupported(isNotNull.child)
       case isNull: IsNull =>
-        isAttribute(isNull.child)
+        isAttribute(isNull.child) && isSingleExprDataTypeSupported(isNull.child)
       case and: And =>
         isAllSupportPushDown(and.left) && isAllSupportPushDown(and.right)
       case or: Or =>

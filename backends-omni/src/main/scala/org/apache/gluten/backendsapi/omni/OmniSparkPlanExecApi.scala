@@ -43,6 +43,7 @@ import org.apache.gluten.datasources.orc.OmniOrcFileFormat
 import org.apache.gluten.datasources.parquet.OmniParquetFileFormat
 import org.apache.gluten.exception.GlutenNotSupportException
 import org.apache.gluten.expression.ExpressionConverter.replaceWithExpressionTransformer
+import org.apache.gluten.extension.PushDownFilterToOmniScan
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.execution.datasources.orc.OrcFileFormat
 import org.apache.spark.sql.execution.datasources.parquet.ParquetFileFormat
@@ -455,6 +456,7 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
       fileFormat = fileFormat,
       hadoopFsRelation.options)(SparkSession.active)
 
+    // Avoid pushing down datFilters that OmniScan does not support.
     FileSourceScanExecTransformer(
       newRelation,
       scanExec.output,
@@ -462,7 +464,7 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
       scanExec.partitionFilters,
       scanExec.optionalBucketSet,
       scanExec.optionalNumCoalescedBuckets,
-      scanExec.dataFilters,
+      PushDownFilterToOmniScan.getPushedFilter(scanExec.dataFilters),
       scanExec.tableIdentifier,
       scanExec.disableBucketedScan
     )
