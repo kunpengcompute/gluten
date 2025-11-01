@@ -139,10 +139,6 @@ public class ShuffleDataSerializer {
                 type = DataTypes.DoubleType;
                 vec = new DoubleVec(vecNativeId);
                 break;
-            case OMNI_FLOAT:
-                type = DataTypes.FloatType;
-                vec = new FloatVec(vecNativeId);
-                break;    
             case OMNI_VARCHAR:
             case OMNI_CHAR:
                 type = DataTypes.StringType;

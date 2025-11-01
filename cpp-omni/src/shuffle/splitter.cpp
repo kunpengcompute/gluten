@@ -756,7 +756,6 @@ std::unordered_map<int32_t, spark::VecType::VecTypeId> omniTypeToVecTypeMap = {
     {OMNI_INT, spark::VecType::VEC_TYPE_INT},
     {OMNI_LONG, spark::VecType::VEC_TYPE_LONG},
     {OMNI_DOUBLE, spark::VecType::VEC_TYPE_DOUBLE},
-    {OMNI_FLOAT, spark::VecType::VEC_TYPE_FLOAT},
     {OMNI_BOOLEAN, spark::VecType::VEC_TYPE_BOOLEAN},
     {OMNI_SHORT, spark::VecType::VEC_TYPE_SHORT},
     {OMNI_DECIMAL64, spark::VecType::VEC_TYPE_DECIMAL64},
