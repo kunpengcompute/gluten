@@ -71,14 +71,16 @@ public class OmniOrcColumnarBatchReader extends RecordReader<Void, ColumnarBatch
     private Filter pushedFilter;
     private Boolean vecPredicateFilter;
     private Boolean filterPushDown;
+    private Boolean isCaseSensitive;
 
     public OmniOrcColumnarBatchReader(int capacity, StructType requiredSchema, Filter pushedFilter,
-                                      Boolean vecPredicateFilter, Boolean filterPushDown) {
+                                      Boolean vecPredicateFilter, Boolean filterPushDown, Boolean isCaseSensitive) {
         this.capacity = capacity;
         this.requiredSchema = requiredSchema;
         this.pushedFilter = pushedFilter;
         this.vecPredicateFilter = vecPredicateFilter;
         this.filterPushDown = filterPushDown;
+        this.isCaseSensitive = isCaseSensitive;
     }
 
 
@@ -134,7 +136,7 @@ public class OmniOrcColumnarBatchReader extends RecordReader<Void, ColumnarBatch
     public void initialize(
             InputSplit inputSplit, TaskAttemptContext taskAttemptContext) throws IOException {
         FileSplit fileSplit = (FileSplit) inputSplit;
-        recordReader = new OrcColumnarBatchScanReader();
+        recordReader = new OrcColumnarBatchScanReader(isCaseSensitive);
         recordReader.initializeReaderJava(fileSplit.getPath().toUri());
 
         initDataColIds();

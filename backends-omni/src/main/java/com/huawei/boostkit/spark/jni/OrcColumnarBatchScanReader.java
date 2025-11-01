@@ -119,10 +119,18 @@ public class OrcColumnarBatchScanReader {
     // spark required schema
     private StructType requiredSchema;
 
+    private Boolean isCaseSensitive;
+
     public OrcColumnarBatchJniReader jniReader;
-    public OrcColumnarBatchScanReader() {
+
+    public OrcColumnarBatchScanReader(Boolean isCaseSensitive) {
         jniReader = new OrcColumnarBatchJniReader();
         allFieldsNames = new ArrayList<String>();
+        this.isCaseSensitive = isCaseSensitive;
+    }
+
+    public OrcColumnarBatchScanReader() {
+        this(false);
     }
 
     public String padZeroForDecimals(String [] decimalStrArray, int decimalScale) {
@@ -647,6 +655,9 @@ public class OrcColumnarBatchScanReader {
 
     private PredicateCondition buildLeafPredicateCondition(PredicateOperatorType op, String attribute, Object literal,
                                                            Map<String, Integer> nameToIndex) {
+        if (!isCaseSensitive) {
+            attribute = attribute.toLowerCase();
+        }
         Integer index = nameToIndex.get(attribute);
         if (index == null) {
             // fix the bug in the previously generated orc file

@@ -34,6 +34,7 @@ import scala.util.control.NonFatal
 object FileStreamSink extends Logging {
   // The name of the subdirectory that is used to store metadata about which files are valid.
   val metadataDir = "_spark_metadata"
++
 
   /**
    * Returns true if there is a single path that has a metadata log indicating which files should

@@ -90,7 +90,7 @@ class OmniOrcFileFormat extends FileFormat with DataSourceRegister with Serializ
 
       // read data from vectorized reader
       val batchReader = new OmniOrcColumnarBatchReader(capacity, requiredSchema, pushed.orNull, vecPredicateFilter,
-        orcFilterPushDown)
+        orcFilterPushDown, isCaseSensitive)
       // SPARK-23399 Register a task completion listener first to call `close()` in all cases.
       // There is a possibility that `initialize` and `initBatch` hit some errors (like OOM)
       // after opening a file.
