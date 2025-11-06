@@ -286,12 +286,10 @@ public class ParquetColumnarBatchScanReader {
             putCompareOp(jsonObject, ParquetPredicateOperator.LtEq, ltEq.attribute(), ltEq.value());
         } else if (filterPredicate instanceof IsNotNull) {
             IsNotNull isNotNull = (IsNotNull) filterPredicate;
-            jsonObject.put("op", ParquetPredicateOperator.IsNotNull.ordinal());
-            jsonObject.put("field", isNotNull.attribute());
+            putUniOp(jsonObject, ParquetPredicateOperator.IsNotNull.ordinal(), isNotNull.attribute());
         } else if (filterPredicate instanceof IsNull) {
             IsNull isNull = (IsNull) filterPredicate;
-            jsonObject.put("op", ParquetPredicateOperator.IsNull.ordinal());
-            jsonObject.put("field", isNull.attribute());
+            putUniOp(jsonObject, ParquetPredicateOperator.IsNull.ordinal(), isNull.attribute());
         } else if (filterPredicate instanceof In) {
             In in = (In) filterPredicate;
             jsonObject.put("op", ParquetPredicateOperator.In.ordinal());
@@ -304,6 +302,9 @@ public class ParquetColumnarBatchScanReader {
     }
 
     private void putInOp(JSONObject json, String field, Object[] values) {
+        if (!allFieldsNames.contains(field)) {
+            throw new ParquetDecodingException("Unsupported parquet push down missing columns: " + field);
+        }
         json.put("field", field);
         if (values == null) {
             json.put("type", 0);
@@ -317,14 +318,20 @@ public class ParquetColumnarBatchScanReader {
         }
     }
 
-    private void putCompareOp(JSONObject json, ParquetPredicateOperator op, String field, Object value) {
-        json.put("op", op.ordinal());
-        if (allFieldsNames.contains(field)) {
-            json.put("field", field);
-        } else {
+    private void putUniOp(JSONObject json, int op, String field) {
+        if (!allFieldsNames.contains(field)) {
             throw new ParquetDecodingException("Unsupported parquet push down missing columns: " + field);
         }
+        json.put("op", op);
+        json.put("field", field);
+    }
 
+    private void putCompareOp(JSONObject json, ParquetPredicateOperator op, String field, Object value) {
+        if (!allFieldsNames.contains(field)) {
+            throw new ParquetDecodingException("Unsupported parquet push down missing columns: " + field);
+        }
+        json.put("op", op.ordinal());
+        json.put("field", field);
         if (value == null) {
             json.put("type", 0);
         } else {
