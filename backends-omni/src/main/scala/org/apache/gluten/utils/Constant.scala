@@ -23,6 +23,7 @@ import nova.hetu.omniruntime.`type`.DataType.DataTypeId
 /** @since 2022/4/15 */
 object Constant {
   val DEFAULT_STRING_TYPE_LENGTH = 50
+  val OMNI_BYTE_TYPE: String = DataTypeId.OMNI_BYTE.ordinal().toString
   val OMNI_VARCHAR_TYPE: String = DataTypeId.OMNI_VARCHAR.ordinal().toString
   val OMNI_SHOR_TYPE: String = DataTypeId.OMNI_SHORT.ordinal().toString
   val OMNI_INTEGER_TYPE: String = DataTypeId.OMNI_INT.ordinal().toString

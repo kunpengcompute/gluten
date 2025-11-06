@@ -510,6 +510,10 @@ void Splitter::ToSplitterTypeId(int num_cols)
 {
     for (int i = 0; i < num_cols; ++i) {
         switch (input_col_types.inputVecTypeIds[i]) {
+            case OMNI_BYTE: {
+                CastOmniToShuffleType(OMNI_BYTE, SHUFFLE_1BYTE);
+                break;
+            }
             case OMNI_BOOLEAN: {
                 CastOmniToShuffleType(OMNI_BOOLEAN, SHUFFLE_1BYTE);
                 break;
@@ -747,49 +751,35 @@ std::shared_ptr<Buffer> Splitter::CaculateSpilledTmpFilePartitionOffsets() {
     return ptrPartitionOffsets;
 }
 
+std::unordered_map<int32_t, spark::VecType::VecTypeId> omniTypeToVecTypeMap = {
+    {OMNI_NONE, spark::VecType::VEC_TYPE_NONE},
+    {OMNI_INT, spark::VecType::VEC_TYPE_INT},
+    {OMNI_LONG, spark::VecType::VEC_TYPE_LONG},
+    {OMNI_DOUBLE, spark::VecType::VEC_TYPE_DOUBLE},
+    {OMNI_BOOLEAN, spark::VecType::VEC_TYPE_BOOLEAN},
+    {OMNI_SHORT, spark::VecType::VEC_TYPE_SHORT},
+    {OMNI_DECIMAL64, spark::VecType::VEC_TYPE_DECIMAL64},
+    {OMNI_DECIMAL128, spark::VecType::VEC_TYPE_DECIMAL128},
+    {OMNI_DATE32, spark::VecType::VEC_TYPE_DATE32},
+    {OMNI_DATE64, spark::VecType::VEC_TYPE_DATE64},
+    {OMNI_TIME32, spark::VecType::VEC_TYPE_TIME32},
+    {OMNI_TIME64, spark::VecType::VEC_TYPE_TIME64},
+    {OMNI_TIMESTAMP, spark::VecType::VEC_TYPE_TIMESTAMP},
+    {OMNI_INTERVAL_MONTHS, spark::VecType::VEC_TYPE_INTERVAL_MONTHS},
+    {OMNI_INTERVAL_DAY_TIME, spark::VecType::VEC_TYPE_INTERVAL_DAY_TIME},
+    {OMNI_VARCHAR, spark::VecType::VEC_TYPE_VARCHAR},
+    {OMNI_CHAR, spark::VecType::VEC_TYPE_CHAR},
+    {OMNI_CONTAINER, spark::VecType::VEC_TYPE_CONTAINER},
+    {OMNI_BYTE, spark::VecType::VEC_TYPE_BYTE},
+    {OMNI_INVALID, spark::VecType::VEC_TYPE_INVALID},
+};
+
 spark::VecType::VecTypeId Splitter::CastOmniTypeIdToProtoVecType(int32_t omniType) {
-    switch (omniType) {
-        case OMNI_NONE:
-            return spark::VecType::VEC_TYPE_NONE;
-        case OMNI_INT:
-            return spark::VecType::VEC_TYPE_INT;
-        case OMNI_LONG:
-            return spark::VecType::VEC_TYPE_LONG;
-        case OMNI_DOUBLE:
-            return spark::VecType::VEC_TYPE_DOUBLE;
-        case OMNI_BOOLEAN:
-            return spark::VecType::VEC_TYPE_BOOLEAN;
-        case OMNI_SHORT:
-            return spark::VecType::VEC_TYPE_SHORT;
-        case OMNI_DECIMAL64:
-            return spark::VecType::VEC_TYPE_DECIMAL64;
-        case OMNI_DECIMAL128:
-            return spark::VecType::VEC_TYPE_DECIMAL128;
-        case OMNI_DATE32:
-            return spark::VecType::VEC_TYPE_DATE32;
-        case OMNI_DATE64:
-            return spark::VecType::VEC_TYPE_DATE64;
-        case OMNI_TIME32:
-            return spark::VecType::VEC_TYPE_TIME32;
-        case OMNI_TIME64:
-            return spark::VecType::VEC_TYPE_TIME64;
-        case OMNI_TIMESTAMP:
-            return spark::VecType::VEC_TYPE_TIMESTAMP;
-        case OMNI_INTERVAL_MONTHS:
-            return spark::VecType::VEC_TYPE_INTERVAL_MONTHS;
-        case OMNI_INTERVAL_DAY_TIME:
-            return spark::VecType::VEC_TYPE_INTERVAL_DAY_TIME;
-        case OMNI_VARCHAR:
-            return spark::VecType::VEC_TYPE_VARCHAR;
-        case OMNI_CHAR:
-            return spark::VecType::VEC_TYPE_CHAR;
-        case OMNI_CONTAINER:
-            return spark::VecType::VEC_TYPE_CONTAINER;
-        case DataTypeId::OMNI_INVALID:
-            return spark::VecType::VEC_TYPE_INVALID;
-        default: {
-            throw std::runtime_error("CastOmniTypeIdToProtoVecType() unexpected OmniTypeId");
-        }
+    auto result = omniTypeToVecTypeMap.find(omniType);
+    if (result == omniTypeToVecTypeMap.end()) {
+        throw std::runtime_error("CastOmniTypeIdToProtoVecType() unexpected OmniTypeId");
+    } else {
+        return result->second;
     }
 };
 

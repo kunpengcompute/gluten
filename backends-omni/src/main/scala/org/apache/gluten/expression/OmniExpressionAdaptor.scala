@@ -1050,6 +1050,7 @@ object OmniExpressionAdaptor extends Logging {
 
   def sparkTypeToOmniExpType(datatype: DataType): String = {
     datatype match {
+      case ByteType => OMNI_BYTE_TYPE
       case ShortType => OMNI_SHOR_TYPE
       case IntegerType => OMNI_INTEGER_TYPE
       case LongType => OMNI_LONG_TYPE

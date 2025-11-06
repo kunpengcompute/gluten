@@ -184,6 +184,18 @@ object OmniAdaptorUtil {
         }
         vec.put(values, 0, 0, columnSize)
         vec
+      case ByteType =>
+        val vec = new ByteVec(columnSize)
+        val values = new Array[Byte](columnSize)
+        for (i <- 0 until columnSize) {
+          if (!columnVector.isNullAt(i)) {
+            values(i) = columnVector.getByte(i)
+          } else {
+            vec.setNull(i)
+          }
+        }
+        vec.put(values, 0, 0, columnSize)
+        vec
       case t: DecimalType =>
         if (DecimalType.is64BitDecimalType(datatype)) {
           val vec = new LongVec(columnSize)
