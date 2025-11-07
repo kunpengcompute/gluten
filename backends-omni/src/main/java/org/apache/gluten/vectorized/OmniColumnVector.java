@@ -22,6 +22,7 @@ import nova.hetu.omniruntime.vector.*;
 import org.apache.gluten.expression.OmniExpressionAdaptor;
 import org.apache.gluten.substrait.type.DecimalTypeNode;
 import org.apache.gluten.substrait.type.ListNode;
+import org.apache.gluten.substrait.type.MapNode;
 import org.apache.gluten.substrait.type.TypeNode;
 import org.apache.spark.sql.execution.vectorized.WritableColumnVector;
 import org.apache.spark.sql.types.BooleanType;
@@ -146,6 +147,9 @@ public class OmniColumnVector extends WritableColumnVector {
             case "ListNode":
                 ListNode listNode = (ListNode) typeNode;
                 return DataTypes.createArrayType(populateVec(listNode.getNestedType()));
+            case "MapNode":
+                MapNode mapNode = (MapNode) typeNode;
+                return new MapType(populateVec(mapNode.getKeyType()), populateVec(mapNode.getValueType()), true);
             default:
                 throw new RuntimeException("Not supported partition type: " + simpleName);
         }
