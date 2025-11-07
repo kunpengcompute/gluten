@@ -411,5 +411,8 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"rtrim", {FUNCTION_OMNI_EXPR_TYPE, "RTrim"}},
     {"get_json_object", {FUNCTION_OMNI_EXPR_TYPE, "GetJsonObject"}},
     {"bitwise_and", {FUNCTION_OMNI_EXPR_TYPE, "bitwise_and"}},
+    {"bitwise_or", {FUNCTION_OMNI_EXPR_TYPE, "bitwise_or"}},
+    {"bitwise_xor", {FUNCTION_OMNI_EXPR_TYPE, "bitwise_xor"}},
+    {"shiftleft", {FUNCTION_OMNI_EXPR_TYPE, "shiftleft"}},
     {"shiftright", {FUNCTION_OMNI_EXPR_TYPE, "shiftright"}}};
 } // namespace omniruntime
