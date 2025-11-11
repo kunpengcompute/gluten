@@ -286,7 +286,7 @@ private object OmniRowToColumnConverter {
         cv.appendNull
       } else {
         val bytes = row.getBinary(column)
-        cv.appendByteArray(bytes, 0, bytes.length)
+        cv.asInstanceOf[OmniColumnVector].appendString(bytes.length, bytes, 0)
       }
     }
 

@@ -71,6 +71,8 @@ type::DataTypePtr SubstraitParser::ParseType(const ::substrait::Type &substraitT
             return type::Date32Type();
         case ::substrait::Type::KindCase::kTimestamp:
             return type::TimestampType();
+        case ::substrait::Type::KindCase::kBinary:
+            return type::VarBinaryType();
         case ::substrait::Type::KindCase::kDecimal: {
             auto precision = substraitType.decimal().precision();
             auto scale = substraitType.decimal().scale();

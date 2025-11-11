@@ -42,6 +42,7 @@ import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.NullType;
 import org.apache.spark.sql.types.ShortType;
 import org.apache.spark.sql.types.StringType;
+import org.apache.spark.sql.types.BinaryType;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 import org.apache.spark.sql.types.TimestampType;
@@ -217,6 +218,8 @@ public class OmniColumnVector extends WritableColumnVector {
             return floatDataVec;
         } else if (type instanceof StringType) {
             return charsTypeDataVec;
+        } else if (type instanceof BinaryType) {
+            return charsTypeDataVec;
         } else if (type instanceof DateType) {
             return intDataVec;
         } else if (type instanceof ByteType) {
@@ -259,6 +262,8 @@ public class OmniColumnVector extends WritableColumnVector {
         } else if (type instanceof FloatType) {
             this.floatDataVec = (FloatVec) vec;
         } else if (type instanceof StringType) {
+            this.charsTypeDataVec = (VarcharVec) vec;
+        } else if (type instanceof BinaryType) {
             this.charsTypeDataVec = (VarcharVec) vec;
         } else if (type instanceof DateType) {
             this.intDataVec = (IntVec) vec;
@@ -371,6 +376,8 @@ public class OmniColumnVector extends WritableColumnVector {
             return doubleDataVec.hasNull();
         } else if (type instanceof StringType) {
             return charsTypeDataVec.hasNull();
+        } else if (type instanceof BinaryType) {
+            return charsTypeDataVec.hasNull();
         } else if (type instanceof DateType) {
             return intDataVec.hasNull();
         } else if (type instanceof ArrayType) {
@@ -421,6 +428,8 @@ public class OmniColumnVector extends WritableColumnVector {
             doubleDataVec.setNull(rowId);
         } else if (type instanceof StringType) {
             charsTypeDataVec.setNull(rowId);
+        } else if (type instanceof BinaryType) {
+            charsTypeDataVec.setNull(rowId);
         } else if (type instanceof DateType) {
             intDataVec.setNull(rowId);
         } else if (type instanceof ArrayType) {
@@ -464,6 +473,8 @@ public class OmniColumnVector extends WritableColumnVector {
             doubleDataVec.setNulls(rowId, nullValue, 0, count);
         } else if (type instanceof StringType) {
             charsTypeDataVec.setNulls(rowId, nullValue, 0, count);
+        } else if (type instanceof BinaryType) {
+            charsTypeDataVec.setNulls(rowId, nullValue, 0, count);
         } else if (type instanceof DateType) {
             intDataVec.setNulls(rowId, nullValue, 0, count);
         } else if (type instanceof ArrayType) {
@@ -501,6 +512,8 @@ public class OmniColumnVector extends WritableColumnVector {
         } else if (type instanceof DoubleType) {
             doubleDataVec.setNulls(rowId, nullValue, 0, count);
         } else if (type instanceof StringType) {
+            charsTypeDataVec.setNulls(rowId, nullValue, 0, count);
+        } else if (type instanceof BinaryType) {
             charsTypeDataVec.setNulls(rowId, nullValue, 0, count);
         } else if (type instanceof DateType) {
             intDataVec.setNulls(rowId, nullValue, 0, count);
@@ -543,6 +556,8 @@ public class OmniColumnVector extends WritableColumnVector {
         } else if (type instanceof DoubleType) {
             return doubleDataVec.isNull(rowId);
         } else if (type instanceof StringType) {
+            return charsTypeDataVec.isNull(rowId);
+        } else if (type instanceof BinaryType) {
             return charsTypeDataVec.isNull(rowId);
         } else if (type instanceof DateType) {
             return intDataVec.isNull(rowId);
@@ -1111,6 +1126,9 @@ public class OmniColumnVector extends WritableColumnVector {
         } else if (type instanceof DoubleType) {
             doubleDataVec = new DoubleVec(newCapacity);
         } else if (type instanceof StringType) {
+            // need to set with real column size, suppose char(200) utf8
+            charsTypeDataVec = new VarcharVec(newCapacity);
+        } else if (type instanceof BinaryType) {
             // need to set with real column size, suppose char(200) utf8
             charsTypeDataVec = new VarcharVec(newCapacity);
         } else if (type instanceof DateType) {

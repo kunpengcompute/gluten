@@ -292,6 +292,10 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(const ::substrait::Expressio
             auto *stringVal = new std::string(substraitLit.string());
             return new LiteralExpr(stringVal, VarcharType(stringVal->length()));
         }
+        case ::substrait::Expression_Literal::LiteralTypeCase::kBinary: {
+            auto *stringVal = new std::string(substraitLit.binary());
+            return new LiteralExpr(stringVal, VarBinaryType(stringVal->length()));
+        }
         case ::substrait::Expression_Literal::LiteralTypeCase::kDecimal: {
             auto decimal = substraitLit.decimal().value();
             auto precision = substraitLit.decimal().precision();
