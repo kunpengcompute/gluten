@@ -708,7 +708,9 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::ProjectRel &proje
     ExprVerifier ev;
     for (const auto &expression : expressions) {
         if (!ev.VisitExpr(*expression)) {
-            LOG_VALIDATION_MSG("OmniExpr validation fail! " + ev.GetUnSupportedReason());
+            LOG_VALIDATION_MSG("OmniExpr validation fail!");
+            ExprPrinter p;
+            expression->Accept(p);
             return false;
         }
     }
