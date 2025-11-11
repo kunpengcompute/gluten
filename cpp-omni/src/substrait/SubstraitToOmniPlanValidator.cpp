@@ -568,6 +568,93 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::WindowRel &window
     return true;
 }
 
+bool SubstraitToOmniPlanValidator::Validate(const ::substrait::WindowGroupLimitRel &wglRel)
+{
+    if (wglRel.has_input() && !Validate(wglRel.input())) {
+        LOG_VALIDATION_MSG("WindowGroupLimitRel input fails to Validate.");
+        return false;
+    }
+
+    if (!wglRel.has_advanced_extension()) {
+        LOG_VALIDATION_MSG("WindowGroupLimitRel requires advanced_extension");
+        return false;
+    }
+    const auto &extension = wglRel.advanced_extension();
+    DataTypePtr inputRowType;
+    std::vector<DataTypePtr> types;
+    if (!ParseOmniType(extension, inputRowType) || !FlattenSingleLevel(inputRowType, types)) {
+        LOG_VALIDATION_MSG("Validation failed for input types in WindowGroupLimitRel.");
+        return false;
+    }
+
+    if (types.empty()) {
+        // See: https://github.com/apache/incubator-gluten/issues/7600.
+        LOG_VALIDATION_MSG("Validation failed for empty input schema in WindowGroupLimitRel.");
+        return false;
+    }
+    auto rowType = std::make_shared<DataTypes>(std::move(types));
+
+    if (wglRel.limit() <= 0) {
+        LOG_VALIDATION_MSG("WindowGroupLimitRel.limit must be postive !");
+        return false;
+    }
+
+    //Validate partition_expressions
+    const auto& partitionExprs = wglRel.partition_expressions();
+    std::vector<TypedExprPtr> partitionExpressions;
+    partitionExpressions.reserve(partitionExprs.size());
+    for (const auto& expr : partitionExprs) {
+        auto expression = exprConverter_->ToOmniExpr(expr, rowType);
+        auto exprField = dynamic_cast<const FieldExpr*>(expression);
+        if (exprField == nullptr) {
+            LOG_VALIDATION_MSG("Only field is supported for partition key in WindowGroupLimit Operator!");
+        } else {
+            partitionExpressions.emplace_back(expression);
+        }
+    }
+
+    // Try to compile the expressions. If there is any unregistred funciton or
+    // mismatched type, exception will be thrown.
+    ExprVerifier ev;
+    for (const auto &expression : partitionExpressions) {
+        if (!ev.VisitExpr(*expression)) {
+            return false;
+        }
+    }
+
+    // Validate Sort expression
+    const auto &sorts = wglRel.sorts();
+    std::vector<TypedExprPtr> sortExpressions;
+    sortExpressions.reserve(sorts.size());
+    for (const auto &sort : sorts) {
+        switch (sort.direction()) {
+            case ::substrait::SortField_SortDirection_SORT_DIRECTION_ASC_NULLS_FIRST:
+            case ::substrait::SortField_SortDirection_SORT_DIRECTION_ASC_NULLS_LAST:
+            case ::substrait::SortField_SortDirection_SORT_DIRECTION_DESC_NULLS_FIRST:
+            case ::substrait::SortField_SortDirection_SORT_DIRECTION_DESC_NULLS_LAST:
+                break;
+            default:
+                LOG_VALIDATION_MSG("in windowGroupLimitRel, unsupported Sort direction " + std::to_string(sort.direction()));
+                return false;
+        }
+
+        if (sort.has_expr()) {
+            auto expression = exprConverter_->ToOmniExpr(sort.expr(), rowType);
+            auto exprField = dynamic_cast<const FieldExpr *>(expression);
+            if (!exprField) {
+                LOG_VALIDATION_MSG("in windowGroupLimitRel, the sorting key in Sort Operator "
+                                   "only support field.");
+                return false;
+            }
+            if (!ev.VisitExpr(*expression)) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
 bool SubstraitToOmniPlanValidator::Validate(const ::substrait::SetRel &setRel)
 {
     switch (setRel.op()) {
@@ -1003,6 +1090,8 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::Rel &rel)
         return Validate(rel.top_n());
     } else if (rel.has_window()) {
         return Validate(rel.window());
+    } else if (rel.has_windowgrouplimit()) {
+        return Validate(rel.windowgrouplimit());
     } else if (rel.has_write()) {
         return Validate(rel.write());
     } else if (rel.has_set()) {

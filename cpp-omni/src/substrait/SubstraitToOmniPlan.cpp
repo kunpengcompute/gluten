@@ -234,6 +234,42 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::WindowRe
         windowFrameStartChannels, windowFrameEndTypes, windowFrameEndChannels, childNode);
 }
 
+PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::WindowGroupLimitRel &windowGroupLimitRel)
+{
+    auto childNode = ConvertSingleInput<::substrait::WindowGroupLimitRel>(windowGroupLimitRel);
+    const auto& sourceDataTypes = childNode->OutputType();
+    auto outputType = sourceDataTypes;
+
+    int32_t n = windowGroupLimitRel.limit();
+    if (n <= 0) {
+        OMNI_THROW("Substrait Error", "WindowGroupLimitRel requires a positive N(limit)!");
+    }
+
+    std::vector<TypedExprPtr> partitionKeys;
+    const auto& partitions = windowGroupLimitRel.partition_expressions();
+    for (const auto& partition : partitions) {
+        auto expression = exprConverter->ToOmniExpr(partition, sourceDataTypes);
+        partitionKeys.emplace_back(expression);
+    }
+
+    auto [sortingKeys, sortingAscendings, sortNullFirsts] = ProcessSortFieldWithExpr(windowGroupLimitRel.sorts(), sourceDataTypes);
+
+    std::string funcName;
+    if (!windowGroupLimitRel.has_advanced_extension()) {
+        OMNI_THROW("Substrait Error", "WindowGroupLimitRel requires advanced_extension !");
+    }
+    if (SubstraitParser::ConfigSetInOptimization(windowGroupLimitRel.advanced_extension(), "isRank=")) {
+        funcName = "rank";
+    } else if (SubstraitParser::ConfigSetInOptimization(windowGroupLimitRel.advanced_extension(), "isRowNumber=")) {
+        funcName = "row_number";
+    } else {
+        OMNI_THROW("Substrait Error", "WindowGroupLimitRel requires rankLikeFunction rank or row_number!");
+    }
+
+    return std::make_shared<WindowGroupLimitNode>(NextPlanNodeId(), childNode, n, funcName, partitionKeys,
+        sortingKeys, sortingAscendings, sortNullFirsts, outputType);
+}
+
 const WindowFrameInfo SubstraitToOmniPlanConverter::createWindowFrameInfo(
     const ::substrait::Expression_WindowFunction_Bound& lower_bound,
     const ::substrait::Expression_WindowFunction_Bound& upper_bound,
@@ -886,6 +922,8 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::Rel &rel
         return ToOmniPlan(rel.top_n());
     } else if (rel.has_window()) {
         return ToOmniPlan(rel.window());
+    } else if (rel.has_windowgrouplimit()) {
+        return ToOmniPlan(rel.windowgrouplimit());
     } else if (rel.has_write()) {
         return ToOmniPlan(rel.write());
     } else if (rel.has_set()) {

@@ -55,6 +55,9 @@ private:
     /// Used to validate whether the computing of this Window is supported.
     bool Validate(const ::substrait::WindowRel &windowRel);
 
+    /// Used to validate whether the computing of this WindowGroupLimit is supported.
+    bool Validate(const ::substrait::WindowGroupLimitRel &windowGroupLimitRel);
+
     /// Used to validate whether the computing of this Set is supported.
     bool Validate(const ::substrait::SetRel &setRel);
 

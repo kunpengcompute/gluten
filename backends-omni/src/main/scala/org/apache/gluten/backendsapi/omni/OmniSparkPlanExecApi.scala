@@ -27,7 +27,7 @@ import org.apache.spark.serializer.Serializer
 import org.apache.spark.shuffle.{GenShuffleWriterParameters, GlutenShuffleWriterWrapper, OmniColumnarBatchSerializer, OmniColumnarShuffleWriter, OmniShuffleUtil}
 import org.apache.spark.sql.catalyst.catalog.BucketSpec
 import org.apache.spark.sql.catalyst.catalog.CatalogTypes.TablePartitionSpec
-import org.apache.spark.sql.catalyst.expressions.{Attribute, AttributeReference, Cast, DateDiff, ElementAt, Expression, FromUnixTime, Generator, GetMapValue, GetStructField, HashExpression, Like, Md5, NamedExpression, PosExplode, PythonUDF, UnixTimestamp}
+import org.apache.spark.sql.catalyst.expressions.{Attribute, AttributeReference, Cast, DateDiff, ElementAt, Expression, FromUnixTime, Generator, GetMapValue, GetStructField, HashExpression, Like, Md5, NamedExpression, PosExplode, PythonUDF, UnixTimestamp, SortOrder}
 import org.apache.spark.sql.catalyst.expressions.aggregate.AggregateExpression
 import org.apache.spark.sql.catalyst.optimizer.BuildSide
 import org.apache.spark.sql.catalyst.plans.JoinType
@@ -37,6 +37,7 @@ import org.apache.spark.sql.execution.datasources.{FileFormat, HadoopFsRelation}
 import org.apache.spark.sql.execution.exchange.{BroadcastExchangeExec, ShuffleExchangeExec}
 import org.apache.spark.sql.execution.joins.BuildSideRelation
 import org.apache.spark.sql.execution.metric.SQLMetric
+import org.apache.spark.sql.execution.window.WindowGroupLimitMode
 import org.apache.spark.sql.types.{BinaryType, StringType, StructType}
 import org.apache.spark.sql.vectorized.ColumnarBatch
 import org.apache.gluten.datasources.orc.OmniOrcFileFormat
@@ -490,4 +491,13 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
                                       attributeSeq: Seq[Attribute]): ExpressionTransformer = {
     replaceWithExpressionTransformer(cast, attributeSeq)
   }
+
+  override def genWindowGroupLimitTransformer(
+                                               partitionSpec: Seq[Expression],
+                                               orderSpec: Seq[SortOrder],
+                                               rankLikeFunction: Expression,
+                                               limit: Int,
+                                               mode: WindowGroupLimitMode,
+                                               child: SparkPlan): SparkPlan =
+    OmniWindowGroupLimitExecTransformer(partitionSpec, orderSpec, rankLikeFunction, limit, mode, child)
 }

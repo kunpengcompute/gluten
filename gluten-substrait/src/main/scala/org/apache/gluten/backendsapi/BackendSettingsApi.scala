@@ -24,6 +24,7 @@ import org.apache.gluten.substrait.rel.LocalFilesNode.ReadFileFormat
 
 import org.apache.spark.sql.catalyst.catalog.BucketSpec
 import org.apache.spark.sql.catalyst.expressions.{Expression, NamedExpression}
+import org.apache.spark.sql.catalyst.expressions.{Rank, RowNumber}
 import org.apache.spark.sql.catalyst.plans._
 import org.apache.spark.sql.connector.read.Scan
 import org.apache.spark.sql.execution.command.CreateDataSourceTableAsSelectCommand
@@ -65,7 +66,10 @@ trait BackendSettingsApi {
     false
   }
   def supportWindowGroupLimitExec(rankLikeFunction: Expression): Boolean = {
-    false
+    rankLikeFunction match {
+      case _: Rank | _:RowNumber => true;
+      case _ => false;
+    }
   }
   def supportColumnarShuffleExec(): Boolean = {
     GlutenConfig.get.enableColumnarShuffle
