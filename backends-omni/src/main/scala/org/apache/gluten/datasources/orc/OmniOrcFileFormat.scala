@@ -40,6 +40,12 @@ import java.net.URI
 
 class OmniOrcFileFormat extends FileFormat with DataSourceRegister with Serializable {
 
+  var canVecPredicateFilter = false
+
+  def setVecPredicateFilter(): Unit = {
+    canVecPredicateFilter = true
+  }
+
   override def shortName(): String = "orc-native"
 
   override def toString: String = "ORC-NATIVE"
@@ -73,7 +79,7 @@ class OmniOrcFileFormat extends FileFormat with DataSourceRegister with Serializ
       sparkSession.sparkContext.broadcast(new SerializableConfiguration(hadoopConf))
     val isCaseSensitive = sparkSession.sessionState.conf.caseSensitiveAnalysis
     val orcFilterPushDown = sparkSession.sessionState.conf.orcFilterPushDown
-    val vecPredicateFilter = sparkSession.sessionState.conf.getConf(COLUMNAR_OMNI_ENABLE_VEC_PREDICATE_FILTER)
+    val vecPredicateFilter = sparkSession.sessionState.conf.getConf(COLUMNAR_OMNI_ENABLE_VEC_PREDICATE_FILTER) && canVecPredicateFilter
 
     (file: PartitionedFile) => {
       val conf = broadcastedConf.value.value
