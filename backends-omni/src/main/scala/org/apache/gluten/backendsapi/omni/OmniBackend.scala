@@ -218,7 +218,26 @@ class OmniValidatorApi extends ValidatorApi {
       // See: https://github.com/apache/incubator-gluten/issues/7600.
       return Some("Shuffle with empty input schema is not supported")
     }
-    doSchemaValidate(child.schema)
+    doSchemaValidateForShuffle(child.schema)
+  }
+
+  def doSchemaValidateForShuffle(schema: DataType): Option[String] = {
+    if (DataTypeUtils.isPrimitiveType(schema)) {
+      return None
+    }
+    schema match {
+      case struct: StructType =>
+        struct.fields.foreach {
+          f =>
+            val reason = doSchemaValidate(f.dataType)
+            if (reason.isDefined) {
+              return reason
+            }
+        }
+        None
+      case _ =>
+        Some(s"Schema / data type not supported: $schema")
+    }
   }
 
   override def doSchemaValidate(schema: DataType): Option[String] = {
