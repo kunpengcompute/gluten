@@ -542,10 +542,10 @@ public class Metrics implements IMetrics {
             buildAddInputTime[index],
             buildGetOutputTime[index],
 
-            lookupNumOutputVecBatches[index],
+            lookupInputRows[index],
             lookupNumInputVecBatches[index],
             lookupOutputRows[index],
-            lookupInputRows[index],
+            lookupNumOutputVecBatches[index],
             lookupGetOutputTime[index],
             lookupAddInputTime[index]
         );
