@@ -229,7 +229,7 @@ class OmniValidatorApi extends ValidatorApi {
       case struct: StructType =>
         struct.fields.foreach {
           f =>
-            val reason = doSchemaValidate(f.dataType)
+            val reason = doSchemaValidateForShuffle(f.dataType)
             if (reason.isDefined) {
               return reason
             }
