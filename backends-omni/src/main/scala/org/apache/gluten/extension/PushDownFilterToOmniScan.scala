@@ -37,7 +37,7 @@ object PushDownFilterToOmniScan extends Rule[SparkPlan] with PredicateHelper {
       filter.child match {
         case fileScan: FileSourceScanExecTransformer if fileScan.relation.fileFormat.isInstanceOf[OmniOrcFileFormat] =>
           val pushDownFilters = getPushedFilter(fileScan.dataFilters)
-          val newScan = fileScan.copy(dataFilters = pushDownFilters)
+          val newScan = fileScan.copy(output = filter.output, dataFilters = pushDownFilters)
           newScan.relation.fileFormat.asInstanceOf[OmniOrcFileFormat].setVecPredicateFilter()
           if (newScan.doValidate().ok()) {
             val pushDownFilterSet = pushDownFilters.toSet
