@@ -19,7 +19,7 @@ package org.apache.gluten.backendsapi.omni
 import org.apache.gluten.backendsapi.SparkPlanExecApi
 import org.apache.gluten.config.GlutenConfig
 import org.apache.gluten.execution._
-import org.apache.gluten.expression.{ExpressionConverter, ExpressionMappings, ExpressionTransformer, GenericExpressionTransformer, OmniAliasTransformer, OmniFromUnixTimeTransformer, OmniGetStructFieldTransformer, OmniHashExpressionTransformer, OmniUnixTimestampTransformer}
+import org.apache.gluten.expression.{ExpressionConverter, ExpressionMappings, ExpressionNames, ExpressionTransformer, GenericExpressionTransformer, OmniAliasTransformer, OmniFromUnixTimeTransformer, OmniGetStructFieldTransformer, OmniHashExpressionTransformer, OmniUnixTimestampTransformer, Sig}
 import org.apache.gluten.extension.columnar.FallbackTags
 import org.apache.spark.{ShuffleDependency, SparkException}
 import org.apache.spark.rdd.RDD
@@ -27,7 +27,7 @@ import org.apache.spark.serializer.Serializer
 import org.apache.spark.shuffle.{GenShuffleWriterParameters, GlutenShuffleWriterWrapper, OmniColumnarBatchSerializer, OmniColumnarShuffleWriter, OmniShuffleUtil}
 import org.apache.spark.sql.catalyst.catalog.BucketSpec
 import org.apache.spark.sql.catalyst.catalog.CatalogTypes.TablePartitionSpec
-import org.apache.spark.sql.catalyst.expressions.{Attribute, AttributeReference, Cast, DateDiff, ElementAt, Expression, FromUnixTime, Generator, GetMapValue, GetStructField, HashExpression, Like, Md5, NamedExpression, PosExplode, PythonUDF, UnixTimestamp, SortOrder}
+import org.apache.spark.sql.catalyst.expressions.{Attribute, AttributeReference, BloomFilterMightContain, Cast, DateDiff, ElementAt, Expression, FromUnixTime, Generator, GetMapValue, GetStructField, HashExpression, Like, Md5, NamedExpression, PosExplode, PythonUDF, SortOrder, UnixTimestamp}
 import org.apache.spark.sql.catalyst.expressions.aggregate.AggregateExpression
 import org.apache.spark.sql.catalyst.optimizer.BuildSide
 import org.apache.spark.sql.catalyst.plans.JoinType
@@ -50,6 +50,12 @@ import org.apache.spark.sql.execution.datasources.orc.OrcFileFormat
 import org.apache.spark.sql.execution.datasources.parquet.ParquetFileFormat
 
 class OmniSparkPlanExecApi extends SparkPlanExecApi {
+
+  override def extraExpressionMappings: Seq[Sig] = {
+    Seq(
+      Sig[BloomFilterMightContain](ExpressionNames.MIGHT_CONTAIN),
+    )
+  }
 
   /**
    * Generate FilterExecTransformer.
