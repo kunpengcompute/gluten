@@ -18,7 +18,9 @@
 #include "SubstraitToOmniExpr.h"
 #include "expression/parserhelper.h"
 #include "codegen/func_registry.h"
+#include "codegen/bloom_filter.h"
 #include "type/data_type.h"
+#include "codegen/bloom_filter.h"
 
 constexpr const char *SUBSTRAIT_PARSE_ERROR = "SUBSTRAIT_PARSE_ERROR";
 namespace omniruntime {
@@ -115,6 +117,24 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
     }
 }
 
+void writeIntBigEndian(int32_t val, int8_t *buf) {
+    *buf = (val>>24) & 0xff;
+    *(buf+1) = (val>>16) & 0xff;
+    *(buf+2) = (val>>8) & 0xff;
+    *(buf+3) = val & 0xff;
+}
+
+void writeLongBigEndian(int64_t val, int8_t *buf) {
+    *buf = (val>>56) & 0xff;
+    *(buf+1) = (val>>48) & 0xff;
+    *(buf+2) = (val>>40) & 0xff;
+    *(buf+3) = (val>>32) & 0xff;
+    *(buf+4) = (val>>24) & 0xff;
+    *(buf+5) = (val>>16) & 0xff;
+    *(buf+6) = (val>>8) & 0xff;
+    *(buf+7) = val & 0xff;
+}
+
 TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
     const ::substrait::Expression::ScalarFunction &substraitFunc, const DataTypesPtr &inputType)
 {
@@ -122,7 +142,7 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
     const auto &outputType = SubstraitParser::ParseType(substraitFunc.output_type());
     auto type = omniFunction.first;
     auto funcName = omniFunction.second;
-    Operator op = StringToOperator(funcName);
+    expressions::Operator op = StringToOperator(funcName);
     std::vector<Expr *> args;
     args.reserve(substraitFunc.arguments().size());
     for (const auto &sArg : substraitFunc.arguments()) {
@@ -134,18 +154,18 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
     if (type == IS_NOT_NULL_OMNI_EXPR_TYPE) {
         OMNI_CHECK(args[0] != nullptr, "args[0] is null");
         auto isNullExpr = new IsNullExpr(args[0]);
-        return new UnaryExpr(Operator::NOT, isNullExpr, std::make_shared<BooleanDataType>());
+        return new UnaryExpr(expressions::Operator::NOT, isNullExpr, std::make_shared<BooleanDataType>());
     } else if (type == IS_NULL_OMNI_EXPR_TYPE) {
         OMNI_CHECK(args[0] != nullptr, "args[0] is null");
         return new IsNullExpr(args[0]);
     } else if (type == UNARY_OMNI_EXPR_TYPE) {
         OMNI_CHECK(args[0] != nullptr, "args[0] is null");
-        OMNI_CHECK(op != Operator::INVALIDOP, "the operator is INVALIDOP");
+        OMNI_CHECK(op != expressions::Operator::INVALIDOP, "the operator is INVALIDOP");
         return new UnaryExpr(op, args[0], std::make_shared<BooleanDataType>());
     } else if (type == BINARY_OMNI_EXPR_TYPE) {
         OMNI_CHECK(outputType != nullptr, "outputType is null");
         OMNI_CHECK(args[0] != nullptr, "args[0] is null");
-        OMNI_CHECK(op != Operator::INVALIDOP, "the operator is INVALIDOP");
+        OMNI_CHECK(op != expressions::Operator::INVALIDOP, "the operator is INVALIDOP");
         if (args[1] == nullptr) {
             delete args[0];
             OMNI_THROW("SUBSTRAIT_ERROR:", "The args[1] in ScalarFunction is nullptr");
@@ -174,6 +194,49 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
             }
             return func;
         }
+        if (funcName == "might_contain") {
+           LiteralExpr *childExpr = dynamic_cast<LiteralExpr *>(args[0]);
+           std::string *sp = childExpr->stringVal;
+           if (*sp == "NULL") {
+               LiteralExpr *nChildExpr = new LiteralExpr(0L, LongType(), true);
+               BloomFilterFuncExpr *bfFuncExpr = new BloomFilterFuncExpr(funcName, {nChildExpr, args[1]}, outputType, nullptr, nullptr);
+               delete childExpr;
+               return bfFuncExpr;
+           }
+           int64_t len = sp->length();
+           const char *dataPtr = sp->c_str();
+           std::unique_ptr<mem::AlignedBuffer<int8_t>>buf=std::make_unique<mem::AlignedBuffer<int8_t>>(len);
+           int8_t *bfBuf = buf->GetBuffer();
+
+           //decode
+           int32_t version = *reinterpret_cast<const int32_t *>(dataPtr);
+           dataPtr += 4;
+           int32_t numHashFunctions = *reinterpret_cast<const int32_t *>(dataPtr);
+           dataPtr += 4;
+           int32_t numWords = *reinterpret_cast<const int32_t *>(dataPtr);
+           dataPtr += 4;
+           writeIntBigEndian(version, bfBuf);
+           version = *reinterpret_cast<int32_t *>(bfBuf);
+           bfBuf += 4;
+           writeIntBigEndian(numHashFunctions, bfBuf);
+           bfBuf += 4;
+           writeIntBigEndian(numWords, bfBuf);
+           numWords = *reinterpret_cast<int32_t *>(bfBuf);
+           bfBuf += 4;
+
+           int64_t word;
+           for(int32_t i = 0; i < numWords; i++) {
+               word = *reinterpret_cast<const int64_t *>(dataPtr);
+               writeLongBigEndian(word, bfBuf);
+               dataPtr += 8;
+               bfBuf += 8;
+           }
+           std::unique_ptr<op::BloomFilter>bloomFilter = std::make_unique<op::BloomFilter>(buf->GetBuffer(), version);
+           LiteralExpr *nChildExpr = new LiteralExpr(reinterpret_cast<intptr_t>(bloomFilter.get()), LongType());
+           BloomFilterFuncExpr *bfFuncExpr = new BloomFilterFuncExpr(funcName, {nChildExpr, args[1]}, outputType, std::move(buf), std::move(bloomFilter));
+           delete childExpr;
+           return bfFuncExpr;
+         }
         // check the signature matches
         std::vector<DataTypeId> argTypes(args.size());
         std::transform(args.begin(), args.end(), argTypes.begin(),
