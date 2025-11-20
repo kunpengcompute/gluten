@@ -1247,7 +1247,7 @@ object OmniExpressionAdaptor extends Logging {
     val metadata = attr.metadata
     val omniDataType: String = sparkTypeToOmniExpType(dataType)
     dataType match {
-      case ShortType | IntegerType | LongType | DoubleType | BooleanType | DateType |
+      case ByteType | ShortType | IntegerType | LongType | DoubleType | BooleanType | DateType |
           TimestampType | StructType(_) | MapType(_, _, _) | ArrayType(_, _) =>
         new JsonObject()
           .put("exprType", "FIELD_REFERENCE")
