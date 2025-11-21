@@ -29,6 +29,8 @@ import org.apache.spark.util.{SparkDirectoryUtil, SparkResourceUtil}
 
 import java.util.concurrent.atomic.AtomicBoolean
 
+import scala.util.matching.Regex
+
 class OmniListenerApi extends ListenerApi with Logging {
 
   import OmniListenerApi._
@@ -68,6 +70,16 @@ class OmniListenerApi extends ListenerApi with Logging {
     SparkDirectoryUtil.init(conf)
     initialize(conf, isDriver = false)
   }
+
+  private def replaceEnvVarsWithDefaults(input: String, defaultForMissing: String = ""): String = {
+    val pattern: Regex = """\$\{([^}]+)\}""".r
+
+    pattern.replaceAllIn(input, { m =>
+      val envVarName = m.group(1)
+      sys.env.getOrElse(envVarName, defaultForMissing)
+    })
+  }
+
   private def initialize(conf: SparkConf, isDriver: Boolean): Unit = {
     // Initial native backend with configurations.
     val parsed = GlutenConfigUtil.parseConfig(conf.getAll.toMap)
@@ -79,7 +91,14 @@ class OmniListenerApi extends ListenerApi with Logging {
       throw new IllegalArgumentException(
         "Please set spark.gluten.sql.columnar.libpath to enable omni backend")
     }
-    JniLibLoader.loadFromPath(libPath, true)
+
+    if(isDriver) {
+      JniLibLoader.loadFromPath(libPath, true)
+    } else {
+      val executorLibPath = conf.get(GlutenConfig.GLUTEN_EXECUTOR_LIB_PATH, libPath)
+      val actualLibPath = replaceEnvVarsWithDefaults(executorLibPath)
+      JniLibLoader.loadFromPath(actualLibPath, true)
+    }
   }
 }
 
