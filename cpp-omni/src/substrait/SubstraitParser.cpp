@@ -406,6 +406,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"first_ignore_null", {FUNCTION_OMNI_EXPR_TYPE, "first_ignore_null"}},
     {"stddev_samp", {FUNCTION_OMNI_EXPR_TYPE, "stddev_samp"}},
     {"date_add", {FUNCTION_OMNI_EXPR_TYPE, "date_add"}},
+    {"datediff", {FUNCTION_OMNI_EXPR_TYPE, "date_diff"}},
     {"date_format", {FUNCTION_OMNI_EXPR_TYPE, "DateFormat"}},
     {"trunc", {FUNCTION_OMNI_EXPR_TYPE, "trunc_date"}},
     {"trim", {FUNCTION_OMNI_EXPR_TYPE, "Trim"}},
