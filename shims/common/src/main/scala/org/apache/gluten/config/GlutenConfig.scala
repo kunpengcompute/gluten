@@ -229,6 +229,8 @@ class GlutenConfig(conf: SQLConf) extends Logging {
 
   def enableShuffleBatchMerge: Boolean = conf.getConf(ENABLE_SHUFFLE_BATCH_MERGE)
 
+  def omniResizeBatchesShuffleInput: Boolean = conf.getConf(COLUMNAR_OMNI_RESIZE_BATCHES_SHUFFLE_INPUT)
+
   def enableNativeBloomFilter: Boolean = conf.getConf(COLUMNAR_NATIVE_BLOOMFILTER_ENABLED)
 
   def enableNativeHyperLogLogAggregateFunction: Boolean =
@@ -2510,6 +2512,12 @@ object GlutenConfig {
     .doc("enable columnar shuffle merge")
     .booleanConf
     .createWithDefault(true)
+
+  val COLUMNAR_OMNI_RESIZE_BATCHES_SHUFFLE_INPUT = buildConf("spark.gluten.sql.columnar.backend.omni.resizeBatches.shuffleInput")
+    .internal()
+    .doc(s"If true, combine small columnar batches together before sending to shuffle. ")
+    .booleanConf
+    .createWithDefault(false)
 
   val COMBINE_JOINED_AGGREGATES_ENABLED = buildConf("spark.gluten.sql.columnar.backend.omni.combineJoinedAggregates")
     .internal()

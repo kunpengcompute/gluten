@@ -162,6 +162,19 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
       OmniHashAggregateExecPullOutBaseHelper(aggregateExpressions, aggregateAttributes)
 
   override def genColumnarShuffleExchange(shuffle: ShuffleExchangeExec): SparkPlan = {
+
+    def maybeAddAppendBatchesExec(plan: SparkPlan): SparkPlan = {
+      plan match {
+        case shuffle: OmniColumnarShuffleExchangeExec
+          if !shuffle.useSortBasedShuffle &&
+            GlutenConfig.get.omniResizeBatchesShuffleInput =>
+          val appendBatches =
+              OmniResizeBatchesExec(shuffle.child)
+          shuffle.withNewChildren(Seq(appendBatches))
+        case _ => plan
+      }
+    }
+
     val child = shuffle.child
     val columnarConf = GlutenConfig.get
     val isRowShuffle = columnarConf.enableOmniRowShuffle &&
@@ -174,6 +187,7 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
       FallbackTags.add(shuffle, validationResult)
       shuffle.withNewChildren(child :: Nil)
     }
+    maybeAddAppendBatchesExec(newShuffle)
   }
 
   /** Generate ShuffledHashJoinExecTransformer. */
