@@ -412,6 +412,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"trim", {FUNCTION_OMNI_EXPR_TYPE, "Trim"}},
     {"ltrim", {FUNCTION_OMNI_EXPR_TYPE, "LTrim"}},
     {"rtrim", {FUNCTION_OMNI_EXPR_TYPE, "RTrim"}},
+    {"floor", {FUNCTION_OMNI_EXPR_TYPE, "floor"}},
     {"get_json_object", {FUNCTION_OMNI_EXPR_TYPE, "GetJsonObject"}},
     {"might_contain", {FUNCTION_OMNI_EXPR_TYPE, "might_contain"}},
     {"bitwise_and", {FUNCTION_OMNI_EXPR_TYPE, "bitwise_and"}},

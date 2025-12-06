@@ -183,6 +183,14 @@ object OmniBackendSettings extends BackendSettingsApi {
     isSupport
   }
 
+  override def supportColumnarShuffleExec(): Boolean = {
+    val conf = GlutenConfig.get
+    conf.enableColumnarShuffle && (conf.isUseGlutenShuffleManager
+      || conf.isUseColumnarShuffleManager
+      || conf.isUseCelebornShuffleManager
+      || conf.isUseUniffleShuffleManager)
+  }
+
   override def transformCheckOverflow: Boolean = false
 
   override def excludeScanExecFromCollapsedStage(): Boolean = {
