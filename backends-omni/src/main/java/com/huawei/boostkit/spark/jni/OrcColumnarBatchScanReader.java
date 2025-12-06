@@ -613,7 +613,8 @@ public class OrcColumnarBatchScanReader {
     private String buildVecPredicateCondition(Filter filterPredicate) {
         Map<String, Integer> nameToIndex = IntStream.range(0, includedColumns.size())
                 .boxed()
-                .collect(Collectors.toMap(includedColumns::get, i -> i));
+                .collect(Collectors.toMap(i -> isCaseSensitive ? includedColumns.get(i) :
+                        includedColumns.get(i).toLowerCase(), i -> i));
         return buildPredicateCondition(filterPredicate, nameToIndex).reduce().toString();
     }
 
