@@ -2485,11 +2485,11 @@ object GlutenConfig {
     .booleanConf
     .createWithDefault(false)
 
-  val ENABLE_ADAPTIVE_PARTIAL_AGGREGATION = buildConf("spark.gluten.sql.columnar.backend.omni.adaptivePartialAggregation")
+  val ENABLE_ADAPTIVE_PARTIAL_AGGREGATION = buildConf("spark.gluten.sql.columnar.backend.omni.adaptivePartialAggregation.enabled")
     .internal()
     .doc("enable or disable adaptive partial aggregation")
     .booleanConf
-    .createWithDefault(false)
+    .createWithDefault(true)
 
   val FILTER_MERGE_THRESHOLD = buildConf("spark.gluten.sql.columnar.backend.omni.filterMerge.maxCost")
     .internal()

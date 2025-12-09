@@ -39,6 +39,8 @@ DataTypePtr GetScalarType(const ::substrait::Expression::Literal &literal)
             return IntType();
         case ::substrait::Expression_Literal::LiteralTypeCase::kI64:
             return LongType();
+        case ::substrait::Expression_Literal::LiteralTypeCase::kFp32:
+            return FloatType();
         case ::substrait::Expression_Literal::LiteralTypeCase::kFp64:
             return DoubleType();
         case ::substrait::Expression_Literal::LiteralTypeCase::kDecimal: {
@@ -345,6 +347,8 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(const ::substrait::Expressio
             return new LiteralExpr(substraitLit.i32(), IntType());
         case ::substrait::Expression_Literal::LiteralTypeCase::kI64:
             return new LiteralExpr(substraitLit.i64(), LongType());
+        case ::substrait::Expression_Literal::LiteralTypeCase::kFp32:
+            return new LiteralExpr(substraitLit.fp32(), FloatType());
         case ::substrait::Expression_Literal::LiteralTypeCase::kFp64:
             return new LiteralExpr(substraitLit.fp64(), DoubleType());
         case ::substrait::Expression_Literal::LiteralTypeCase::kDate:
