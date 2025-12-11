@@ -121,7 +121,7 @@ namespace spark {
       file = open(
                   filename.c_str(),
                   O_BINARY | O_CREAT | O_WRONLY | O_TRUNC,
-                  S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
+                  S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
       if (file == -1) {
         throw std::runtime_error("Can't open " + filename);
       }
