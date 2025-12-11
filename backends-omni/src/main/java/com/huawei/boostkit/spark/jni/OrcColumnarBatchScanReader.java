@@ -669,13 +669,13 @@ public class OrcColumnarBatchScanReader {
         if (op == PredicateOperatorType.IS_NOT_NULL || op == PredicateOperatorType.IS_NULL) {
             return new LeafPredicateCondition(op, index, DataType.DataTypeId.OMNI_INT, "-1");
         }
-        DataType.DataTypeId dataType = getSupportPredicateDataType(attribute);
+        DataType.DataTypeId dataType = getSupportPredicateDataType(index);
         String value = getLiteralValue(literal);
         return new LeafPredicateCondition(op, index, dataType, value);
     }
 
-    private DataType.DataTypeId getSupportPredicateDataType(String attribute) {
-        StructField field = requiredSchema.apply(attribute);
+    private DataType.DataTypeId getSupportPredicateDataType(Integer index) {
+        StructField field = requiredSchema.apply(index);
         org.apache.spark.sql.types.DataType dataType = field.dataType();
         if (dataType instanceof ShortType) {
             return DataType.DataTypeId.OMNI_SHORT;
