@@ -140,6 +140,12 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
             case _ =>
               throw new GlutenNotSupportException(s"Not supported: $expr.")
           }
+        case AttributeReference(_, dataType, _, _) if dataType == BinaryType =>
+          Some(GenericExpressionTransformer(
+            substraitExprName,
+            md5.children.map(ExpressionConverter.replaceWithExpressionTransformer(_, attributeSeq)),
+            md5
+          ))
         case _ =>
           throw new GlutenNotSupportException(s"Not supported: $expr.")
       }
