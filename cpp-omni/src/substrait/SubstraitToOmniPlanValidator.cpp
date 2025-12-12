@@ -723,6 +723,29 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::SortRel &sortRel)
         return false;
     }
 
+    for (const auto &type : types) {
+        switch (type->GetId()) {
+            case OMNI_BYTE:
+            case OMNI_SHORT:
+            case OMNI_INT:
+            case OMNI_DATE32:
+            case OMNI_LONG:
+            case OMNI_TIMESTAMP:
+            case OMNI_DOUBLE:
+            case OMNI_CHAR:
+            case OMNI_VARCHAR:
+            case OMNI_BOOLEAN:
+            case OMNI_DECIMAL64:
+            case OMNI_DECIMAL128:
+            case OMNI_FLOAT:
+                break;
+            default:
+                LOG_VALIDATION_MSG(
+                    "Validation failed for input types " + std::to_string(type->GetId()) + " in SortRel.");
+                return false;
+        }
+    }
+
     auto rowType = std::make_shared<DataTypes>(std::move(types));
 
     const auto &sorts = sortRel.sorts();
