@@ -738,6 +738,7 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::SortRel &sortRel)
             case OMNI_DECIMAL64:
             case OMNI_DECIMAL128:
             case OMNI_FLOAT:
+            case OMNI_ARRAY:
                 break;
             default:
                 LOG_VALIDATION_MSG(
