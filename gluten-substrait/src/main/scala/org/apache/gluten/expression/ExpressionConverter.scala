@@ -169,13 +169,6 @@ object ExpressionConverter extends SQLConfHelper with Logging {
     }
 
     val substraitExprName: String = getAndCheckSubstraitName(expr, expressionsMap)
-    val backendConverted = BackendsApiManager.getSparkPlanExecApiInstance.extraExpressionConverter(
-      substraitExprName,
-      expr,
-      attributeSeq)
-    if (backendConverted.isDefined) {
-      return backendConverted.get
-    }
     expr match {
       case c: CreateArray =>
         val children =
