@@ -29,6 +29,7 @@ import org.apache.gluten.substrait.rel.LocalFilesNode
 import org.apache.gluten.substrait.rel.LocalFilesNode.ReadFileFormat
 import org.apache.gluten.validate.NativePlanValidationInfo
 import org.apache.gluten.vectorized.OmniNativePlanEvaluator
+import org.apache.spark.shuffle.OmniShuffleUtil
 import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, Average, Count, First, Max, Min, StddevSamp, Sum}
 import org.apache.spark.sql.catalyst.expressions.{Alias, Attribute, CurrentRow, Literal, NamedExpression, Rank, RowNumber, SpecifiedWindowFrame, UnboundedFollowing, UnboundedPreceding, WindowExpression}
 import org.apache.spark.sql.catalyst.plans.physical.Partitioning
@@ -232,6 +233,7 @@ class OmniValidatorApi extends ValidatorApi {
       return Some("Shuffle with empty input schema is not supported")
     }
     doSchemaValidateForShuffle(child.schema)
+    OmniShuffleUtil.doShuffleValidate(outputAttributes, outputPartitioning, child)
   }
 
   def doSchemaValidateForShuffle(schema: DataType): Option[String] = {
