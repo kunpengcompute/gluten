@@ -245,15 +245,21 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
             [](Expr *expr) -> DataTypeId { return expr->GetReturnTypeId(); });
         return new FuncExpr(funcName, args, std::move(outputType));
     } else if (type == COALESCE_OMNI_EXPR_TYPE) {
-        if (args.size() != COALESCE_INPUT) {
-            OMNI_THROW("SUBSTRAIT_ERROR:", "coalesce expression only support two input parameters");
+        if (args.size() < 2) {
+            OMNI_THROW("SUBSTRAIT_ERROR:", "coalesce expression requires at least two input parameters");
         }
-        OMNI_CHECK(args[0] != nullptr, "args[0] is null");
-        if (args[1] == nullptr) {
-            delete args[0];
-            OMNI_THROW("SUBSTRAIT_ERROR:", "The args[1] in COALESCE_OMNI_EXPR_TYPE is nullptr");
+        for (size_t i = 0; i < args.size(); ++i) {
+            if (args[i] == nullptr) {
+                OMNI_THROW("SUBSTRAIT_ERROR:", "The args[{}] in COALESCE_OMNI_EXPR_TYPE is nullptr", i);
+            }
         }
-        return new CoalesceExpr(args[0], args[1]);
+        CoalesceExpr* coalesceExpr = nullptr;
+        if (args.size() == 2) {
+            coalesceExpr = new CoalesceExpr(args[0], args[1]);
+        } else {
+            coalesceExpr = BuildNestedCoalesceExpr(args);
+        }
+        return coalesceExpr;
     } else if (type == HIVE_UDF_FUNCTION_OMNI_EXPR_TYPE) {
         DataTypePtr retType;
         auto &hiveUdfClass = omniruntime::codegen::FunctionRegistry::LookupHiveUdf(funcName);
@@ -464,5 +470,15 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
             OMNI_THROW(
                 "Substrait_Error:", "Substrait conversion not supported for Expression '{}'", std::to_string(typeCase));
     }
+}
+
+CoalesceExpr* SubstraitOmniExprConverter::BuildNestedCoalesceExpr(const std::vector<Expr*>& args) {
+    Expr* current = new CoalesceExpr(args[args.size()-2], args[args.size()-1]);
+
+    for (int i = args.size() - 3; i >= 0; --i) {
+        current = new CoalesceExpr(args[i], current);
+    }
+
+    return static_cast<CoalesceExpr*>(current);
 }
 } // namespace omniruntime

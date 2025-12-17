@@ -70,6 +70,8 @@ public:
 
     TypedExprPtr UnfoldConcatStringFunc(std::vector<Expr *> args, DataTypePtr outputType);
 
+    CoalesceExpr* BuildNestedCoalesceExpr(const std::vector<Expr*>& args);
+
 private:
     /// Memory pool.
     // memory::MemoryPool* pool_;

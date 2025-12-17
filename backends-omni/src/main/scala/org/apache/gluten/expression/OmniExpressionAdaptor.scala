@@ -493,20 +493,22 @@ object OmniExpressionAdaptor extends Logging {
         procCaseWhenExpression(caseWhen, exprsIndexMap)
 
       case coalesce: Coalesce =>
-        if (coalesce.children.length > 2) {
-          throw new UnsupportedOperationException(
-            s"Number of parameters is ${coalesce.children.length}. " +
-              "Exceeds the maximum number of parameters, coalesce only supports up to 2 parameters")
+        def buildNestedCoalesce(exprs: List[Expression]): JsonObject = {
+          exprs match {
+            case Nil =>
+              throw new IllegalArgumentException("COALESCE must have at least one argument")
+            case head :: Nil =>
+              rewriteToOmniJsonExpressionLiteralJsonObject(head, exprsIndexMap)
+            case head :: tail =>
+              new JsonObject()
+                .put("exprType", "COALESCE")
+                .addOmniExpJsonType("returnType", coalesce.dataType)
+                .put("value1", rewriteToOmniJsonExpressionLiteralJsonObject(head, exprsIndexMap))
+                .put("value2", buildNestedCoalesce(tail))
+          }
         }
-        new JsonObject()
-          .put("exprType", "COALESCE")
-          .addOmniExpJsonType("returnType", coalesce.dataType)
-          .put(
-            "value1",
-            rewriteToOmniJsonExpressionLiteralJsonObject(coalesce.children.head, exprsIndexMap))
-          .put(
-            "value2",
-            rewriteToOmniJsonExpressionLiteralJsonObject(coalesce.children(1), exprsIndexMap))
+
+        buildNestedCoalesce(coalesce.children.toList)
 
       case concat: Concat =>
         getConcatJsonStr(concat, exprsIndexMap)
