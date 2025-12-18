@@ -47,6 +47,8 @@ class OmniColumnarBatchSerializer(
   def isRowShuffle(): Boolean = {
     isRowShuffle
   }
+
+  override def supportsRelocationOfSerializedObjects: Boolean = true
 }
 
 private class ColumnarBatchSerializerInstance(
