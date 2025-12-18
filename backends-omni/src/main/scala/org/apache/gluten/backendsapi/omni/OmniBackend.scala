@@ -232,7 +232,10 @@ class OmniValidatorApi extends ValidatorApi {
       // See: https://github.com/apache/incubator-gluten/issues/7600.
       return Some("Shuffle with empty input schema is not supported")
     }
-    doSchemaValidateForShuffle(child.schema)
+    val res = doSchemaValidateForShuffle(child.schema)
+    if (res.isDefined){
+      return res
+    }
     OmniShuffleUtil.doShuffleValidate(outputAttributes, outputPartitioning, child)
   }
 
