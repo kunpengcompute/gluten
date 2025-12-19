@@ -81,9 +81,12 @@ case class OmniFromUnixTimeTransformer(
     if (!GlutenConfig.get.enableOmniUnixTimeFunc) {
       throw new GlutenNotSupportException(s"Not Enable Omni UnixTime Function")
     }
+    // TODO: LEGACY need to be supported
+    /*
     if (GlutenConfig.get.timeParserPolicy == "LEGACY") {
       throw new GlutenNotSupportException(s"Unsupported Time Parser Policy: LEGACY")
     }
+    */
     if (!timeZoneSet.contains(timeZone)) {
       throw new GlutenNotSupportException(s"Unsupported Time Zone: $timeZone")
     }
@@ -120,9 +123,12 @@ case class OmniUnixTimestampTransformer(
     if (!GlutenConfig.get.enableOmniUnixTimeFunc) {
       throw new GlutenNotSupportException(s"Not Enable Omni UnixTime Function")
     }
+    // TODO: LEGACY need to be supported
+    /*
     if (GlutenConfig.get.timeParserPolicy == "LEGACY") {
       throw new GlutenNotSupportException(s"Unsupported Time Parser Policy: LEGACY")
     }
+    */
     if (!timeZoneSet.contains(timeZone)) {
       throw new GlutenNotSupportException(s"Unsupported Time Zone: $timeZone")
     }
