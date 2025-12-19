@@ -1032,7 +1032,7 @@ object OmniExpressionAdaptor extends Logging {
         } else {
           OMNI_AGGREGATION_TYPE_COUNT_ALL
         }
-      case Count(_) if agg.aggregateFunction.children.size == 1 =>
+      case Count(_) =>
         OMNI_AGGREGATION_TYPE_COUNT_COLUMN
       case First(_, true) =>
         checkFirstParamType(agg)
