@@ -60,7 +60,6 @@ case class RollupOptimization(session: SparkSession) extends Rule[SparkPlan] {
   }
 
   override def apply(plan: SparkPlan): SparkPlan = {
-    logInfo("Using BoostKit Spark Native Sql Engine Extension ColumnarPreOverrides")
     if (GlutenConfig.get.enableRollupOptimization) {
       replaceWithColumnarPlan(plan)
     } else {
