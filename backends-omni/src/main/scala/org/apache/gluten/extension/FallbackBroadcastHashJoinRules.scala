@@ -279,13 +279,7 @@ case class FallbackBroadcastHashJoin(session: SparkSession) extends Rule[SparkPl
             FallbackTags.add(
               plan,
               "it's a materialized broadcast exchange or reused broadcast exchange")
-          case ColumnarBroadcastExchangeExec(mode, child) =>
-            if (!isTransformable.ok) {
-              throw new IllegalStateException(
-                s"BroadcastExchange has already been" +
-                  s" transformed to columnar version but BHJ is determined as" +
-                  s" non-transformable: ${plan.toString()}")
-            }
+          case _ =>
         }
     }
   }
