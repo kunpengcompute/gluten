@@ -420,5 +420,6 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"bitwise_and", {FUNCTION_OMNI_EXPR_TYPE, "bitwise_and"}},
     {"bitwise_or", {FUNCTION_OMNI_EXPR_TYPE, "bitwise_or"}},
     {"shiftleft", {FUNCTION_OMNI_EXPR_TYPE, "shiftleft"}},
-    {"shiftright", {FUNCTION_OMNI_EXPR_TYPE, "shiftright"}}};
+    {"shiftright", {FUNCTION_OMNI_EXPR_TYPE, "shiftright"}},
+    {"negative", {FUNCTION_OMNI_EXPR_TYPE, "negative"}}};
 } // namespace omniruntime
