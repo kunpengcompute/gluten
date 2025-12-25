@@ -83,8 +83,8 @@ import java.util.stream.IntStream;
  *
  * @since 2025/6/17
  */
-public class OmniPushFilterBuilder {
-    private static final Logger LOGGER = LoggerFactory.getLogger(OmniPushFilterBuilder.class);
+public class OrcPushFilterBuilder {
+    private static final Logger LOGGER = LoggerFactory.getLogger(OrcPushFilterBuilder.class);
 
     private boolean nativeSupportTimestampRebase;
     private static final Pattern CHAR_TYPE = Pattern.compile("char\\(\\s*(\\d+)\\s*\\)");
@@ -118,7 +118,7 @@ public class OmniPushFilterBuilder {
     private List<DataType> dataTypes = new ArrayList<>();
 
 
-    public OmniPushFilterBuilder(StructType dataSchema, StructType requiredSchema) {
+    public OrcPushFilterBuilder(StructType dataSchema, StructType requiredSchema) {
         this.dataSchema = dataSchema;
         this.requiredSchema = requiredSchema;
         for (StructField field : dataSchema.fields()) {
@@ -199,9 +199,9 @@ public class OmniPushFilterBuilder {
                     includedColumns.add(target);
                 }
                 nova.hetu.omniruntime.type.DataType dataType =
-                        OmniExpressionAdaptor.sparkTypeToOmniTypeWithComplex(field.dataType(), field.metadata());
+                        OmniExpressionAdaptor.sparkTypeToOmniType(field.dataType(), field.metadata());
 
-                typeBuilder.add(dataType.getIdValue());
+                typeBuilder.add(dataType.getId().toValue());
                 dataTypes.add(dataType);
             } else {
                 colsToGet[i] = -1;
