@@ -235,8 +235,10 @@ public class OrcColumnarBatchScanReader {
                 }
             }
         }
-
-        job.put("includedColumns", includedColumns.toArray());
+        // empty orc file skip put includedColumns
+        if (!allFieldsNames.isEmpty()){
+            job.put("includedColumns", includedColumns.toArray());
+        }
         addJulianGregorianInfo(job);
         recordReader = jniReader.initializeRecordReader(reader, job);
         return recordReader;
@@ -661,10 +663,14 @@ public class OrcColumnarBatchScanReader {
         }
         Integer index = nameToIndex.get(attribute);
         if (index == null) {
-            // fix the bug in the previously generated orc file
-            // where some fields are missing after adding new columns to the table.
-            return new LeafPredicateCondition(
-                    PredicateOperatorType.TRUE, 0, DataType.DataTypeId.OMNI_BOOLEAN, "true");
+            // fix the bug in the previously generated orc file where some fields are missing after adding new columns to the table.
+            if (op == PredicateOperatorType.IS_NULL) {
+                // is null (miss columns is null) -> true
+                return new LeafPredicateCondition(PredicateOperatorType.TRUE, 0, DataType.DataTypeId.OMNI_BOOLEAN, "true");
+            } else {
+                // other op generate with is not null (miss columns is not null) -> false
+                return new LeafPredicateCondition(PredicateOperatorType.FALSE, 0, DataType.DataTypeId.OMNI_BOOLEAN, "false");
+            }
         }
         if (op == PredicateOperatorType.IS_NOT_NULL || op == PredicateOperatorType.IS_NULL) {
             return new LeafPredicateCondition(op, index, DataType.DataTypeId.OMNI_INT, "-1");

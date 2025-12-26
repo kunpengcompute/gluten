@@ -29,5 +29,6 @@ public enum PredicateOperatorType {
     IS_NULL,
     OR,
     AND,
-    NOT
+    NOT,
+    FALSE
 }
