@@ -154,6 +154,8 @@ class OmniMetricsApiImpl extends MetricsApi with Logging {
     "addInputTime" -> SQLMetrics.createTimingMetric(sparkContext, "input time of aggregation"),
     "getOutputCount" -> SQLMetrics.createMetric(sparkContext, "output calls count"),
     "getOutputTime" -> SQLMetrics.createTimingMetric(sparkContext, "output time of aggregation"),
+    "numSpilledBytes" -> SQLMetrics.createSizeMetric(sparkContext, "number of spilled bytes"),
+    "numSpilledRows" -> SQLMetrics.createMetric(sparkContext, "number of spilled rows"),
   )
 
   override def genHashAggregateTransformerMetricsUpdater(
@@ -211,7 +213,9 @@ class OmniMetricsApiImpl extends MetricsApi with Logging {
       "addInputTime" -> SQLMetrics.createTimingMetric(sparkContext, "input time of window"),
       "getOutputTime" -> SQLMetrics.createTimingMetric(sparkContext, "output time of window"),
       "addInputCount" -> SQLMetrics.createMetric(sparkContext, "input calls count"),
-      "getOutputCount" -> SQLMetrics.createMetric(sparkContext, "output calls count")
+      "getOutputCount" -> SQLMetrics.createMetric(sparkContext, "output calls count"),
+      "numSpilledBytes" -> SQLMetrics.createSizeMetric(sparkContext, "number of spilled bytes"),
+      "numSpilledRows" -> SQLMetrics.createMetric(sparkContext, "number of spilled rows"),
     )
 
   override def genWindowTransformerMetricsUpdater(metrics: Map[String, SQLMetric]): MetricsUpdater =
@@ -265,7 +269,9 @@ class OmniMetricsApiImpl extends MetricsApi with Logging {
       "numOutputRows" -> SQLMetrics.createMetric(sparkContext, "number of output rows"),
       "numOutputBytes" -> SQLMetrics.createSizeMetric(sparkContext, "number of output bytes"),
       "numOutputVectorBatches" -> SQLMetrics.createMetric(sparkContext, "number of output vecBatches"),
-      "getOutputCpuCount" -> SQLMetrics.createMetric(sparkContext, "output calls count")
+      "getOutputCpuCount" -> SQLMetrics.createMetric(sparkContext, "output calls count"),
+      "numSpilledBytes" -> SQLMetrics.createSizeMetric(sparkContext, "number of spilled bytes"),
+      "numSpilledRows" -> SQLMetrics.createMetric(sparkContext, "number of spilled rows"),
     )
   }
 
