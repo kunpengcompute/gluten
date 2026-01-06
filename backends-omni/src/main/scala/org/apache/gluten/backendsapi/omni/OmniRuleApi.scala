@@ -31,7 +31,7 @@ import org.apache.gluten.extension.injector.GlutenInjector.{LegacyInjector, RasI
 import org.apache.gluten.extension.RewriteAQEShuffleRead
 import org.apache.spark.sql.catalyst.optimizer.{CombineJoinedAggregates, DedupLeftSemiJoin, MergeSubqueryFilters, PushOrderedLimitThroughAgg, ReorderJoinEnhances, RewriteSelfJoinInInPredicate, RollupOptimization, ShuffleJoinStrategy, RewriteTopNSort, CombineWindowSort, OmniRewriteSubqueryBroadcast, CombineProject}
 import org.apache.gluten.extension.{FallbackBroadcastHashJoin, FallbackBroadcastHashJoinPrepQueryStage, PushDownFilterToOmniScan, RewriteAQEShuffleRead, OmniRewriteJoin}
-import org.apache.spark.sql.execution.{ColumnarCollapseTransformStages, GlutenFallbackReporter}
+import org.apache.spark.sql.execution.{ColumnarCollapseTransformStages, GlutenAutoAdjustStageResourceProfile, GlutenFallbackReporter}
 
 class OmniRuleApi extends RuleApi {
 
@@ -118,6 +118,7 @@ object OmniRuleApi {
     // Gluten columnar: Final rules.
     injector.injectFinal(c => RollupOptimization.apply(c.session))
     injector.injectFinal(c => RemoveGlutenTableCacheColumnarToRow(c.session))
+    injector.injectFinal(c => GlutenAutoAdjustStageResourceProfile(c.glutenConf, c.session))
     injector.injectFinal(c => GlutenFallbackReporter(c.glutenConf, c.session))
     injector.injectFinal(_ => RemoveFallbackTagRule())
   }

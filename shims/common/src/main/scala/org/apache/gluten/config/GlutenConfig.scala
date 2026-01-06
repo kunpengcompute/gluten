@@ -578,6 +578,14 @@ class GlutenConfig(conf: SQLConf) extends Logging {
   def omniColumnarCatalogCacheExpireTime: Int = conf.getConf(COLUMNAR_OMNI_CATALOG_CACHE_EXPIRE_TIME)
 
   def enableRollupOptimization: Boolean = conf.getConf(ENABLE_ROLLUP_OPTIMIZATION)
+
+  def enableAutoAdjustStageResourceProfile: Boolean =
+    conf.getConf(AUTO_ADJUST_STAGE_RESOURCE_PROFILE_ENABLED)
+
+  def autoAdjustStageRPHeapRatio: Double = conf.getConf(AUTO_ADJUST_STAGE_RESOURCES_HEAP_RATIO)
+
+  def autoAdjustStageFallenNodeThreshold: Double =
+    conf.getConf(AUTO_ADJUST_STAGE_RESOURCES_FALLEN_NODE_RATIO_THRESHOLD)
 }
 
 object GlutenConfig {
@@ -2632,4 +2640,27 @@ object GlutenConfig {
     .doc("enable or disable columnar rollupOptimization")
     .booleanConf
     .createWithDefault(true)
+
+  val AUTO_ADJUST_STAGE_RESOURCE_PROFILE_ENABLED =
+    buildStaticConf("spark.gluten.auto.adjustStageResource.enabled")
+        .internal()
+        .doc("Experimental: If enabled, gluten will try to set the stage resource according " +
+            "to stage execution plan. Only worked when aqe is enabled at the same time!!")
+        .booleanConf
+        .createWithDefault(false)
+
+  val AUTO_ADJUST_STAGE_RESOURCES_HEAP_RATIO =
+    buildConf("spark.gluten.auto.adjustStageResources.heap.ratio")
+        .internal()
+        .doc("Experimental: Increase executor heap memory when match adjust stage resource rule.")
+        .doubleConf
+        .createWithDefault(2.0d)
+
+  val AUTO_ADJUST_STAGE_RESOURCES_FALLEN_NODE_RATIO_THRESHOLD =
+    buildConf("spark.gluten.auto.adjustStageResources.fallenNode.ratio.threshold")
+        .internal()
+        .doc("Experimental: Increase executor heap memory when stage contains fallen node " +
+            "count exceeds the total node count ratio.")
+        .doubleConf
+        .createWithDefault(0.5d)
 }
