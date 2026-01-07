@@ -28,6 +28,8 @@ class OmniWindowMetricsUpdater(val metrics: Map[String, SQLMetric]) extends Metr
       metrics("numInputBytes") += operatorMetrics.getNumInputBytes
       metrics("addInputCount") += operatorMetrics.getInputCpuCount
       metrics("addInputTime") += operatorMetrics.getAddInputTime
+      metrics("numSpilledBytes") += operatorMetrics.getSpilledBytes
+      metrics("numSpilledRows") += operatorMetrics.getSpilledRows
 
       metrics("numOutputRows") += operatorMetrics.getNumOutputRows
       metrics("numOutputVectorBatches") += operatorMetrics.getNumOutputVecBatches

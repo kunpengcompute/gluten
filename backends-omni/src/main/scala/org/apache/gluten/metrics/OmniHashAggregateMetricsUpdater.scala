@@ -43,6 +43,9 @@ class OmniHashAggregateMetricsUpdaterImpl(val metrics: Map[String, SQLMetric])
   val getOutputCount: SQLMetric = metrics("getOutputCount")
   val getOutputTime: SQLMetric = metrics("getOutputTime")
 
+  val numSpilledBytes: SQLMetric = metrics("numSpilledBytes")
+  val numSpilledRows: SQLMetric = metrics("numSpilledRows")
+
   override def updateAggregationMetrics(
     aggregationMetrics: java.util.ArrayList[OperatorMetrics],
     aggParams: AggregationParams): Unit = {
@@ -55,6 +58,8 @@ class OmniHashAggregateMetricsUpdaterImpl(val metrics: Map[String, SQLMetric])
     numInputRows += aggMetrics.getNumInputRows
     numInputVecBatches += aggMetrics.getNumInputVecBatches
     numInputBytes += aggMetrics.getNumInputBytes
+    numSpilledBytes += aggMetrics.getSpilledBytes
+    numSpilledRows += aggMetrics.getSpilledRows
 
     getOutputCount += aggMetrics.getOutputCpuCount
     getOutputTime += aggMetrics.getGetOutputTime
