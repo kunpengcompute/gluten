@@ -2,6 +2,8 @@ package org.apache.gluten.init;
 
 import nova.hetu.omniruntime.memory.MemoryManager;
 import nova.hetu.omniruntime.operator.OmniOperatorFactoryContext;
+import org.apache.gluten.config.GlutenConfig;
+import org.apache.gluten.utils.ConfigUtil;
 import scala.runtime.BoxedUnit;
 
 import org.apache.spark.network.util.JavaUtils;
@@ -13,7 +15,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class OmniNativeBackendInitializer {
+public final class OmniNativeBackendInitializer {
     private static final Logger LOG = LoggerFactory.getLogger(OmniNativeBackendInitializer.class);
     private static final Map<String, OmniNativeBackendInitializer> instances = new ConcurrentHashMap<>();
 
@@ -50,10 +52,13 @@ public class OmniNativeBackendInitializer {
             long offHeapSize = JavaUtils.byteStringAsBytes(conf.getOrElse("spark.memory.offHeap.size", () -> "1g"));
             MemoryManager.setGlobalMemoryLimit(offHeapSize);
             OmniOperatorFactoryContext.setDefaultNeedCacheValue(conf.getOrElse("spark.gluten.sql.columnar.backend.omni.operator.factory.cache.enabled", () -> true));
+            Map<String, String> nativeConfMap = GlutenConfig.getNativeBackendConf(backendName, conf);
+            initialize(ConfigUtil.serialize(nativeConfMap));
         } catch (Exception e) {
             LOG.error("Failed to call native backend's initialize method", e);
             throw e;
         }
     }
 
+    private native void initialize(byte[] configPlan);
 }

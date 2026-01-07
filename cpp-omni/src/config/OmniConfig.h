@@ -111,6 +111,8 @@ const std::string kAbandonPartialAggregationMinPct =
 const std::string kAbandonPartialAggregationMinRows =
     "spark.gluten.sql.columnar.backend.omni.abandonPartialAggregationMinRows";
 
+const std::string kOmniUdfLibraryPaths = "spark.gluten.sql.columnar.backend.omni.internal.udfLibraryPaths";
+
 // execution
 const std::string kBloomFilterExpectedNumItems = "spark.gluten.sql.columnar.backend.omni.bloomFilter.expectedNumItems";
 const std::string kBloomFilterNumBits = "spark.gluten.sql.columnar.backend.omni.bloomFilter.numBits";

@@ -78,6 +78,10 @@ object DataTypeUtils {
 
 object OmniBackendSettings extends BackendSettingsApi {
   val SHUFFLE_SUPPORTED_CODEC = Set("lz4", "zstd")
+  val GLUTEN_OMNI_UDF_LIB_PATHS = OmniBackend.CONF_PREFIX + ".udfLibraryPaths"
+  val GLUTEN_OMNI_DRIVER_UDF_LIB_PATHS = OmniBackend.CONF_PREFIX + ".driver.udfLibraryPaths"
+  val GLUTEN_OMNI_INTERNAL_UDF_LIB_PATHS = OmniBackend.CONF_PREFIX + ".internal.udfLibraryPaths"
+  val GLUTEN_OMNI_UDF_ALLOW_TYPE_CONVERSION = OmniBackend.CONF_PREFIX + ".udfAllowTypeConversion"
 
   /** The columnar-batch type this backend is by default using. */
   override def primaryBatchType: Convention.BatchType = OmniBatch

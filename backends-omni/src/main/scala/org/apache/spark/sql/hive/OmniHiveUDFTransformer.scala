@@ -19,27 +19,46 @@ package org.apache.spark.sql.hive
 import org.apache.gluten.exception.GlutenNotSupportException
 import org.apache.gluten.expression.{ExpressionConverter, ExpressionTransformer, GenericExpressionTransformer}
 import org.apache.spark.sql.catalyst.expressions.{Attribute, Expression}
+import org.apache.spark.sql.expression.UDFResolver
 
 object OmniHiveUDFTransformer {
   def replaceWithExpressionTransformer(
                                         expr: Expression,
                                         attributeSeq: Seq[Attribute]): ExpressionTransformer = {
-    val udfName = expr match {
+    val (udfName, udfClassName) = expr match {
       case s: HiveSimpleUDF =>
-        "HiveSimpleUDF#" + s.name.stripPrefix("default.")
+        (s.name.stripPrefix("default."), s.funcWrapper.functionClassName)
       case g: HiveGenericUDF =>
-        g.name.stripPrefix("default.")
+        (g.name.stripPrefix("default."), g.funcWrapper.functionClassName)
       case _ =>
         throw new GlutenNotSupportException(
           s"Expression $expr is not a HiveSimpleUDF or HiveGenericUDF")
     }
-    genTransformerFromUDFMappings(udfName, expr, attributeSeq)
+
+    if (UDFResolver.UDFNames.contains(udfClassName)) {
+      val udfExpression = UDFResolver
+        .getUdfExpression(udfClassName, udfName)(expr.children)
+      udfExpression.getTransformer(
+        ExpressionConverter.replaceWithExpressionTransformer(udfExpression.children, attributeSeq)
+      )
+    } else {
+      val hiveUdfName = expr match {
+        case s: HiveSimpleUDF =>
+          "HiveSimpleUDF#" + s.name.stripPrefix("default.")
+        case g: HiveGenericUDF =>
+          g.name.stripPrefix("default.")
+        case _ =>
+          throw new GlutenNotSupportException(
+            s"Expression $expr is not a HiveSimpleUDF or HiveGenericUDF")
+      }
+      genTransformerFromUDFMappings(hiveUdfName, expr, attributeSeq)
+    }
   }
 
-  def genTransformerFromUDFMappings(
-                                     udfName: String,
-                                     expr: Expression,
-                                     attributeSeq: Seq[Attribute]): GenericExpressionTransformer = {
+  private def genTransformerFromUDFMappings(
+                                             udfName: String,
+                                             expr: Expression,
+                                             attributeSeq: Seq[Attribute]): GenericExpressionTransformer = {
     GenericExpressionTransformer(
       udfName,
       ExpressionConverter.replaceWithExpressionTransformer(expr.children, attributeSeq),

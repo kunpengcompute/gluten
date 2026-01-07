@@ -22,14 +22,15 @@ import org.apache.gluten.config.GlutenConfig
 import org.apache.gluten.expression.UDFMappings
 import org.apache.gluten.init.OmniNativeBackendInitializer
 import org.apache.gluten.jni.JniLibLoader
+import org.apache.gluten.udf.UdfJniWrapper
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.api.plugin.PluginContext
 import org.apache.spark.internal.Logging
+import org.apache.spark.sql.expression.UDFResolver
 import org.apache.spark.sql.internal.GlutenConfigUtil
 import org.apache.spark.util.{SparkDirectoryUtil, SparkResourceUtil}
 
 import java.util.concurrent.atomic.AtomicBoolean
-
 import scala.util.matching.Regex
 
 class OmniListenerApi extends ListenerApi with Logging {
@@ -46,7 +47,9 @@ class OmniListenerApi extends ListenerApi with Logging {
     }
     val conf = pc.conf()
     SparkDirectoryUtil.init(conf)
+    UDFResolver.resolveUdfConf(conf, isDriver = true)
     initialize(conf, isDriver = true)
+    UdfJniWrapper.registerFunctionSignatures()
   }
 
   override def onExecutorStart(pc: PluginContext): Unit = {
@@ -85,8 +88,6 @@ class OmniListenerApi extends ListenerApi with Logging {
     // Initial native backend with configurations.
     val parsed = GlutenConfigUtil.parseConfig(conf.getAll.toMap)
 
-    OmniNativeBackendInitializer.forBackend(OmniBackend.BACKEND_NAME).initialize(parsed)
-
     val libPath = conf.get(GlutenConfig.GLUTEN_LIB_PATH, StringUtils.EMPTY)
     if (StringUtils.isBlank(libPath)) {
       throw new IllegalArgumentException(
@@ -103,6 +104,7 @@ class OmniListenerApi extends ListenerApi with Logging {
       val actualLibPath = replaceEnvVarsWithDefaults(executorLibPath)
       JniLibLoader.loadFromPath(actualLibPath, true)
     }
+    OmniNativeBackendInitializer.forBackend(OmniBackend.BACKEND_NAME).initialize(parsed)
   }
 }
 

@@ -19,7 +19,7 @@ set(PROTOBUF_INCLUDE "${Protobuf_INCLUDE_DIRS}" CACHE PATH "Protobuf include pat
 
 # generate vecdata proto
 protobuf_generate_cpp(PROTO_SRCS_VB PROTO_HDRS_VB proto/vec_data.proto)
-
+find_package(fmt REQUIRED)
 # generate Substrait proto
 # Set up Substrait Proto
 set(SUBSTRAIT_PROTO_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/")
@@ -76,6 +76,8 @@ target_include_directories(${PROJ_TARGET} PUBLIC $ENV{JAVA_HOME}/include)
 target_include_directories(${PROJ_TARGET} PUBLIC $ENV{JAVA_HOME}/include/linux)
 target_include_directories(${PROJ_TARGET} PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
 
+add_subdirectory(udf/examples)
+
 target_link_libraries (${PROJ_TARGET} PUBLIC
         crypto
         sasl2
@@ -85,9 +87,10 @@ target_link_libraries (${PROJ_TARGET} PUBLIC
         lz4
         zstd
         re2
-        boostkit-omniop-vector-2.0.0-aarch64
-        boostkit-omniop-operator-2.0.0-aarch64
-        boostkit-omniop-codegen-2.0.0-aarch64
+        fmt::fmt
+        boostkit-omniop-vector-1.9.0-aarch64
+        boostkit-omniop-operator-1.9.0-aarch64
+        boostkit-omniop-codegen-1.9.0-aarch64
         )
 
 set_target_properties(${PROJ_TARGET} PROPERTIES

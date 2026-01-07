@@ -23,6 +23,7 @@
 #include "jni_common.h"
 #include "io/SparkFile.hh"
 #include "SparkJniWrapper.hh"
+#include "JniUdf.h"
 
 jclass runtimeExceptionClass;
 jclass splitResultClass;
@@ -124,6 +125,8 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved)
         return JNI_ERR;
     }
 
+    gluten::initOmniJniUDF(env);
+
     runtimeExceptionClass = CreateGlobalClassReference(env, "Ljava/lang/RuntimeException;");
 
     metricsBuilderClass = createGlobalClassReferenceOrError(env, "Lorg/apache/gluten/metrics/Metrics;");
@@ -173,6 +176,8 @@ void JNI_OnUnload(JavaVM* vm, void* reserved)
 {
     JNIEnv* env;
     vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION);
+
+    gluten::finalizeOmniJniUDF(env);
 
     env->DeleteGlobalRef(runtimeExceptionClass);
     env->DeleteGlobalRef(splitResultClass);

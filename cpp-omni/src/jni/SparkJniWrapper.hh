@@ -82,6 +82,12 @@ JNIEXPORT jobject JNICALL Java_org_apache_gluten_metrics_OmniIteratorMetricsJniW
     JNIEnv* env,
     jobject wrapper,
     jlong iterHandle);
+
+JNIEXPORT void JNICALL Java_org_apache_gluten_init_OmniNativeBackendInitializer_initialize(JNIEnv *env, jclass,
+    jbyteArray conf);
+
+JNIEXPORT void JNICALL Java_org_apache_gluten_udf_UdfJniWrapper_registerFunctionSignatures( // NOLINT
+    JNIEnv *env, jclass);
 #ifdef __cplusplus
 }
 #endif

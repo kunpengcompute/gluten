@@ -29,6 +29,8 @@
 #include "compute/Runtime.h"
 #include "config/OmniConfig.h"
 #include "SparkJniWrapper.hh"
+#include "compute/OmniBackend.h"
+#include "JniUdf.h"
 
 using namespace spark;
 using namespace google::protobuf::io;
@@ -476,4 +478,28 @@ JNIEXPORT jobject JNICALL Java_org_apache_gluten_metrics_OmniIteratorMetricsJniW
             longArray[omniruntime::OmniMetrics::kLookupOutputRows], longArray[omniruntime::OmniMetrics::kLookupNumOutputVecBatches],
             longArray[omniruntime::OmniMetrics::kLookupAddInputTime], longArray[omniruntime::OmniMetrics::kLookupGetOutputTime]);
     JNI_FUNC_END(runtimeExceptionClass)
+}
+
+JNIEXPORT void JNICALL Java_org_apache_gluten_init_OmniNativeBackendInitializer_initialize(JNIEnv *env, jclass,
+    jbyteArray conf)
+{
+    JNI_FUNC_START
+        JavaVM *vm;
+        if (env->GetJavaVM(&vm) != JNI_OK) {
+            throw std::runtime_error("Unable to get JavaVM instance");
+        }
+        auto safeArray = getByteArrayElementsSafe(env, conf);
+        auto length = env->GetArrayLength(conf);
+        // Create a global allocation listener that reserves global off-heap memory from Java-side GlobalOffHeapMemory utility
+        // class.
+        auto sparkConf = ParseConfMap(safeArray, length);
+        gluten::OmniBackend::create(sparkConf);
+    JNI_FUNC_END_VOID(runtimeExceptionClass)
+}
+
+JNIEXPORT void JNICALL Java_org_apache_gluten_udf_UdfJniWrapper_registerFunctionSignatures(JNIEnv *env, jclass)
+{
+    JNI_FUNC_START
+        gluten::jniRegisterFunctionSignatures(env);
+    JNI_FUNC_END_VOID(runtimeExceptionClass)
 }
