@@ -48,6 +48,7 @@ import org.apache.gluten.extension.PushDownFilterToOmniScan
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.execution.datasources.orc.OrcFileFormat
 import org.apache.spark.sql.execution.datasources.parquet.ParquetFileFormat
+import org.apache.spark.sql.hive.OmniHiveUDFTransformer
 
 class OmniSparkPlanExecApi extends SparkPlanExecApi {
 
@@ -528,4 +529,10 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
                                                mode: WindowGroupLimitMode,
                                                child: SparkPlan): SparkPlan =
     OmniWindowGroupLimitExecTransformer(partitionSpec, orderSpec, rankLikeFunction, limit, mode, child)
+
+  override def genHiveUDFTransformer(
+                             expr: Expression,
+                             attributeSeq: Seq[Attribute]): ExpressionTransformer = {
+    OmniHiveUDFTransformer.replaceWithExpressionTransformer(expr, attributeSeq)
+  }
 }

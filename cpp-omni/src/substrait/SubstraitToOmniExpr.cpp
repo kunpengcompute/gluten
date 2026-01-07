@@ -264,9 +264,9 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
         DataTypePtr retType;
         auto &hiveUdfClass = omniruntime::codegen::FunctionRegistry::LookupHiveUdf(funcName);
         if (!hiveUdfClass.empty()) {
-            return new FuncExpr(hiveUdfClass, args, std::move(retType), HIVE_UDF);
+            return new FuncExpr(hiveUdfClass, args, outputType, HIVE_UDF);
         }
-        throw omniruntime::exception::OmniException(SUBSTRAIT_PARSE_ERROR, "The UDF function Unsupported yet");
+        OMNI_THROW("SUBSTRAIT_ERROR:", "The UDF function {} Unsupported yet", funcName);
     } else {
         OMNI_THROW(
             "SUBSTRAIT_ERROR:", "function type {} and function {} is unsupported yet", std::to_string(type), funcName);

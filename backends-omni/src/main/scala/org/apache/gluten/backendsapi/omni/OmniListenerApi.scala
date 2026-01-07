@@ -19,6 +19,7 @@ package org.apache.gluten.backendsapi.omni
 import org.apache.commons.lang3.StringUtils
 import org.apache.gluten.backendsapi.ListenerApi
 import org.apache.gluten.config.GlutenConfig
+import org.apache.gluten.expression.UDFMappings
 import org.apache.gluten.init.OmniNativeBackendInitializer
 import org.apache.gluten.jni.JniLibLoader
 import org.apache.spark.{SparkConf, SparkContext}
@@ -91,6 +92,9 @@ class OmniListenerApi extends ListenerApi with Logging {
       throw new IllegalArgumentException(
         "Please set spark.gluten.sql.columnar.libpath to enable omni backend")
     }
+
+    // Load supported hive/python/scala udfs
+    UDFMappings.loadFromSparkConf(conf)
 
     if(isDriver) {
       JniLibLoader.loadFromPath(libPath, true)

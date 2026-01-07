@@ -20,6 +20,8 @@
 #include "google/protobuf/wrappers.pb.h"
 
 namespace omniruntime {
+const std::string HIVE_SIMPLE_TAG = "HiveSimpleUDF#";
+
 std::vector<type::DataTypePtr> SubstraitParser::ParseNamedStruct(
     const ::substrait::NamedStruct &namedStruct, bool asLowerCase)
 {
@@ -104,6 +106,9 @@ std::pair<SubstraitToOmniExprType, std::string> SubstraitParser::FindOmniFunctio
 {
     std::string funcSpec = FindFunctionSpec(functionMap, id);
     std::string funcName = GetNameBeforeDelimiter(funcSpec);
+    if (funcName.find(HIVE_SIMPLE_TAG) == 0) {
+        return {HIVE_UDF_FUNCTION_OMNI_EXPR_TYPE, funcName.erase(0, HIVE_SIMPLE_TAG.length())};
+    }
     return MapToOmniFunction(funcName);
 }
 
