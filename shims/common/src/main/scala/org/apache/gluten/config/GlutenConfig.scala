@@ -2663,4 +2663,10 @@ object GlutenConfig {
             "count exceeds the total node count ratio.")
         .doubleConf
         .createWithDefault(0.5d)
+
+  val ENABLE_FILES_SPLIT_SINGLE_FILE = buildConf("spark.gluten.sql.columnar.filesSplitSingleFile.enabled")
+    .internal()
+    .doc("enable or disable split single file when scan from hive")
+    .booleanConf
+    .createWithDefault(true)
 }
