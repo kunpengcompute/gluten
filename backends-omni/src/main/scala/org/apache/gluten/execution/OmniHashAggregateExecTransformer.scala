@@ -17,7 +17,7 @@
 package org.apache.gluten.execution
 
 import org.apache.gluten.backendsapi.BackendsApiManager
-import org.apache.gluten.expression.OmniExpressionAdaptor.{sparkTypeToOmniType, toOmniAggFunType}
+import org.apache.gluten.expression.OmniExpressionAdaptor.{sparkTypeToOmniTypeWithComplex, toOmniAggFunType}
 import org.apache.gluten.expression.{AggregateFunctionsBuilder, ConverterUtils, ExpressionConverter}
 import org.apache.gluten.extension.ValidationResult
 import org.apache.gluten.substrait.`type`.{TypeBuilder, TypeNode}
@@ -137,7 +137,7 @@ case class OmniHashAggregateExecTransformer(
 
     child.output.zipWithIndex.foreach {
       case (attr, _) =>
-        sparkTypeToOmniType(attr.dataType, attr.metadata)
+        sparkTypeToOmniTypeWithComplex(attr.dataType, attr.metadata)
     }
 
     if (supported.exists(_.isInstance(agg.aggregateFunction))) {
@@ -214,6 +214,7 @@ case class OmniHashAggregateExecTransformer(
       case ShortType | IntegerType | LongType | TimestampType | DoubleType | BooleanType |
            StringType | DateType | NullType | FloatType => true
       case _: DecimalType => true
+      case _: ArrayType => true
       case _ => false
     }
   }
