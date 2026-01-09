@@ -563,8 +563,6 @@ class GlutenConfig(conf: SQLConf) extends Logging {
 
   def columnarSpillDirDiskReserveSize: Long = conf.getConf(COLUMNAR_SPILL_DIR_DISK_RESERVE_SIZE)
 
-  def columnarSpillEnableCompress: Boolean = conf.getConf(COLUMNAR_SPILL_ENABLE_COMPRESS)
-
   def columnarHashAggSpillRowThreshold: Int = conf.getConf(COLUMNAR_HASH_AGG_SPILL_ROW_THRESHOLD)
 
   def columnarSortSpillRowThreshold: Int = conf.getConf(COLUMNAR_SORT_SPILL_ROW_THRESHOLD)
@@ -2586,12 +2584,6 @@ object GlutenConfig {
     .doc("columnar spill dir disk reserve Size, default 10GB")
     .longConf
     .createWithDefault(10737418240L)
-
-  val COLUMNAR_SPILL_ENABLE_COMPRESS = buildConf("spark.gluten.sql.columnar.backend.omni.spill.enableCompress")
-    .internal()
-    .doc("columnar spill enable compress, default false")
-    .booleanConf
-    .createWithDefault(false)
 
   val COLUMNAR_HASH_AGG_SPILL_ROW_THRESHOLD = buildConf("spark.gluten.sql.columnar.backend.omni.hashAggSpill.rowThreshold")
     .internal()

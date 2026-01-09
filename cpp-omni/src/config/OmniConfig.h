@@ -183,7 +183,6 @@ const std::string KSpillSortRowThreshold = "spark.gluten.sql.columnar.backend.om
 const std::string KColumnarSpillMemThreshold = "spark.gluten.sql.columnar.backend.omni.spill.memFraction";
 const std::string KColumnarSpillWriteBufferSize = "spark.gluten.sql.columnar.backend.omni.spill.writeBufferSize";
 const std::string KColumnarSpillDirDiskReserveSize = "spark.gluten.sql.columnar.backend.omni.spill.dirDiskReserveSize";
-const std::string KColumnarSpillEnableCompress = "spark.gluten.sql.columnar.backend.omni.spill.enableCompress";
 
 const std::string KEnableAdaptivePartialAggregation = "spark.gluten.sql.columnar.backend.omni.adaptivePartialAggregation.enabled";
 const std::string KAdaptivePartialAggregationMinRows = "spark.gluten.sql.columnar.backend.omni.adaptivePartialAggregationMinRows";
