@@ -31,6 +31,9 @@ object PushDownFilterToOmniScan extends Rule[SparkPlan] with PredicateHelper {
   private def enableVecPredicateFilter: Boolean =
     GlutenConfig.get.enabledVecPredicateFilter
 
+  private def excludeScanExecFromCollapsedStage: Boolean =
+    GlutenConfig.get.omniExcludeScanExecFromCollapsedStage
+
   private val SUPPORTED_DATA_TYPES = Set(ShortType, IntegerType, LongType, DoubleType, BooleanType, DateType)
 
   override def apply(plan: SparkPlan): SparkPlan = plan.transformUp {
@@ -38,7 +41,7 @@ object PushDownFilterToOmniScan extends Rule[SparkPlan] with PredicateHelper {
       filter.child match {
         case fileScan: OmniFileSourceScanExecTransformer
           if fileScan.relation.fileFormat.isInstanceOf[OmniOrcFileFormat] ||
-            fileScan.relation.fileFormat.isInstanceOf[OmniParquetFileFormat] =>
+            (fileScan.relation.fileFormat.isInstanceOf[OmniParquetFileFormat] && !excludeScanExecFromCollapsedStage)=>
           val pushDownFilters = getPushedFilter(fileScan.dataFilters)
           val newScan = fileScan.copy(output = filter.output, dataFilters = pushDownFilters)
           newScan.relation.fileFormat.asInstanceOf[OmniOrcFileFormat].setVecPredicateFilter()
