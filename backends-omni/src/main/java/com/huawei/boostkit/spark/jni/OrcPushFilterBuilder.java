@@ -26,9 +26,11 @@ import com.huawei.boostkit.spark.predicate.PredicateCondition;
 import com.huawei.boostkit.spark.predicate.PredicateOperatorType;
 import com.huawei.boostkit.spark.timestamp.JulianGregorianRebase;
 import com.huawei.boostkit.spark.timestamp.TimestampUtil;
+
 import nova.hetu.omniruntime.type.DataType;
 import nova.hetu.omniruntime.vector.IntVec;
 import nova.hetu.omniruntime.vector.LongVec;
+
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.gluten.expression.OmniExpressionAdaptor;
@@ -86,24 +88,41 @@ import java.util.stream.IntStream;
 public class OrcPushFilterBuilder {
     private static final Logger LOGGER = LoggerFactory.getLogger(OrcPushFilterBuilder.class);
 
-    private boolean nativeSupportTimestampRebase;
     private static final Pattern CHAR_TYPE = Pattern.compile("char\\(\\s*(\\d+)\\s*\\)");
 
     private static final int MAX_LEAF_THRESHOLD = 256;
 
+    /**
+     * ORC reader native pointer
+     */
     public long reader;
+
+    /**
+     * ORC record reader native pointer
+     */
     public long recordReader;
+
+    /**
+     * ORC batch reader native pointer
+     */
     public long batchReader;
 
-    // All ORC fieldNames
+    /**
+     * All field names of ORC table schema
+     */
     public ArrayList<String> allFieldsNames = new ArrayList<String>();
-    ;
 
-    // Indicate columns to read
+    /**
+     * Column index array to mark whether it need to read
+     */
     public int[] colsToGet;
 
-    // Actual columns to read
+    /**
+     * Actual column names list to read for ORC scan
+     */
     public ArrayList<String> includedColumns = new ArrayList<>();
+
+    private boolean hasNativeSupportTimestampRebase;
 
     // max threshold for leaf node
     private int leafIndex;
@@ -127,6 +146,12 @@ public class OrcPushFilterBuilder {
         initDataColIds();
     }
 
+    /**
+     * Padding zero for decimal fractional part to align the specified scale length
+     * @param decimalStrArray decimal value split by dot, array length 1 means integer, 2 means have fractional part
+     * @param decimalScale specified decimal scale length
+     * @return padded fractional part string with zero
+     */
     public String padZeroForDecimals(String[] decimalStrArray, int decimalScale) {
         String decimalVal = "";
         if (decimalStrArray.length == 2) {
@@ -140,10 +165,10 @@ public class OrcPushFilterBuilder {
         DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
         long epoch;
         try {
-            epoch = dateFormat.parse(TimestampTreeWriter.BASE_TIMESTAMP_STRING).getTime() /
-                    TimestampTreeWriter.MILLIS_PER_SECOND;
+            epoch = dateFormat.parse(TimestampTreeWriter.BASE_TIMESTAMP_STRING).getTime()
+                    / TimestampTreeWriter.MILLIS_PER_SECOND;
         } catch (ParseException e) {
-            throw new RuntimeException(e);
+            throw new IllegalArgumentException("Failed to parse base timestamp string", e);
         }
         return secs - epoch;
     }
@@ -154,13 +179,14 @@ public class OrcPushFilterBuilder {
         } else if (nanos % 100 != 0) {
             return ((long) nanos) << 3;
         } else {
-            nanos /= 100;
+            int nanoVal = nanos;
+            nanoVal /= 100;
             int trailingZeros = 1;
-            while (nanos % 10 == 0 && trailingZeros < 7) {
-                nanos /= 10;
+            while (nanoVal % 10 == 0 && trailingZeros < 7) {
+                nanoVal /= 10;
                 trailingZeros += 1;
             }
-            return ((long) nanos) << 3 | trailingZeros;
+            return ((long) nanoVal) << 3 | trailingZeros;
         }
     }
 
@@ -173,7 +199,7 @@ public class OrcPushFilterBuilder {
         job.put("tz", julianObject.getTz());
         job.put("switches", StringUtils.join(julianObject.getSwitches(), ','));
         job.put("diffs", StringUtils.join(julianObject.getDiffs(), ','));
-        nativeSupportTimestampRebase = true;
+        hasNativeSupportTimestampRebase = true;
     }
 
     private void initDataColIds() {
@@ -228,28 +254,35 @@ public class OrcPushFilterBuilder {
         }
     }
 
+    /**
+     * Build ORC push down filter json string, convert Spark Filter to native supported JSON format
+     * @param pushedFilter Spark filter condition to push down
+     * @param canVecPredicateFilter whether enable vector predicate filter
+     * @param shouldFilterPushDown whether enable filter push down to native layer
+     * @return JSON string of filter condition
+     */
     public String buildPushFilterJson(Filter pushedFilter,
-                                      Boolean vecPredicateFilter, Boolean filterPushDown) {
+                                      Boolean canVecPredicateFilter, Boolean shouldFilterPushDown) {
         JSONObject job = new JSONObject();
         try {
             if (pushedFilter != null) {
-                if (filterPushDown != null && filterPushDown) {
+                if (shouldFilterPushDown != null && shouldFilterPushDown) {
                     JSONObject jsonExpressionTree = new JSONObject();
                     JSONObject jsonLeaves = new JSONObject();
-                    boolean flag = canPushDown(pushedFilter, jsonExpressionTree, jsonLeaves);
-                    if (flag) {
+                    boolean canPushDownFlag = canPushDown(pushedFilter, jsonExpressionTree, jsonLeaves);
+                    if (canPushDownFlag) {
                         job.put("expressionTree", jsonExpressionTree);
                         job.put("leaves", jsonLeaves);
                     }
                 }
-                if (vecPredicateFilter != null && vecPredicateFilter) {
+                if (canVecPredicateFilter != null && canVecPredicateFilter) {
                     String vecPredicateCondition = buildVecPredicateCondition(pushedFilter);
                     if (vecPredicateCondition != null) {
                         job.put("vecPredicateCondition", vecPredicateCondition);
                     }
                 }
             }
-        } catch (Exception e) {
+        } catch (IllegalArgumentException | UnsupportedOperationException e) {
             LOGGER.debug(e.getMessage());
         }
 
@@ -258,7 +291,11 @@ public class OrcPushFilterBuilder {
         return job.toString();
     }
 
-
+    /**
+     * Convert Julian calendar days to Gregorian calendar days for Int vector
+     * @param intVec Int vector of date value in Julian days
+     * @param rowNumber total row count of current vector
+     */
     public void convertJulianToGreGorian(IntVec intVec, long rowNumber) {
         int gregorianValue;
         for (int rowIndex = 0; rowIndex < rowNumber; rowIndex++) {
@@ -267,6 +304,11 @@ public class OrcPushFilterBuilder {
         }
     }
 
+    /**
+     * Convert Julian calendar timestamp micros to Gregorian calendar timestamp micros for Long vector
+     * @param longVec Long vector of timestamp value in Julian micros
+     * @param rowNumber total row count of current vector
+     */
     public void convertJulianToGregorianMicros(LongVec longVec, long rowNumber) {
         long gregorianValue;
         for (int rowIndex = 0; rowIndex < rowNumber; rowIndex++) {
@@ -313,8 +355,8 @@ public class OrcPushFilterBuilder {
                 StructType struct = (StructType) field.dataType();
                 return getOrcPredicateDataType(args[1], struct);
             } else {
-                throw new UnsupportedOperationException("Unsupported orc push down filter data type: " +
-                        field.dataType().getClass().getSimpleName());
+                throw new UnsupportedOperationException("Unsupported orc push down filter data type: "
+                        + field.dataType().getClass().getSimpleName());
             }
         }
         StructField field = inputSchema.apply(attribute);
@@ -323,8 +365,8 @@ public class OrcPushFilterBuilder {
 
     private OrcPredicateDataType getType(StructField field) {
         org.apache.spark.sql.types.DataType dataType = field.dataType();
-        if (dataType instanceof ShortType || dataType instanceof IntegerType ||
-                dataType instanceof LongType) {
+        if (dataType instanceof ShortType || dataType instanceof IntegerType
+                || dataType instanceof LongType) {
             return OrcPredicateDataType.LONG;
         } else if (dataType instanceof DoubleType) {
             return OrcPredicateDataType.FLOAT;
@@ -342,14 +384,14 @@ public class OrcPushFilterBuilder {
         } else if (dataType instanceof StructType) {
             return OrcPredicateDataType.STRUCT;
         } else {
-            throw new UnsupportedOperationException("Unsupported orc push down filter data type: " +
-                    dataType.getClass().getSimpleName());
+            throw new UnsupportedOperationException("Unsupported orc push down filter data type: "
+                    + dataType.getClass().getSimpleName());
         }
     }
 
     // Check the type whether is char type, which orc native does not support push down
     private boolean isCharType(Metadata metadata) {
-        if (metadata != null && !metadata.toString().equals("{}")) {
+        if (metadata != null && !"{}".equals(metadata.toString())) {
             String rawTypeString = CharVarcharUtils.getRawTypeString(metadata).getOrElse(null);
             if (rawTypeString != null) {
                 Matcher matcher = CHAR_TYPE.matcher(rawTypeString);
@@ -364,12 +406,12 @@ public class OrcPushFilterBuilder {
         try {
             getExprJson(pushedFilter, jsonExpressionTree, jsonLeaves);
             if (leafIndex > MAX_LEAF_THRESHOLD) {
-                throw new UnsupportedOperationException("leaf node nums is " + leafIndex +
-                        ", which is bigger than max threshold " + MAX_LEAF_THRESHOLD + ".");
+                throw new UnsupportedOperationException("leaf node nums is " + leafIndex
+                        + ", which is bigger than max threshold " + MAX_LEAF_THRESHOLD + ".");
             }
             return true;
-        } catch (Exception e) {
-            LOGGER.info("Unable to push down orc filter because " + e.getMessage());
+        } catch (IllegalArgumentException | UnsupportedOperationException e) {
+            LOGGER.error("Unable to push down orc filter because {}", e.getMessage());
             return false;
         }
     }
@@ -398,7 +440,8 @@ public class OrcPushFilterBuilder {
         } else if (filterPredicate instanceof GreaterThanOrEqual) {
             addToJsonExpressionTree("leaf-" + leafIndex, jsonExpressionTree, true);
             addLiteralToJsonLeaves("leaf-" + leafIndex, OrcLeafOperator.LESS_THAN, jsonLeaves,
-                    ((GreaterThanOrEqual) filterPredicate).attribute(), ((GreaterThanOrEqual) filterPredicate).value(), null);
+                    ((GreaterThanOrEqual) filterPredicate).attribute(),
+                    ((GreaterThanOrEqual) filterPredicate).value(), null);
             leafIndex++;
         } else if (filterPredicate instanceof LessThan) {
             addToJsonExpressionTree("leaf-" + leafIndex, jsonExpressionTree, false);
@@ -427,8 +470,8 @@ public class OrcPushFilterBuilder {
                     ((In) filterPredicate).attribute(), null, Arrays.stream(((In) filterPredicate).values()).toArray());
             leafIndex++;
         } else {
-            throw new UnsupportedOperationException("Unsupported orc push down filter operation: " +
-                    filterPredicate.getClass().getSimpleName());
+            throw new UnsupportedOperationException("Unsupported orc push down filter operation: "
+                    + filterPredicate.getClass().getSimpleName());
         }
     }
 
@@ -443,7 +486,6 @@ public class OrcPushFilterBuilder {
             leafJson.put("type", args.getValue().ordinal());
             leafJson.put("literal", getLiteralValue(literal));
         } else {
-            // FIXME use default type
             leafJson.put("type", 2);
             leafJson.put("literal", "");
         }
@@ -458,8 +500,8 @@ public class OrcPushFilterBuilder {
         jsonLeaves.put(leaf, leafJson);
     }
 
-    private void addToJsonExpressionTree(String leaf, JSONObject jsonExpressionTree, boolean addNot) {
-        if (addNot) {
+    private void addToJsonExpressionTree(String leaf, JSONObject jsonExpressionTree, boolean isAddNot) {
+        if (isAddNot) {
             jsonExpressionTree.put("op", OrcOperator.NOT.ordinal());
             ArrayList<JSONObject> child = new ArrayList<>();
             JSONObject subJson = new JSONObject();
@@ -516,12 +558,12 @@ public class OrcPushFilterBuilder {
         if (literal instanceof String) {
             return (String) literal;
         }
-        if (literal instanceof Integer || literal instanceof Long || literal instanceof Boolean ||
-                literal instanceof Short || literal instanceof Double) {
+        if (literal instanceof Integer || literal instanceof Long || literal instanceof Boolean
+                || literal instanceof Short || literal instanceof Double) {
             return literal.toString();
         }
-        throw new UnsupportedOperationException("Unsupported orc push down filter date type: " +
-                literal.getClass().getSimpleName());
+        throw new UnsupportedOperationException("Unsupported orc push down filter date type: "
+                + literal.getClass().getSimpleName());
     }
 
     private String buildVecPredicateCondition(Filter filterPredicate) {
@@ -548,13 +590,15 @@ public class OrcPushFilterBuilder {
                     ((GreaterThan) filterPredicate).attribute(), ((GreaterThan) filterPredicate).value(), nameToIndex);
         } else if (filterPredicate instanceof GreaterThanOrEqual) {
             return buildLeafPredicateCondition(PredicateOperatorType.GREATER_THAN_OR_EQUAL,
-                    ((GreaterThanOrEqual) filterPredicate).attribute(), ((GreaterThanOrEqual) filterPredicate).value(), nameToIndex);
+                    ((GreaterThanOrEqual) filterPredicate).attribute(),
+                    ((GreaterThanOrEqual) filterPredicate).value(), nameToIndex);
         } else if (filterPredicate instanceof LessThan) {
             return buildLeafPredicateCondition(PredicateOperatorType.LESS_THAN,
                     ((LessThan) filterPredicate).attribute(), ((LessThan) filterPredicate).value(), nameToIndex);
         } else if (filterPredicate instanceof LessThanOrEqual) {
             return buildLeafPredicateCondition(PredicateOperatorType.LESS_THAN_OR_EQUAL,
-                    ((LessThanOrEqual) filterPredicate).attribute(), ((LessThanOrEqual) filterPredicate).value(), nameToIndex);
+                    ((LessThanOrEqual) filterPredicate).attribute(),
+                    ((LessThanOrEqual) filterPredicate).value(), nameToIndex);
         } else if (filterPredicate instanceof IsNotNull) {
             return buildLeafPredicateCondition(PredicateOperatorType.IS_NOT_NULL,
                     ((IsNotNull) filterPredicate).attribute(), "-1", nameToIndex);
