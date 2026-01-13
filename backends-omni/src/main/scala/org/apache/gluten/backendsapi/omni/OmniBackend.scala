@@ -257,6 +257,8 @@ class OmniValidatorApi extends ValidatorApi {
             }
         }
         None
+      case array: ArrayType =>
+        doSchemaValidate(array.elementType)
       case _ =>
         Some(s"Schema / data type not supported: $schema")
     }

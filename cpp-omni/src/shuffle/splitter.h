@@ -72,6 +72,11 @@ class Splitter {
                                 int colIndex,
                                 int curBatch);
 
+    void SerializingArrayColumns(int32_t partitionId,
+                                spark::Vec& vec,
+                                int colIndex,
+                                int curBatch);
+
     int protoSpillPartition(int32_t partition_id, std::unique_ptr<BufferedOutputStream> &bufferStream);
 
     int protoSpillPartitionByRow(int32_t partition_id, std::unique_ptr<BufferedOutputStream> &bufferStream);
@@ -92,6 +97,11 @@ class Splitter {
 
     template<bool HasNull>
     void SplitBinaryVector(BaseVector *varcharVector, int col_schema);
+
+    int ToBytes(DataTypeId omniType);
+
+    template<bool HasNull>
+    void SplitArrayVector(BaseVector *arrayVector, int col_schema);
 
     int CacheVectorBatch(int32_t partition_id, bool reset_buffers);
 
@@ -142,8 +152,10 @@ class Splitter {
     std::vector<std::vector<uint8_t*>> partition_fixed_width_value_addrs_; //
     std::vector<std::vector<std::vector<std::shared_ptr<Buffer>>>> partition_fixed_width_buffers_;
     std::vector<std::vector<std::shared_ptr<Buffer>>> partition_binary_builders_;
+    std::vector<std::vector<std::shared_ptr<Buffer>>> partition_ar_builders_;
     std::vector<int32_t> fixed_width_array_idx_; // 记录各定长类型列的序号，VB 列id序列
     std::vector<int32_t> binary_array_idx_; //记录各变长类型列序号
+    std::vector<int32_t> ar_array_idx_; //记录 array 类型列序号
     int32_t *partition_buffer_size_; // 各分区的buffer大小
     int32_t *partition_buffer_idx_base_; //当前已缓存的各partition行数据记录，用于定位缓冲buffer当前可用位置
     int32_t *partition_buffer_idx_offset_; //split定长列时用于统计offset的临时变量
@@ -155,6 +167,12 @@ class Splitter {
      * 
      */
     std::vector<std::vector<std::vector<VCBatchInfo>>> vc_partition_array_buffers_;
+    /*
+    * array buffers:
+    *  partition_array_buffers_[partition_id][col_id][arrayBatch_id]
+    *
+    */
+    std::vector<std::vector<std::vector<ArrayBatchInfo>>> ar_partition_array_buffers_;
     spark::VecBatch *vecBatchProto = new VecBatch(); // protobuf 序列化对象结构
 
     // Data structures required to handle row formats
@@ -178,26 +196,53 @@ private:
         varcharVectorCache.clear();
     }
 
+    void ReleaseArrayVector()
+    {
+        std::set<BaseVector *>::iterator it;
+        for (it = arrayVectorCache.begin(); it != arrayVectorCache.end(); it++) {
+            delete *it;
+        }
+        arrayVectorCache.clear();
+    }
+
     void ReleaseVectorBatch(VectorBatch *vb)
     {
         int vectorCnt = vb->GetVectorCount();
-        std::set<BaseVector *> vectorAddress; // vector deduplication
+        std::set<BaseVector *> processedVectors; // vector deduplication
+
         for (int vecIndex = 0; vecIndex < vectorCnt; vecIndex++) {
             BaseVector *vector = vb->Get(vecIndex);
-            // not varchar vector can be released;
-            if (varcharVectorCache.find(vector) == varcharVectorCache.end() &&
-                vectorAddress.find(vector) == vectorAddress.end()) {
-                vectorAddress.insert(vector);
+
+            if (vector == nullptr) {
+                continue;
+            }
+
+            // 跳过已经处理的 vector
+            if (processedVectors.find(vector) != processedVectors.end()) {
+                continue;
+            }
+            processedVectors.insert(vector);
+
+            // 检查vector是否在保护缓存中
+            bool isProtected = false;
+            if (varcharVectorCache.find(vector) != varcharVectorCache.end()) {
+                isProtected = true;
+            }
+            if (arrayVectorCache.find(vector) != arrayVectorCache.end()) {
+                isProtected = true;
+            }
+            if (!isProtected) {
                 delete vector;
             }
         }
-        vectorAddress.clear();
+        processedVectors.clear();
         vb->ClearVectors();
         delete vb;
     }
 
     // Data structures required to handle col formats
     std::set<BaseVector *> varcharVectorCache;
+    std::set<BaseVector *> arrayVectorCache;
 public:
     // Common structures for row formats and col formats
     bool singlePartitionFlag = false;
@@ -267,6 +312,7 @@ public:
 	delete[] fixed_nullBuffer_size_;
 	partition_fixed_width_buffers_.clear();
 	partition_binary_builders_.clear();
+	partition_ar_builders_.clear();
 	partition_cached_vectorbatch_.clear();
 	spilled_tmp_files_info_.clear();
     }

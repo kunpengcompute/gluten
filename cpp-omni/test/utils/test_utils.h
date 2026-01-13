@@ -83,6 +83,8 @@ BaseVector *CreateDictionary(BaseVector *vector, int32_t *ids, int32_t size)
 
 VectorBatch* CreateVectorBatch_1row_varchar_withPid(int pid, std::string inputChar);
 
+VectorBatch* CreateVectorBatch_1row_array_int_withPid(int pid, int* elements, int element_count);
+
 VectorBatch* CreateVectorBatch_4col_withPid(int parNum, int rowNum);
 
 VectorBatch* CreateVectorBatch_1FixCol_withPid(int parNum, int rowNum, DataTypePtr fixColType);

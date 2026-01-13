@@ -54,6 +54,51 @@ protected:
 
 };
 
+TEST_F (ShuffleTest, Split_SingleArrayInt) {
+    tmpShuffleFilePath = tmpTestingDir + "/shuffle_split_SingleArrayInt";
+    int32_t inputVecTypeIds[] = {OMNI_ARRAY};
+    int colNumber = sizeof(inputVecTypeIds) / sizeof(inputVecTypeIds[0]);
+    InputDataTypes inputDataTypes;
+    inputDataTypes.inputVecTypeIds = inputVecTypeIds;
+    inputDataTypes.inputDataPrecisions = new uint32_t[colNumber];
+    inputDataTypes.inputDataScales = new uint32_t[colNumber];
+    long splitterAddr = Test_splitter_nativeMake("hash",
+        4,
+        inputDataTypes,
+        colNumber,
+        1024,
+        "lz4",
+        tmpShuffleFilePath,
+        0,
+        tmpTestingDir);
+    int32_t ele1[] = {0, 1, 2, 3};
+    VectorBatch* vb1 = CreateVectorBatch_1row_array_int_withPid(3, ele1, 4);
+    Test_splitter_split(splitterAddr, vb1);
+    int32_t ele2[] = {0, 1, 2};
+    VectorBatch* vb2 = CreateVectorBatch_1row_array_int_withPid(2, ele2, 3);
+    Test_splitter_split(splitterAddr, vb2);
+    int32_t ele3[] = {0, 1};
+    VectorBatch* vb3 = CreateVectorBatch_1row_array_int_withPid(3, ele3, 2);
+    Test_splitter_split(splitterAddr, vb3);
+    int32_t ele4[] = {0};
+    VectorBatch* vb4 = CreateVectorBatch_1row_array_int_withPid(2, ele4, 1);
+    Test_splitter_split(splitterAddr, vb4);
+    int32_t ele5[] = {1, 2, 3};
+    VectorBatch* vb5 = CreateVectorBatch_1row_array_int_withPid(2, ele5, 3);
+    Test_splitter_split(splitterAddr, vb5);
+    int32_t ele6[] = {2, 3};
+    VectorBatch* vb6 = CreateVectorBatch_1row_array_int_withPid(1, ele6, 2);
+    Test_splitter_split(splitterAddr, vb6);
+    int32_t ele7[] = {3};
+    VectorBatch* vb7 = CreateVectorBatch_1row_array_int_withPid(3, ele7, 1);
+    Test_splitter_split(splitterAddr, vb7);
+
+    Test_splitter_stop(splitterAddr);
+    Test_splitter_close(splitterAddr);
+    delete[] inputDataTypes.inputDataPrecisions;
+    delete[] inputDataTypes.inputDataScales;
+}
+
 TEST_F (ShuffleTest, Split_SingleVarChar) {
     tmpShuffleFilePath = tmpTestingDir + "/shuffle_split_SingleVarChar";
     int32_t inputVecTypeIds[] = {OMNI_VARCHAR};

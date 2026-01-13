@@ -87,12 +87,24 @@ Java_com_huawei_boostkit_spark_serialize_ShuffleDataSerializerUtils_columnarShuf
         scaleArrayElements[i] = protoTypeId.scale();
         precisionArrayElements[i] = protoTypeId.precision();
         typeIdArrayElements[i] = static_cast<jint>(protoTypeId.typeid_());
- 
+
         // create native vector
         auto vectorDataTypeId = static_cast<omniruntime::type::DataTypeId>(protoTypeId.typeid_());
-        vecs[i] = VectorHelper::CreateVector(OMNI_FLAT, vectorDataTypeId, rowCount);
-        vecNativeIdArrayElements[i] = (jlong)(vecs[i]);
 
+        if (vectorDataTypeId == OMNI_ARRAY) {
+            if (protoTypeId.children_size() <= 0) {
+                throw std::runtime_error("columnarShuffleParseBatch: Array type must have child type information");
+            }
+            const spark::VecType& childProtoType = protoTypeId.children(0);
+            auto elementDataTypeId = static_cast<omniruntime::type::DataTypeId>(childProtoType.typeid_());
+            std::shared_ptr<DataType> elementDataType = std::make_shared<DataType>(elementDataTypeId);
+
+            auto arrayType = std::make_shared<ArrayType>(elementDataType);
+            vecs[i] = VectorHelper::CreateEmptyComplexVector(arrayType.get(), rowCount);
+        } else {
+            vecs[i] = VectorHelper::CreateVector(OMNI_FLAT, vectorDataTypeId, rowCount);
+        }
+        vecNativeIdArrayElements[i] = (jlong)(vecs[i]);
 
         auto values = protoVec.values().data();
         auto offsets = protoVec.offset().data();
@@ -105,6 +117,33 @@ Java_com_huawei_boostkit_spark_serialize_ShuffleDataSerializerUtils_columnarShuf
             auto offsetsAddress = (uint8_t *)VectorHelper::UnsafeGetOffsetsAddr(vecs[i]);
             memcpy_s(valuesAddress, protoVec.values().size(), values, protoVec.values().size());
             memcpy_s(offsetsAddress, protoVec.offset().size(), offsets, protoVec.offset().size());
+        } else if (vectorDataTypeId == OMNI_ARRAY) {
+            auto arrayVec =  reinterpret_cast<ArrayVector *>(vecs[i]);
+            const int32_t* nums = reinterpret_cast<const int32_t*>(protoVec.nums().data());
+
+            int32_t totalElements = 0;
+            for (int j = 0; j < rowCount; ++j) {
+                totalElements += nums[j];
+                arrayVec->SetOffset(j + 1, totalElements);
+            }
+
+            const spark::VecType& childProtoType = protoTypeId.children(0);
+            auto elementDataTypeId = static_cast<omniruntime::type::DataTypeId>(childProtoType.typeid_());
+
+            BaseVector* elementVector = VectorHelper::CreateVector(OMNI_FLAT, elementDataTypeId, totalElements);
+            arrayVec->SetElementVector(std::shared_ptr<BaseVector>(elementVector));
+
+            if (elementDataTypeId == OMNI_CHAR || elementDataTypeId == OMNI_VARCHAR) {
+                auto charVec = reinterpret_cast<Vector<LargeStringContainer<std::string_view>> *>(elementVector);
+                char *valuesAddress = omniruntime::vec::unsafe::UnsafeStringVector::ExpandStringBuffer(
+                    charVec, protoVec.values().size());
+                auto offsetsAddress = (uint8_t *)VectorHelper::UnsafeGetOffsetsAddr(elementVector);
+                memcpy_s(valuesAddress, protoVec.values().size(), values, protoVec.values().size());
+                memcpy_s(offsetsAddress, protoVec.offset().size(), offsets, protoVec.offset().size());
+            } else {
+                auto *valuesAddress = (uint8_t *)VectorHelper::UnsafeGetValues(elementVector);
+                memcpy_s(valuesAddress, protoVec.values().size(), values, protoVec.values().size());
+            }
         } else {
             auto *valuesAddress = (uint8_t *)VectorHelper::UnsafeGetValues(vecs[i]);
             memcpy_s(valuesAddress, protoVec.values().size(), values, protoVec.values().size());
@@ -115,14 +154,13 @@ Java_com_huawei_boostkit_spark_serialize_ShuffleDataSerializerUtils_columnarShuf
             }
         }
     }
-    
+
     env->ReleaseIntArrayElements(typeIdArray, typeIdArrayElements, 0);
     env->ReleaseIntArrayElements(precisionArray, precisionArrayElements, 0);
     env->ReleaseIntArrayElements(scaleArray, scaleArrayElements, 0);
     env->ReleaseLongArrayElements(vecNativeIdArray, vecNativeIdArrayElements, 0);
     JNI_FUNC_END_WITH_VECTORS(runtimeExceptionClass, vecs)
 }
-
 
 JNIEXPORT jlong JNICALL
 Java_com_huawei_boostkit_spark_serialize_ShuffleDataSerializerUtils_rowShuffleParseInit(

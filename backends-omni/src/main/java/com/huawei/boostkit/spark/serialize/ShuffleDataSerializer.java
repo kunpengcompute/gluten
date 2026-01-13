@@ -20,6 +20,7 @@ package com.huawei.boostkit.spark.serialize;
 
 import nova.hetu.omniruntime.type.DataType.DataTypeId;
 import nova.hetu.omniruntime.utils.OmniRuntimeException;
+import nova.hetu.omniruntime.type.ArrayDataType;
 import nova.hetu.omniruntime.vector.BooleanVec;
 import nova.hetu.omniruntime.vector.Decimal128Vec;
 import nova.hetu.omniruntime.vector.DoubleVec;
@@ -30,7 +31,8 @@ import nova.hetu.omniruntime.vector.VarcharVec;
 import nova.hetu.omniruntime.vector.FloatVec;
 import nova.hetu.omniruntime.vector.ByteVec;
 import nova.hetu.omniruntime.vector.Vec;
-import nova.hetu.omniruntime.vector.ByteVec;
+import nova.hetu.omniruntime.vector.ArrayVec;
+import nova.hetu.omniruntime.vector.ComplexVec;
 import org.apache.gluten.vectorized.OmniColumnVector;
 import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DataTypes;
@@ -104,7 +106,7 @@ public class ShuffleDataSerializer {
     private static ColumnVector buildVec(int typeId, long vecNativeId, int vecSize, int precision, int scale) {
         Vec vec;
         DataType type;
-        switch (DataTypeId.values()[typeId]) {
+        switch (DataTypeId.fromValue(typeId)) {
             case OMNI_INT:
                 type = DataTypes.IntegerType;
                 vec = new IntVec(vecNativeId);
@@ -158,6 +160,13 @@ public class ShuffleDataSerializer {
                 type = DataTypes.ByteType;
                 vec = new ByteVec(vecNativeId);
                 break;
+            case OMNI_ARRAY:
+                ArrayDataType arrayDataType = (ArrayDataType) ComplexVec.getComplexDataType(vecNativeId);
+                DataTypeId dataTypeId = arrayDataType.getElementType().getId();
+                type = DataTypes.createArrayType(createDataTypeFromOmniType(dataTypeId, precision, scale));
+                vec = new ArrayVec(vecNativeId, arrayDataType);
+                ArrayVec arrayVec = (ArrayVec) vec;
+                break;
             case OMNI_TIME32:
             case OMNI_TIME64:
             case OMNI_INTERVAL_DAY_TIME:
@@ -168,5 +177,44 @@ public class ShuffleDataSerializer {
         OmniColumnVector vecTmp = new OmniColumnVector(vecSize, type, false);
         vecTmp.setVec(vec);
         return vecTmp;
+    }
+
+    private static DataType createDataTypeFromOmniType(DataTypeId dataTypeId, int precision, int scale) {
+        switch (dataTypeId) {
+            case OMNI_INT:
+                return DataTypes.IntegerType;
+            case OMNI_DATE32:
+                return DataTypes.DateType;
+            case OMNI_LONG:
+                return DataTypes.LongType;
+            case OMNI_TIMESTAMP:
+                return DataTypes.TimestampType;
+            case OMNI_DATE64:
+                return DataTypes.DateType;
+            case OMNI_DECIMAL64:
+                return DataTypes.createDecimalType(precision, scale);
+            case OMNI_SHORT:
+                return DataTypes.ShortType;
+            case OMNI_BOOLEAN:
+                return DataTypes.BooleanType;
+            case OMNI_DOUBLE:
+                return DataTypes.DoubleType;
+            case OMNI_FLOAT:
+                return DataTypes.FloatType;
+            case OMNI_VARCHAR:
+            case OMNI_CHAR:
+                return DataTypes.StringType;
+            case OMNI_DECIMAL128:
+                return DataTypes.createDecimalType(precision, scale);
+            case OMNI_BYTE:
+                return DataTypes.ByteType;
+            case OMNI_ARRAY:
+            case OMNI_TIME32:
+            case OMNI_TIME64:
+            case OMNI_INTERVAL_DAY_TIME:
+            case OMNI_INTERVAL_MONTHS:
+            default:
+                throw new IllegalStateException("Unexpected value: " + dataTypeId);
+        }
     }
 }
