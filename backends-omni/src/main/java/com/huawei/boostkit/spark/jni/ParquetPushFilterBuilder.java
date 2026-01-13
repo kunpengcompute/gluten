@@ -28,7 +28,6 @@ import com.huawei.boostkit.spark.timestamp.JulianGregorianRebase;
 import com.huawei.boostkit.spark.timestamp.TimestampUtil;
 
 import nova.hetu.omniruntime.type.DataType;
-import nova.hetu.omniruntime.utils.OmniRuntimeException;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
@@ -73,7 +72,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Stack;
-import java.util.TimeZone;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -122,7 +120,9 @@ public class ParquetPushFilterBuilder {
     }
 
     /**
-     * Parquet AddTimeRebaseInfo
+     * Add parquet datetime and int96 rebase info to the json object.
+     *
+     * @param job JSONObject to store the parquet datetime rebase related information
      */
     private void addParquetRebaseInfo(JSONObject job) {
         boolean hasTimeType = Arrays.stream(requiredSchema.fields()).anyMatch(field ->
@@ -139,14 +139,20 @@ public class ParquetPushFilterBuilder {
                 timestampRebase.put("tz", julianObject.getTz());
 
                 if (julianObject.getSwitches() != null && julianObject.getSwitches().length > 0) {
-                    String switchesStr = StringUtils.join(Arrays.stream(julianObject.getSwitches()).mapToObj(String::valueOf).toArray(), ",");
+                    String switchesStr = StringUtils.join(
+                            Arrays.stream(julianObject.getSwitches())
+                                    .mapToObj(String::valueOf)
+                                    .toArray(), ",");
                     timestampRebase.put("switches", switchesStr);
                 } else {
                     timestampRebase.put("switches", "");
                 }
 
                 if (julianObject.getDiffs() != null && julianObject.getDiffs().length > 0) {
-                    String diffsStr = StringUtils.join(Arrays.stream(julianObject.getDiffs()).mapToObj(String::valueOf).toArray(), ",");
+                    String diffsStr = StringUtils.join(
+                            Arrays.stream(julianObject.getDiffs())
+                                    .mapToObj(String::valueOf)
+                                    .toArray(), ",");
                     timestampRebase.put("diffs", diffsStr);
                 } else {
                     timestampRebase.put("diffs", "");
@@ -163,14 +169,20 @@ public class ParquetPushFilterBuilder {
                 int96Rebase.put("tz", julianObject.getTz());
 
                 if (julianObject.getSwitches() != null && julianObject.getSwitches().length > 0) {
-                    String switchesStr = StringUtils.join(Arrays.stream(julianObject.getSwitches()).mapToObj(String::valueOf).toArray(), ",");
+                    String switchesStr = StringUtils.join(
+                            Arrays.stream(julianObject.getSwitches())
+                                    .mapToObj(String::valueOf)
+                                    .toArray(), ",");
                     int96Rebase.put("switches", switchesStr);
                 } else {
                     int96Rebase.put("switches", "");
                 }
 
                 if (julianObject.getDiffs() != null && julianObject.getDiffs().length > 0) {
-                    String diffsStr = StringUtils.join(Arrays.stream(julianObject.getDiffs()).mapToObj(String::valueOf).toArray(), ",");
+                    String diffsStr = StringUtils.join(
+                            Arrays.stream(julianObject.getDiffs())
+                                    .mapToObj(String::valueOf)
+                                    .toArray(), ",");
                     int96Rebase.put("diffs", diffsStr);
                 } else {
                     int96Rebase.put("diffs", "");
@@ -269,7 +281,7 @@ public class ParquetPushFilterBuilder {
         try {
             ugi = UserGroupInformation.getCurrentUser().toString();
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new UnsupportedOperationException("Failed to get current UserGroupInformation", e);
         }
         job.put("ugi", ugi);
         addParquetRebaseInfo(job);
@@ -278,17 +290,17 @@ public class ParquetPushFilterBuilder {
     }
 
     private enum CppOperator {
-        AND(0),        // C++: And = 0
-        OR(1),         // C++: Or = 1
-        NOT(2),        // C++: Not = 2
-        EQ(3),         // C++: Eq = 3
-        GT(4),         // C++: Gt = 4
-        GT_EQ(5),      // C++: GtEq = 5
-        LT(6),         // C++: Lt = 6
-        LT_EQ(7),      // C++: LtEq = 7
-        IS_NOT_NULL(8),// C++: IsNotNull = 8
-        IS_NULL(9),    // C++: IsNull = 9
-        IN(10);        // C++: IN = 10
+        AND(0), // C++: And = 0
+        OR(1), // C++: Or = 1
+        NOT(2), // C++: Not = 2
+        EQ(3), // C++: Eq = 3
+        GT(4), // C++: Gt = 4
+        GT_EQ(5), // C++: GtEq = 5
+        LT(6), // C++: Lt = 6
+        LT_EQ(7), // C++: LtEq = 7
+        IS_NOT_NULL(8), // C++: IsNotNull = 8
+        IS_NULL(9), // C++: IsNull = 9
+        IN(10); // C++: IN = 10
 
         private final int code;
         CppOperator(int code) {
@@ -303,7 +315,8 @@ public class ParquetPushFilterBuilder {
         LONG, FLOAT, STRING, DATE, DECIMAL, TIMESTAMP, BOOLEAN
     }
 
-    private Pair<String, ParquetPredicateDataType> getParquetPredicateDataType(String attribute, StructType inputSchema) {
+    private Pair<String, ParquetPredicateDataType> getParquetPredicateDataType(
+            String attribute, StructType inputSchema) {
         if (attribute.contains(".")) {
             String[] args = attribute.split("\\.");
             StructField field = inputSchema.apply(args[0]);
@@ -311,8 +324,8 @@ public class ParquetPushFilterBuilder {
                 StructType struct = (StructType) field.dataType();
                 return getParquetPredicateDataType(args[1], struct);
             } else {
-                throw new UnsupportedOperationException("Unsupported Parquet field type: " +
-                        field.dataType().getClass().getSimpleName());
+                throw new UnsupportedOperationException("Unsupported Parquet field type: "
+                        + field.dataType().getClass().getSimpleName());
             }
         }
         StructField field = inputSchema.apply(attribute);
@@ -336,8 +349,8 @@ public class ParquetPushFilterBuilder {
         } else if (dataType instanceof TimestampType) {
             return ParquetPredicateDataType.TIMESTAMP;
         } else {
-            throw new UnsupportedOperationException("Unsupported Parquet data type: " +
-                    dataType.getClass().getSimpleName());
+            throw new UnsupportedOperationException("Unsupported Parquet data type: "
+                    + dataType.getClass().getSimpleName());
         }
     }
 
@@ -349,8 +362,8 @@ public class ParquetPushFilterBuilder {
                 throw new UnsupportedOperationException("Leaf node count exceeds threshold: " + leafIndex);
             }
             return true;
-        } catch (Exception e) {
-            LOGGER.info("Parquet filter push down failed: " + e.getMessage());
+        } catch (UnsupportedOperationException e) {
+            LOGGER.warn("Parquet filter push down failed: {}", e.getMessage(), e);
             return false;
         }
     }
@@ -422,7 +435,8 @@ public class ParquetPushFilterBuilder {
             In in = (In) filterPredicate;
             jsonExpressionTree.put("field", in.attribute());
 
-            Pair<String, ParquetPredicateDataType> typePair = getParquetPredicateDataType(in.attribute(), requiredSchema);
+            Pair<String, ParquetPredicateDataType> typePair = getParquetPredicateDataType(
+                    in.attribute(), requiredSchema);
             jsonExpressionTree.put("type", convertToCxxPredicateDataType(typePair.getValue()));
 
             JSONArray literalArray = new JSONArray();
@@ -432,8 +446,8 @@ public class ParquetPushFilterBuilder {
             jsonExpressionTree.put("literal", literalArray);
             leafIndex++;
         } else {
-            throw new UnsupportedOperationException("Unsupported Parquet filter operation: " +
-                    filterPredicate.getClass().getSimpleName());
+            throw new UnsupportedOperationException("Unsupported Parquet filter operation: "
+                    + filterPredicate.getClass().getSimpleName());
         }
     }
 
@@ -445,13 +459,13 @@ public class ParquetPushFilterBuilder {
 
     private int convertToCxxPredicateDataType(ParquetPredicateDataType javaType) {
         switch (javaType) {
-            case LONG:     return 2;  // C++ PredicateDataType::Long
-            case FLOAT:    return 8;  // C++ PredicateDataType::Double
-            case STRING:   return 3;  // C++ PredicateDataType::String
-            case DATE:     return 4;  // C++ PredicateDataType::Date32
-            case DECIMAL:  return 5;  // C++ PredicateDataType::Decimal
-            case TIMESTAMP:return 9;  // C++ PredicateDataType::Timestamp
-            case BOOLEAN:  return 6;  // C++ PredicateDataType::Bool
+            case LONG: return 2; // C++ PredicateDataType::Long
+            case FLOAT: return 8; // C++ PredicateDataType::Double
+            case STRING: return 3; // C++ PredicateDataType::String
+            case DATE: return 4; // C++ PredicateDataType::Date32
+            case DECIMAL: return 5; // C++ PredicateDataType::Decimal
+            case TIMESTAMP: return 9; // C++ PredicateDataType::Timestamp
+            case BOOLEAN: return 6; // C++ PredicateDataType::Bool
             default: throw new UnsupportedOperationException("Unsupported type: " + javaType);
         }
     }
@@ -484,13 +498,13 @@ public class ParquetPushFilterBuilder {
             return String.valueOf(((LocalDate) literal).toEpochDay());
         }
 
-        if (literal instanceof String || literal instanceof Integer || literal instanceof Long ||
-                literal instanceof Boolean || literal instanceof Short || literal instanceof Double) {
+        if (literal instanceof String || literal instanceof Integer || literal instanceof Long
+                || literal instanceof Boolean || literal instanceof Short || literal instanceof Double) {
             return literal.toString();
         }
 
-        throw new UnsupportedOperationException("Unsupported Parquet literal type: " +
-                literal.getClass().getSimpleName());
+        throw new UnsupportedOperationException("Unsupported Parquet literal type: "
+                + literal.getClass().getSimpleName());
     }
 
     private String buildVecPredicateCondition(Filter filterPredicate) {
@@ -516,14 +530,18 @@ public class ParquetPushFilterBuilder {
             return buildLeafPredicateCondition(PredicateOperatorType.GREATER_THAN,
                     ((GreaterThan) filterPredicate).attribute(), ((GreaterThan) filterPredicate).value(), nameToIndex);
         } else if (filterPredicate instanceof GreaterThanOrEqual) {
-            return buildLeafPredicateCondition(PredicateOperatorType.GREATER_THAN_OR_EQUAL,
-                    ((GreaterThanOrEqual) filterPredicate).attribute(), ((GreaterThanOrEqual) filterPredicate).value(), nameToIndex);
+            return buildLeafPredicateCondition(
+                    PredicateOperatorType.GREATER_THAN_OR_EQUAL,
+                    ((GreaterThanOrEqual) filterPredicate).attribute(),
+                    ((GreaterThanOrEqual) filterPredicate).value(), nameToIndex);
         } else if (filterPredicate instanceof LessThan) {
             return buildLeafPredicateCondition(PredicateOperatorType.LESS_THAN,
                     ((LessThan) filterPredicate).attribute(), ((LessThan) filterPredicate).value(), nameToIndex);
         } else if (filterPredicate instanceof LessThanOrEqual) {
-            return buildLeafPredicateCondition(PredicateOperatorType.LESS_THAN_OR_EQUAL,
-                    ((LessThanOrEqual) filterPredicate).attribute(), ((LessThanOrEqual) filterPredicate).value(), nameToIndex);
+            return buildLeafPredicateCondition(
+                    PredicateOperatorType.LESS_THAN_OR_EQUAL,
+                    ((LessThanOrEqual) filterPredicate).attribute(),
+                    ((LessThanOrEqual) filterPredicate).value(), nameToIndex);
         } else if (filterPredicate instanceof IsNotNull) {
             return buildLeafPredicateCondition(PredicateOperatorType.IS_NOT_NULL,
                     ((IsNotNull) filterPredicate).attribute(), "-1", nameToIndex);
@@ -531,8 +549,8 @@ public class ParquetPushFilterBuilder {
             return buildLeafPredicateCondition(PredicateOperatorType.IS_NULL,
                     ((IsNull) filterPredicate).attribute(), "-1", nameToIndex);
         } else {
-            throw new UnsupportedOperationException("Unsupported Parquet vec predicate operation: " +
-                    filterPredicate.getClass().getSimpleName());
+            throw new UnsupportedOperationException("Unsupported Parquet vec predicate operation: "
+                    + filterPredicate.getClass().getSimpleName());
         }
     }
 
@@ -566,8 +584,8 @@ public class ParquetPushFilterBuilder {
         } else if (dataType instanceof BooleanType) {
             return DataType.DataTypeId.OMNI_BOOLEAN;
         } else {
-            throw new UnsupportedOperationException("Unsupported Parquet vec data type: " +
-                    dataType.getClass().getSimpleName());
+            throw new UnsupportedOperationException("Unsupported Parquet vec data type: "
+                    + dataType.getClass().getSimpleName());
         }
     }
 }
