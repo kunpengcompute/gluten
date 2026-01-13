@@ -1208,6 +1208,8 @@ object OmniExpressionAdaptor extends Logging {
   def sparkTypeToOmniTypeWithComplex(dataType: DataType, metadata: Metadata = Metadata.empty):
   nova.hetu.omniruntime.`type`.DataType = {
     dataType match {
+      case ByteType =>
+        ByteDataType.BYTE
       case ShortType =>
         ShortDataType.SHORT
       case IntegerType =>
