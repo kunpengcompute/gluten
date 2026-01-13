@@ -148,6 +148,7 @@ public class OrcPushFilterBuilder {
 
     /**
      * Padding zero for decimal fractional part to align the specified scale length
+     *
      * @param decimalStrArray decimal value split by dot, array length 1 means integer, 2 means have fractional part
      * @param decimalScale specified decimal scale length
      * @return padded fractional part string with zero
@@ -256,6 +257,7 @@ public class OrcPushFilterBuilder {
 
     /**
      * Build ORC push down filter json string, convert Spark Filter to native supported JSON format
+     *
      * @param pushedFilter Spark filter condition to push down
      * @param canVecPredicateFilter whether enable vector predicate filter
      * @param shouldFilterPushDown whether enable filter push down to native layer
@@ -293,6 +295,7 @@ public class OrcPushFilterBuilder {
 
     /**
      * Convert Julian calendar days to Gregorian calendar days for Int vector
+     *
      * @param intVec Int vector of date value in Julian days
      * @param rowNumber total row count of current vector
      */
@@ -306,6 +309,7 @@ public class OrcPushFilterBuilder {
 
     /**
      * Convert Julian calendar timestamp micros to Gregorian calendar timestamp micros for Long vector
+     *
      * @param longVec Long vector of timestamp value in Julian micros
      * @param rowNumber total row count of current vector
      */
