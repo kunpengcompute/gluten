@@ -215,6 +215,10 @@ bool SubstraitParser::ConfigSetInOptimization(
     const ::substrait::extensions::AdvancedExtension &extension, const std::string &config)
 {
     if (extension.has_optimization()) {
+        const auto& optimization = extension.optimization();
+        if (!optimization.Is<google::protobuf::StringValue>()) {
+            return false;
+        }
         google::protobuf::StringValue msg;
         extension.optimization().UnpackTo(&msg);
         std::size_t pos = msg.value().find(config);
