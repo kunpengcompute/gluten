@@ -1057,6 +1057,10 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::Generate
             // The last `numFields` projections are the fields we want to unnest.
             auto generatorFunc = generator.scalar_function();
             auto numRows = SubstraitParser::GetLiteralValue<int32_t>(generatorFunc.arguments(0).value().literal());
+            if (numRows == 0) {
+                OMNI_THROW("SUBSTRAIT_ERROR:",
+                          "Division by zero error prevented: numRows cannot be 0 in stack function.");
+            }
             auto numFields = static_cast<int32_t>(std::ceil((generatorFunc.arguments_size() - 1.0) / numRows));
             auto totalProjectCount = childNode->OutputType()->GetSize();
   
