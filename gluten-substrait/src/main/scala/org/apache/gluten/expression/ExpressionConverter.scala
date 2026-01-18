@@ -165,6 +165,16 @@ object ExpressionConverter extends SQLConfHelper with Logging {
                 i)
           }
         }
+        i.functionName match {
+          case "charTypeWriteSideCheck" =>
+            val arg0 = i.arguments.head.children.head
+            val arg1 = i.arguments.last
+            return GenericExpressionTransformer(
+              "StaticInvokeCharTypeWriteSideCheck",
+              Seq(replaceWithExpressionTransformer0(arg0, attributeSeq, expressionsMap),
+                replaceWithExpressionTransformer0(arg1, attributeSeq, expressionsMap)),
+              i)
+        }
       case _ =>
     }
 
