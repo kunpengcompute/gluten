@@ -88,9 +88,9 @@ target_link_libraries (${PROJ_TARGET} PUBLIC
         zstd
         re2
         fmt::fmt
-        boostkit-omniop-vector-1.9.0-aarch64
-        boostkit-omniop-operator-1.9.0-aarch64
-        boostkit-omniop-codegen-1.9.0-aarch64
+        boostkit-omniop-vector-2.0.0-aarch64
+        boostkit-omniop-operator-2.0.0-aarch64
+        boostkit-omniop-codegen-2.0.0-aarch64
         )
 
 set_target_properties(${PROJ_TARGET} PROPERTIES
