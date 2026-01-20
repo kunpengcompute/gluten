@@ -111,6 +111,8 @@ const std::string kAbandonPartialAggregationMinPct =
 const std::string kAbandonPartialAggregationMinRows =
     "spark.gluten.sql.columnar.backend.omni.abandonPartialAggregationMinRows";
 
+const std::string kOmniUdfLibraryPaths = "spark.gluten.sql.columnar.backend.omni.internal.udfLibraryPaths";
+
 // execution
 const std::string kBloomFilterExpectedNumItems = "spark.gluten.sql.columnar.backend.omni.bloomFilter.expectedNumItems";
 const std::string kBloomFilterNumBits = "spark.gluten.sql.columnar.backend.omni.bloomFilter.numBits";
@@ -181,6 +183,13 @@ const std::string KSpillSortRowThreshold = "spark.gluten.sql.columnar.backend.om
 const std::string KColumnarSpillMemThreshold = "spark.gluten.sql.columnar.backend.omni.spill.memFraction";
 const std::string KColumnarSpillWriteBufferSize = "spark.gluten.sql.columnar.backend.omni.spill.writeBufferSize";
 const std::string KColumnarSpillDirDiskReserveSize = "spark.gluten.sql.columnar.backend.omni.spill.dirDiskReserveSize";
+const std::string KColumnarSpillEnableCompress = "spark.gluten.sql.columnar.backend.omni.spill.enableCompress";
+
+const std::string KEnableAdaptivePartialAggregation = "spark.gluten.sql.columnar.backend.omni.adaptivePartialAggregation.enabled";
+const std::string KAdaptivePartialAggregationMinRows = "spark.gluten.sql.columnar.backend.omni.adaptivePartialAggregationMinRows";
+const std::string KAdaptivePartialAggregationRatio = "spark.gluten.sql.columnar.backend.omni.adaptivePartialAggregationRatio";
+
+const std::string KPreferVectorizationExpression = "spark.gluten.sql.columnar.backend.omni.preferVectorizationExpression";
 
 // others
 const std::string kHiveDefaultPartition = "__HIVE_DEFAULT_PARTITION__";

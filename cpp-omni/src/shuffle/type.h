@@ -63,7 +63,8 @@ enum ShuffleTypeId : int {
     SHUFFLE_LARGE_BINARY = 7,
     SHUFFLE_NULL = 8,
     NUM_TYPES = 9,
-    SHUFFLE_NOT_IMPLEMENTED = 10
+    SHUFFLE_NOT_IMPLEMENTED = 10,
+    SHUFFLE_ARRAY = 11
 };
 
 struct InputDataTypes {

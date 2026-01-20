@@ -16,20 +16,31 @@
  */
 package org.apache.gluten.execution
 
-import org.apache.gluten.extension.ValidationResult
+import org.apache.gluten.backendsapi.BackendsApiManager
+import org.apache.gluten.execution.OmniGenerateExecTransformer.supportsGenerate
 import org.apache.gluten.metrics.MetricsUpdater
+import org.apache.gluten.extension.ValidationResult
 import org.apache.gluten.substrait.SubstraitContext
 import org.apache.gluten.substrait.expression.ExpressionNode
-import org.apache.gluten.substrait.rel.RelNode
-import org.apache.spark.sql.catalyst.expressions.{Attribute, Generator}
-import org.apache.spark.sql.execution.SparkPlan
+import org.apache.gluten.substrait.extensions.{AdvancedExtensionNode, ExtensionBuilder}
+import org.apache.gluten.substrait.rel.{RelBuilder, RelNode}
+import org.apache.gluten.utils.PullOutProjectHelper
+
+import org.apache.spark.sql.catalyst.expressions._
+import org.apache.spark.sql.execution.{GenerateExec, ProjectExec, SparkPlan}
+import org.apache.spark.sql.types.IntegerType
+
+import com.google.protobuf.StringValue
+
+import scala.collection.JavaConverters._
+import scala.collection.mutable
 
 case class OmniGenerateExecTransformer(
-                                        generator: Generator,
-                                        requiredChildOutput: Seq[Attribute],
-                                        outer: Boolean,
-                                        generatorOutput: Seq[Attribute],
-                                        child: SparkPlan)
+    generator: Generator,
+    requiredChildOutput: Seq[Attribute],
+    outer: Boolean,
+    generatorOutput: Seq[Attribute],
+    child: SparkPlan)
   extends GenerateExecTransformerBase(
     generator,
     requiredChildOutput,
@@ -37,14 +48,253 @@ case class OmniGenerateExecTransformer(
     generatorOutput,
     child) {
 
+  override def metricsUpdater(): MetricsUpdater = MetricsUpdater.Todo
+
   override protected def withNewChildInternal(newChild: SparkPlan): OmniGenerateExecTransformer =
     copy(generator, requiredChildOutput, outer, generatorOutput, newChild)
 
-  override protected def doGeneratorValidate(generator: Generator,
-                                              outer: Boolean): ValidationResult =
-    ValidationResult.failed("UnSupport GenerateExec.")
+  override protected def doGeneratorValidate(
+      generator: Generator,
+      outer: Boolean): ValidationResult = {
+    if (!supportsGenerate(generator, outer)) {
+      ValidationResult.failed(
+        s"Omni backend does not support this generator: ${generator.getClass.getSimpleName}" +
+          s", outer: $outer")
+    } else {
+      ValidationResult.succeeded
+    }
+  }
 
-  override protected def getRelNode(context: SubstraitContext, inputRel: RelNode, generatorNode: ExpressionNode, validation: Boolean): RelNode = null
+  override protected def getRelNode(
+      context: SubstraitContext,
+      inputRel: RelNode,
+      generatorNode: ExpressionNode,
+      validation: Boolean): RelNode = {
+    val operatorId = context.nextOperatorId(this.nodeName)
+    RelBuilder.makeGenerateRel(
+      inputRel,
+      generatorNode,
+      requiredChildOutputNodes.asJava,
+      getExtensionNode(validation),
+      outer,
+      context,
+      operatorId)
+  }
 
-  override def metricsUpdater(): MetricsUpdater = null
+  /**
+   * Is the specified expression an Attribute reference?
+   * @param expr
+   * @param replaceBoundReference
+   * @return
+   */
+  private def isAttributeReference(
+      expr: Expression,
+      replaceBoundReference: Boolean = false): Boolean =
+    expr match {
+      case _: Attribute => true
+      case _: BoundReference if !replaceBoundReference => true
+      case _ => false
+    }
+
+  private def getExtensionNode(validation: Boolean): AdvancedExtensionNode = {
+    if (!validation) {
+      // Start with "GenerateParameters:"
+      val parametersStr = new StringBuffer("GenerateParameters:")
+      // isPosExplode: 1 for PosExplode, 0 for others.
+      val isPosExplode = if (generator.isInstanceOf[PosExplode]) {
+        "1"
+      } else {
+        "0"
+      }
+      parametersStr
+        .append("isPosExplode=")
+        .append(isPosExplode)
+        .append("\n")
+
+      // isStack: 1 for Stack, 0 for others.
+      val isStack = generator.isInstanceOf[Stack]
+      parametersStr
+        .append("isStack=")
+        .append(if (isStack) "1" else "0")
+        .append("\n")
+
+      val injectProject = if (isStack) {
+        // We always need to inject a Project for stack because we organize
+        // stack's flat params into arrays, e.g. stack(2, 1, 2, 3) is
+        // organized into two arrays: [1, 2] and [3, null].
+        true
+      } else {
+        // Other generator function only have one param, so we just check whether
+        // the only param(generator.children.head) is attribute reference or not.
+        !isAttributeReference(generator.children.head, true);
+      }
+
+      parametersStr
+        .append("injectedProject=")
+        .append(if (injectProject) "1" else "0")
+        .append("\n")
+
+      val message = StringValue
+        .newBuilder()
+        .setValue(parametersStr.toString)
+        .build()
+      val optimization = BackendsApiManager.getTransformerApiInstance.packPBMessage(message)
+      ExtensionBuilder.makeAdvancedExtension(optimization, null)
+    } else {
+      getExtensionNodeForValidation
+    }
+  }
+}
+
+object OmniGenerateExecTransformer {
+  def supportsGenerate(generator: Generator, outer: Boolean): Boolean = {
+    // TODO: supports outer and remove this param.
+    if (outer) {
+      false
+    } else {
+      generator match {
+        case _: Inline | _: ExplodeBase | _: JsonTuple | _: Stack =>
+          true
+        case _ =>
+          false
+      }
+    }
+  }
+}
+
+object OmniPullOutGenerateProjectHelper extends PullOutProjectHelper {
+  val JSON_PATH_PREFIX = "$."
+  def pullOutPreProject(generate: GenerateExec): SparkPlan = {
+    if (OmniGenerateExecTransformer.supportsGenerate(generate.generator, generate.outer)) {
+      generate.generator match {
+        case _: Inline | _: ExplodeBase =>
+          val expressionMap = new mutable.HashMap[Expression, NamedExpression]()
+          // The new child should be either the original Attribute,
+          // or an Alias to other expressions.
+          replaceExpressionWithAttribute(
+            generate.generator.asInstanceOf[UnaryExpression].child,
+            expressionMap,
+            replaceBoundReference = true)
+
+          if (!expressionMap.isEmpty) {
+            // generator.child is not an Attribute reference, e.g Literal/CreateArray/CreateMap.
+            // We plug in a Project to make it an Attribute reference.
+            // NOTE: DO NOT use eliminateProjectList to create the project list because
+            // newGeneratorChild can be a duplicated Attribute in generate.child.output. The native
+            // side identifies the last field of projection as generator's input.
+            val newGeneratorChildren = Seq(expressionMap.values.head)
+            generate.copy(
+              generator =
+                generate.generator.withNewChildren(newGeneratorChildren).asInstanceOf[Generator],
+              child = ProjectExec(generate.child.output ++ newGeneratorChildren, generate.child)
+            )
+          } else {
+            // generator.child is Attribute, no need to introduce a Project.
+            generate
+          }
+        case stack: Stack =>
+          val numRows = stack.children.head.eval().asInstanceOf[Int]
+          val numFields = Math.ceil((stack.children.size - 1.0) / numRows).toInt
+
+          val newProjections = mutable.Buffer[NamedExpression]()
+          val args = stack.children.tail
+
+          // We organize stack's params as `numFields` arrays which will be feed
+          // to Unnest operator on native side.
+          for (field <- 0 until numFields) {
+            val fieldArray = mutable.Buffer[Expression]()
+
+            for (row <- 0 until numRows) {
+              val index = row * numFields + field
+              if (index < args.size) {
+                fieldArray += args(index)
+              } else {
+                // Append nulls.
+                fieldArray += Literal(null, args(field).dataType)
+              }
+            }
+
+            newProjections += Alias(CreateArray(fieldArray.toSeq), generatePreAliasName)()
+          }
+
+          // Plug in a Project between Generate and its child.
+          generate.copy(
+            generator = generate.generator,
+            child = ProjectExec(generate.child.output ++ newProjections, generate.child)
+          )
+        case JsonTuple(Seq(jsonObj, jsonPaths @ _*)) =>
+          val getJsons: IndexedSeq[Expression] = {
+            jsonPaths.map {
+              case jsonPath if jsonPath.foldable =>
+                Option(jsonPath.eval()) match {
+                  case Some(path) =>
+                    GetJsonObject(jsonObj, Literal.create(JSON_PATH_PREFIX + path))
+                  case _ =>
+                    Literal.create(null)
+                }
+              case jsonPath =>
+                // TODO: The prefix is just for adapting to GetJsonObject.
+                // Maybe, we can remove this handling in the future by
+                // making path without "$." recognized
+                GetJsonObject(jsonObj, Concat(Seq(Literal.create(JSON_PATH_PREFIX), jsonPath)))
+            }.toIndexedSeq
+          }
+          val preGenerateExprs =
+            Alias(
+              CreateArray(Seq(CreateStruct(getJsons))),
+              generatePreAliasName
+            )()
+          // use JsonTupleExplode here instead of Explode so that we can distinguish
+          // JsonTuple and Explode, because JsonTuple has an extra post-projection
+          val newGenerator = JsonTupleExplode(preGenerateExprs.toAttribute)
+          generate.copy(
+            generator = newGenerator,
+            child = ProjectExec(generate.child.output ++ Seq(preGenerateExprs), generate.child)
+          )
+        case _ =>
+          // Unreachable.
+          throw new IllegalStateException(
+            s"Generator ${generate.generator.getClass.getSimpleName} is not supported.")
+      }
+
+    } else {
+      generate
+    }
+  }
+
+  def pullOutPostProject(generate: GenerateExec): SparkPlan = {
+    if (OmniGenerateExecTransformer.supportsGenerate(generate.generator, generate.outer)) {
+      generate.generator match {
+        case PosExplode(_) =>
+          val originalOrdinal = generate.generatorOutput.head
+          val ordinal = {
+            val subtract = Subtract(Cast(originalOrdinal, IntegerType), Literal(1))
+            Alias(subtract, generatePostAliasName)(
+              originalOrdinal.exprId,
+              originalOrdinal.qualifier)
+          }
+          val newGenerate =
+            generate.copy(generatorOutput = generate.generatorOutput.tail :+ originalOrdinal)
+          ProjectExec(
+            (generate.requiredChildOutput :+ ordinal) ++ generate.generatorOutput.tail,
+            newGenerate)
+        case Inline(_) | JsonTupleExplode(_) =>
+          val unnestOutput = {
+            val struct = CreateStruct(generate.generatorOutput)
+            val alias = Alias(struct, generatePostAliasName)()
+            alias.toAttribute
+          }
+          val newGenerate = generate.copy(generatorOutput = Seq(unnestOutput))
+          val newOutput = generate.generatorOutput.zipWithIndex.map {
+            case (attr, i) =>
+              val getStructField = GetStructField(unnestOutput, i, Some(attr.name))
+              Alias(getStructField, generatePostAliasName)(attr.exprId, attr.qualifier)
+          }
+          ProjectExec(generate.requiredChildOutput ++ newOutput, newGenerate)
+        case _ => generate
+      }
+    } else {
+      generate
+    }
+  }
 }

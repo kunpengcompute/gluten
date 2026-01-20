@@ -397,6 +397,7 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::ExpandRel &expand
                     case ::substrait::Expression::RexTypeCase::kSelection:
                     case ::substrait::Expression::RexTypeCase::kLiteral:
                     case ::substrait::Expression::RexTypeCase::kScalarFunction:
+                    case ::substrait::Expression::RexTypeCase::kIfThen:
                         break;
                     default:
                         LOG_VALIDATION_MSG("Only field or literal is supported in project of ExpandRel.");
@@ -567,6 +568,93 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::WindowRel &window
     return true;
 }
 
+bool SubstraitToOmniPlanValidator::Validate(const ::substrait::WindowGroupLimitRel &wglRel)
+{
+    if (wglRel.has_input() && !Validate(wglRel.input())) {
+        LOG_VALIDATION_MSG("WindowGroupLimitRel input fails to Validate.");
+        return false;
+    }
+
+    if (!wglRel.has_advanced_extension()) {
+        LOG_VALIDATION_MSG("WindowGroupLimitRel requires advanced_extension");
+        return false;
+    }
+    const auto &extension = wglRel.advanced_extension();
+    DataTypePtr inputRowType;
+    std::vector<DataTypePtr> types;
+    if (!ParseOmniType(extension, inputRowType) || !FlattenSingleLevel(inputRowType, types)) {
+        LOG_VALIDATION_MSG("Validation failed for input types in WindowGroupLimitRel.");
+        return false;
+    }
+
+    if (types.empty()) {
+        // See: https://github.com/apache/incubator-gluten/issues/7600.
+        LOG_VALIDATION_MSG("Validation failed for empty input schema in WindowGroupLimitRel.");
+        return false;
+    }
+    auto rowType = std::make_shared<DataTypes>(std::move(types));
+
+    if (wglRel.limit() <= 0) {
+        LOG_VALIDATION_MSG("WindowGroupLimitRel.limit must be postive !");
+        return false;
+    }
+
+    //Validate partition_expressions
+    const auto& partitionExprs = wglRel.partition_expressions();
+    std::vector<TypedExprPtr> partitionExpressions;
+    partitionExpressions.reserve(partitionExprs.size());
+    for (const auto& expr : partitionExprs) {
+        auto expression = exprConverter_->ToOmniExpr(expr, rowType);
+        auto exprField = dynamic_cast<const FieldExpr*>(expression);
+        if (exprField == nullptr) {
+            LOG_VALIDATION_MSG("Only field is supported for partition key in WindowGroupLimit Operator!");
+        } else {
+            partitionExpressions.emplace_back(expression);
+        }
+    }
+
+    // Try to compile the expressions. If there is any unregistred funciton or
+    // mismatched type, exception will be thrown.
+    ExprVerifier ev;
+    for (const auto &expression : partitionExpressions) {
+        if (!ev.VisitExpr(*expression)) {
+            return false;
+        }
+    }
+
+    // Validate Sort expression
+    const auto &sorts = wglRel.sorts();
+    std::vector<TypedExprPtr> sortExpressions;
+    sortExpressions.reserve(sorts.size());
+    for (const auto &sort : sorts) {
+        switch (sort.direction()) {
+            case ::substrait::SortField_SortDirection_SORT_DIRECTION_ASC_NULLS_FIRST:
+            case ::substrait::SortField_SortDirection_SORT_DIRECTION_ASC_NULLS_LAST:
+            case ::substrait::SortField_SortDirection_SORT_DIRECTION_DESC_NULLS_FIRST:
+            case ::substrait::SortField_SortDirection_SORT_DIRECTION_DESC_NULLS_LAST:
+                break;
+            default:
+                LOG_VALIDATION_MSG("in windowGroupLimitRel, unsupported Sort direction " + std::to_string(sort.direction()));
+                return false;
+        }
+
+        if (sort.has_expr()) {
+            auto expression = exprConverter_->ToOmniExpr(sort.expr(), rowType);
+            auto exprField = dynamic_cast<const FieldExpr *>(expression);
+            if (!exprField) {
+                LOG_VALIDATION_MSG("in windowGroupLimitRel, the sorting key in Sort Operator "
+                                   "only support field.");
+                return false;
+            }
+            if (!ev.VisitExpr(*expression)) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
 bool SubstraitToOmniPlanValidator::Validate(const ::substrait::SetRel &setRel)
 {
     switch (setRel.op()) {
@@ -635,6 +723,30 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::SortRel &sortRel)
         return false;
     }
 
+    for (const auto &type : types) {
+        switch (type->GetId()) {
+            case OMNI_BYTE:
+            case OMNI_SHORT:
+            case OMNI_INT:
+            case OMNI_DATE32:
+            case OMNI_LONG:
+            case OMNI_TIMESTAMP:
+            case OMNI_DOUBLE:
+            case OMNI_CHAR:
+            case OMNI_VARCHAR:
+            case OMNI_BOOLEAN:
+            case OMNI_DECIMAL64:
+            case OMNI_DECIMAL128:
+            case OMNI_FLOAT:
+            case OMNI_ARRAY:
+                break;
+            default:
+                LOG_VALIDATION_MSG(
+                    "Validation failed for input types " + std::to_string(type->GetId()) + " in SortRel.");
+                return false;
+        }
+    }
+
     auto rowType = std::make_shared<DataTypes>(std::move(types));
 
     const auto &sorts = sortRel.sorts();
@@ -652,13 +764,6 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::SortRel &sortRel)
 
         if (sort.has_expr()) {
             auto expression = exprConverter_->ToOmniExpr(sort.expr(), rowType);
-            auto exprField = dynamic_cast<const FieldExpr *>(expression);
-            auto exprFunc = dynamic_cast<const FuncExpr *>(expression);
-            auto exprBinary = dynamic_cast<const BinaryExpr *>(expression);
-            if (!exprField && !exprFunc && !exprBinary) {
-                LOG_VALIDATION_MSG("in SortRel, the sorting key in Sort Operator only support field, func and binary...");
-                return false;
-            }
             ExprVerifier ev;
             if (!ev.VisitExpr(*expression)) {
                 return false;
@@ -714,7 +819,9 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::ProjectRel &proje
     ExprVerifier ev;
     for (const auto &expression : expressions) {
         if (!ev.VisitExpr(*expression)) {
-            LOG_VALIDATION_MSG("OmniExpr validation fail! " + ev.GetUnSupportedReason());
+            LOG_VALIDATION_MSG("OmniExpr validation fail!");
+            ExprPrinter p;
+            expression->Accept(p);
             return false;
         }
     }
@@ -800,14 +907,8 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::JoinRel &joinRel)
         case ::substrait::JoinRel_JoinType_JOIN_TYPE_LEFT:
         case ::substrait::JoinRel_JoinType_JOIN_TYPE_RIGHT:
         case ::substrait::JoinRel_JoinType_JOIN_TYPE_LEFT_ANTI:
-            break;
         case ::substrait::JoinRel_JoinType_JOIN_TYPE_LEFT_SEMI:
         case ::substrait::JoinRel_JoinType_JOIN_TYPE_RIGHT_SEMI:
-            if (joinRel.has_advanced_extension() &&
-                SubstraitParser::ConfigSetInOptimization(joinRel.advanced_extension(), "isExistenceJoin=")) {
-                LOG_VALIDATION_MSG("ExistenceJoin is not supported: " + std::to_string(joinRel.type()));
-                return false;
-            }
             break;
         default:
             LOG_VALIDATION_MSG("Join type is not supported: " + std::to_string(joinRel.type()));
@@ -871,6 +972,7 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::CrossRel &crossRe
         case ::substrait::CrossRel_JoinType_JOIN_TYPE_INNER:
         case ::substrait::CrossRel_JoinType_JOIN_TYPE_LEFT:
         case ::substrait::CrossRel_JoinType_JOIN_TYPE_RIGHT:
+        case ::substrait::CrossRel_JoinType_JOIN_TYPE_OUTER:
             break;
         default:
             LOG_VALIDATION_MSG("Unsupported Join type in CrossRel");
@@ -1006,10 +1108,14 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::Rel &rel)
         return Validate(rel.top_n());
     } else if (rel.has_window()) {
         return Validate(rel.window());
+    } else if (rel.has_windowgrouplimit()) {
+        return Validate(rel.windowgrouplimit());
     } else if (rel.has_write()) {
         return Validate(rel.write());
     } else if (rel.has_set()) {
         return Validate(rel.set());
+    } else if (rel.has_generate()) {
+        return Validate(rel.generate());
     } else {
         LOG_VALIDATION_MSG("Unsupported relation type: " + rel.GetTypeName());
         return false;
@@ -1045,5 +1151,40 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::Plan &plan)
         LOG_VALIDATION_MSG(err.what());
         return false;
     }
+}
+
+bool SubstraitToOmniPlanValidator::Validate(const ::substrait::GenerateRel &generateRel)
+{
+    if (generateRel.has_input() && !Validate(generateRel.input())) {
+        LOG_VALIDATION_MSG("Input validation fails in GenerateRel.");
+        return false;
+    }
+  
+    // Get and validate the input types from extension.
+    if (!generateRel.has_advanced_extension()) {
+        LOG_VALIDATION_MSG("Input types are expected in GenerateRel.");
+        return false;
+    }
+    const auto& extension = generateRel.advanced_extension();
+    DataTypePtr inputRowType;
+    std::vector<DataTypePtr> types;
+    if (!ParseOmniType(extension, inputRowType) || !FlattenSingleLevel(inputRowType, types)) {
+        LOG_VALIDATION_MSG("Validation failed for input types in GenerateRel.");
+        return false;
+    }
+  
+    int32_t inputPlanNodeId = 0;
+    // Create the fake input names to be used in row type.
+    std::vector<std::string> names;
+    names.reserve(types.size());
+    for (uint32_t colIdx = 0; colIdx < types.size(); colIdx++) {
+        names.emplace_back(SubstraitParser::MakeNodeName(inputPlanNodeId, colIdx));
+    }
+    auto rowType = std::make_shared<DataTypes>(std::move(types));
+    if (generateRel.has_generator() && !ValidateExpression(generateRel.generator(), rowType)) {
+        LOG_VALIDATION_MSG("Input validation fails in GenerateRel.");
+        return false;
+    }
+    return true;
 }
 } // namespace omniruntime

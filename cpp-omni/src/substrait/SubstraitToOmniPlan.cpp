@@ -157,6 +157,9 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::ExpandRe
             } else if (projectExpr.has_scalar_function()) {
                 auto expression = exprConverter->ToOmniExpr(projectExpr.scalar_function(), inputType);
                 projectExprs.emplace_back(expression);
+            } else if (projectExpr.has_if_then()) {
+                auto expression = exprConverter->ToOmniExpr(projectExpr.if_then(), inputType);
+                projectExprs.emplace_back(expression);
             } else {
                 OMNI_THROW("Substrait error:", "The project in Expand Operator only support field or literal.");
             }
@@ -229,6 +232,42 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::WindowRe
         sortingKeys, sortingOrders, sortNullFirsts, preSortedChannelPreFix, expectedPositionsCount,
         windowFunctionReturnTypes, allTypes, argumentKeys, windowFrameTypes, windowFrameStartTypes,
         windowFrameStartChannels, windowFrameEndTypes, windowFrameEndChannels, childNode);
+}
+
+PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::WindowGroupLimitRel &windowGroupLimitRel)
+{
+    auto childNode = ConvertSingleInput<::substrait::WindowGroupLimitRel>(windowGroupLimitRel);
+    const auto& sourceDataTypes = childNode->OutputType();
+    auto outputType = sourceDataTypes;
+
+    int32_t n = windowGroupLimitRel.limit();
+    if (n <= 0) {
+        OMNI_THROW("Substrait Error", "WindowGroupLimitRel requires a positive N(limit)!");
+    }
+
+    std::vector<TypedExprPtr> partitionKeys;
+    const auto& partitions = windowGroupLimitRel.partition_expressions();
+    for (const auto& partition : partitions) {
+        auto expression = exprConverter->ToOmniExpr(partition, sourceDataTypes);
+        partitionKeys.emplace_back(expression);
+    }
+
+    auto [sortingKeys, sortingAscendings, sortNullFirsts] = ProcessSortFieldWithExpr(windowGroupLimitRel.sorts(), sourceDataTypes);
+
+    std::string funcName;
+    if (!windowGroupLimitRel.has_advanced_extension()) {
+        OMNI_THROW("Substrait Error", "WindowGroupLimitRel requires advanced_extension !");
+    }
+    if (SubstraitParser::ConfigSetInOptimization(windowGroupLimitRel.advanced_extension(), "isRank=")) {
+        funcName = "rank";
+    } else if (SubstraitParser::ConfigSetInOptimization(windowGroupLimitRel.advanced_extension(), "isRowNumber=")) {
+        funcName = "row_number";
+    } else {
+        OMNI_THROW("Substrait Error", "WindowGroupLimitRel requires rankLikeFunction rank or row_number!");
+    }
+
+    return std::make_shared<WindowGroupLimitNode>(NextPlanNodeId(), childNode, n, funcName, partitionKeys,
+        sortingKeys, sortingAscendings, sortNullFirsts, outputType);
 }
 
 const WindowFrameInfo SubstraitToOmniPlanConverter::createWindowFrameInfo(
@@ -432,6 +471,9 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::CrossRel
             break;
         case ::substrait::CrossRel_JoinType::CrossRel_JoinType_JOIN_TYPE_RIGHT:
             joinType = omniruntime::JoinType::OMNI_JOIN_TYPE_RIGHT;
+            break;
+        case ::substrait::CrossRel_JoinType::CrossRel_JoinType_JOIN_TYPE_OUTER:
+            joinType = omniruntime::JoinType::OMNI_JOIN_TYPE_FULL;
             break;
         default:
             OMNI_THROW("Substrait Error", "Unsupported Join type: {}", std::to_string(crossRel.type()));
@@ -880,10 +922,14 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::Rel &rel
         return ToOmniPlan(rel.top_n());
     } else if (rel.has_window()) {
         return ToOmniPlan(rel.window());
+    } else if (rel.has_windowgrouplimit()) {
+        return ToOmniPlan(rel.windowgrouplimit());
     } else if (rel.has_write()) {
         return ToOmniPlan(rel.write());
     } else if (rel.has_set()) {
         return ToOmniPlan(rel.set());
+    } else if (rel.has_generate()) {
+        return ToOmniPlan(rel.generate());
     } else {
         OMNI_THROW("error", "Substrait conversion not supported for Rel.");
     }
@@ -939,5 +985,107 @@ std::string SubstraitToOmniPlanConverter::NextPlanNodeId()
     auto id = Format("{}", planNodeId);
     planNodeId++;
     return id;
+}
+
+void extractUnnestFieldExpr(
+    std::shared_ptr<const PlanNode> child,
+    int32_t index,
+    std::vector<Expr*>& unnestFields)
+{
+    auto type = child->OutputType()->GetType(index);
+    auto unnestFieldExpr = new FieldExpr(index, type);
+    unnestFields.emplace_back(unnestFieldExpr);
+}
+
+PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::GenerateRel &generateRel)
+{
+    PlanNodePtr childNode;
+    if (generateRel.has_input()) {
+        childNode = ToOmniPlan(generateRel.input());
+    } else {
+        OMNI_THROW("SUBSTRAIT_ERROR:", "Child Rel is expected in GenerateRel.");
+    }
+    const auto& inputType = childNode->OutputType();
+  
+    std::vector<Expr*> replicated;
+    std::vector<Expr*> unnest;
+  
+    const auto& generator = generateRel.generator();
+    const auto& requiredChildOutput = generateRel.child_output();
+  
+    replicated.reserve(requiredChildOutput.size());
+    for (const auto& output : requiredChildOutput) {
+        auto expression = exprConverter->ToOmniExpr(output, inputType);
+        OMNI_CHECK(expression != nullptr, " the output in Generate Operator only support field");
+  
+        replicated.emplace_back(expression);
+    }
+
+    auto injectedProject = generateRel.has_advanced_extension() &&
+        SubstraitParser::ConfigSetInOptimization(generateRel.advanced_extension(), "injectedProject=");
+    if (injectedProject) {
+        // Child should be either ProjectNode or ValueStreamNode in case of project fallback.
+        OMNI_CHECK(
+            (std::dynamic_pointer_cast<const ProjectNode>(childNode) != nullptr ||
+            std::dynamic_pointer_cast<const ValueStreamNode>(childNode) != nullptr) &&
+            childNode->OutputType()->GetSize() > requiredChildOutput.size(),
+            "injectedProject is true, but the ProjectNode or ValueStreamNode (in case of projection fallback)"
+            " is missing or does not have the corresponding projection field");
+  
+        bool isStack = generateRel.has_advanced_extension() &&
+            SubstraitParser::ConfigSetInOptimization(generateRel.advanced_extension(), "isStack=");
+        // Generator function's input is NOT a field reference.
+        if (!isStack) {
+            // For generator function which is not stack, e.g. explode(array(1,2,3)), a sample
+            // input substrait plan is like the following:
+            //
+            //  Generate explode([1,2,3] AS _pre_0#129), false, [col#126]
+            //  +- Project [fake_column#128, [1,2,3] AS _pre_0#129]
+            //   +- RewrittenNodeWall Scan OneRowRelation[fake_column#128]
+            // The last projection column in GeneratorRel's child(Project) is the column we need to unnest
+            auto index = childNode->OutputType()->GetSize() - 1;
+            extractUnnestFieldExpr(childNode, index, unnest);
+        } else {
+            // For stack function, e.g. stack(2, 1,2,3), a sample
+            // input substrait plan is like the following:
+            //
+            // Generate stack(2, id#122, name#123, id1#124, name1#125), false, [col0#137, col1#138]
+            // +- Project [id#122, name#123, id1#124, name1#125, array(id#122, id1#124) AS _pre_0#141, array(name#123,
+            // name1#125) AS _pre_1#142]
+            //   +- RewrittenNodeWall LocalTableScan [id#122, name#123, id1#124, name1#125]
+            //
+            // The last `numFields` projections are the fields we want to unnest.
+            auto generatorFunc = generator.scalar_function();
+            auto numRows = SubstraitParser::GetLiteralValue<int32_t>(generatorFunc.arguments(0).value().literal());
+            if (numRows == 0) {
+                OMNI_THROW("SUBSTRAIT_ERROR:",
+                          "Division by zero error prevented: numRows cannot be 0 in stack function.");
+            }
+            auto numFields = static_cast<int32_t>(std::ceil((generatorFunc.arguments_size() - 1.0) / numRows));
+            auto totalProjectCount = childNode->OutputType()->GetSize();
+  
+            for (auto i = totalProjectCount - numFields; i < totalProjectCount; ++i) {
+                extractUnnestFieldExpr(childNode, i, unnest);
+            }
+        }
+    } else {
+        // Generator function's input is a field reference, e.g. explode(col), generator
+        // function's first argument is the field reference we need to unnest.
+        // This assumption holds for all the supported generator function:
+        // explode, posexplode, inline.
+        auto generatorFunc = generator.scalar_function();
+        auto unnestExpr = exprConverter->ToOmniExpr(generatorFunc.arguments(0).value(), inputType);
+        OMNI_CHECK(unnestExpr != nullptr, " the key in unnest Operator only support field");
+        unnest.emplace_back(unnestExpr);
+    }
+
+    bool withOrdinality = false;
+    if (generateRel.has_advanced_extension() &&
+        SubstraitParser::ConfigSetInOptimization(generateRel.advanced_extension(), "isPosExplode=")) {
+        withOrdinality = true;
+    }
+
+    return std::make_shared<UnnestNode>(
+        NextPlanNodeId(), replicated, unnest, childNode, withOrdinality);
 }
 } // namespace omniruntime

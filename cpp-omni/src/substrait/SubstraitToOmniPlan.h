@@ -47,6 +47,9 @@ public:
     /// Used to convert Substrait WindowRel into Omni PlanNode.
     PlanNodePtr ToOmniPlan(const ::substrait::WindowRel &windowRel);
 
+    /// Used to convert Substrait WindowGroupLimitRel into Omni PlanNode.
+    PlanNodePtr ToOmniPlan(const ::substrait::WindowGroupLimitRel &WindowGroupLimitRel);
+
     /// Used to convert Substrait SetRel into Omni PlanNode.
     PlanNodePtr ToOmniPlan(const ::substrait::SetRel &setRel);
 
@@ -94,6 +97,9 @@ public:
 
     /// Used to convert Substrait Plan into Omni PlanNode.
     PlanNodePtr ToOmniPlan(const ::substrait::Plan &substraitPlan);
+
+    /// Used to convert Substrait GenerateRel into Velox PlanNode.
+    PlanNodePtr ToOmniPlan(const ::substrait::GenerateRel &generateRel);
 
     // return the raw ptr of ExprConverter
     SubstraitOmniExprConverter *GetExprConverter() { return this->exprConverter.get(); }

@@ -229,6 +229,8 @@ class GlutenConfig(conf: SQLConf) extends Logging {
 
   def enableShuffleBatchMerge: Boolean = conf.getConf(ENABLE_SHUFFLE_BATCH_MERGE)
 
+  def omniResizeBatchesShuffleInput: Boolean = conf.getConf(COLUMNAR_OMNI_RESIZE_BATCHES_SHUFFLE_INPUT)
+
   def enableNativeBloomFilter: Boolean = conf.getConf(COLUMNAR_NATIVE_BLOOMFILTER_ENABLED)
 
   def enableNativeHyperLogLogAggregateFunction: Boolean =
@@ -561,6 +563,8 @@ class GlutenConfig(conf: SQLConf) extends Logging {
 
   def columnarSpillDirDiskReserveSize: Long = conf.getConf(COLUMNAR_SPILL_DIR_DISK_RESERVE_SIZE)
 
+  def columnarSpillEnableCompress: Boolean = conf.getConf(COLUMNAR_SPILL_ENABLE_COMPRESS)
+
   def columnarHashAggSpillRowThreshold: Int = conf.getConf(COLUMNAR_HASH_AGG_SPILL_ROW_THRESHOLD)
 
   def columnarSortSpillRowThreshold: Int = conf.getConf(COLUMNAR_SORT_SPILL_ROW_THRESHOLD)
@@ -576,6 +580,14 @@ class GlutenConfig(conf: SQLConf) extends Logging {
   def omniColumnarCatalogCacheExpireTime: Int = conf.getConf(COLUMNAR_OMNI_CATALOG_CACHE_EXPIRE_TIME)
 
   def enableRollupOptimization: Boolean = conf.getConf(ENABLE_ROLLUP_OPTIMIZATION)
+
+  def enableAutoAdjustStageResourceProfile: Boolean =
+    conf.getConf(AUTO_ADJUST_STAGE_RESOURCE_PROFILE_ENABLED)
+
+  def autoAdjustStageRPHeapRatio: Double = conf.getConf(AUTO_ADJUST_STAGE_RESOURCES_HEAP_RATIO)
+
+  def autoAdjustStageFallenNodeThreshold: Double =
+    conf.getConf(AUTO_ADJUST_STAGE_RESOURCES_FALLEN_NODE_RATIO_THRESHOLD)
 }
 
 object GlutenConfig {
@@ -2483,11 +2495,11 @@ object GlutenConfig {
     .booleanConf
     .createWithDefault(false)
 
-  val ENABLE_ADAPTIVE_PARTIAL_AGGREGATION = buildConf("spark.gluten.sql.columnar.backend.omni.adaptivePartialAggregation")
+  val ENABLE_ADAPTIVE_PARTIAL_AGGREGATION = buildConf("spark.gluten.sql.columnar.backend.omni.adaptivePartialAggregation.enabled")
     .internal()
     .doc("enable or disable adaptive partial aggregation")
     .booleanConf
-    .createWithDefault(false)
+    .createWithDefault(true)
 
   val FILTER_MERGE_THRESHOLD = buildConf("spark.gluten.sql.columnar.backend.omni.filterMerge.maxCost")
     .internal()
@@ -2510,6 +2522,12 @@ object GlutenConfig {
     .doc("enable columnar shuffle merge")
     .booleanConf
     .createWithDefault(true)
+
+  val COLUMNAR_OMNI_RESIZE_BATCHES_SHUFFLE_INPUT = buildConf("spark.gluten.sql.columnar.backend.omni.resizeBatches.shuffleInput")
+    .internal()
+    .doc(s"If true, combine small columnar batches together before sending to shuffle. ")
+    .booleanConf
+    .createWithDefault(false)
 
   val COMBINE_JOINED_AGGREGATES_ENABLED = buildConf("spark.gluten.sql.columnar.backend.omni.combineJoinedAggregates")
     .internal()
@@ -2569,6 +2587,12 @@ object GlutenConfig {
     .longConf
     .createWithDefault(10737418240L)
 
+  val COLUMNAR_SPILL_ENABLE_COMPRESS = buildConf("spark.gluten.sql.columnar.backend.omni.spill.enableCompress")
+    .internal()
+    .doc("columnar spill enable compress, default false")
+    .booleanConf
+    .createWithDefault(false)
+
   val COLUMNAR_HASH_AGG_SPILL_ROW_THRESHOLD = buildConf("spark.gluten.sql.columnar.backend.omni.hashAggSpill.rowThreshold")
     .internal()
     .doc("columnar hash aggregate spill threshold")
@@ -2622,6 +2646,35 @@ object GlutenConfig {
   val ENABLE_ROLLUP_OPTIMIZATION = buildConf("spark.gluten.sql.columnar.backend.omni.rollupOptimization.enabled")
     .internal()
     .doc("enable or disable columnar rollupOptimization")
+    .booleanConf
+    .createWithDefault(true)
+
+  val AUTO_ADJUST_STAGE_RESOURCE_PROFILE_ENABLED =
+    buildStaticConf("spark.gluten.auto.adjustStageResource.enabled")
+        .internal()
+        .doc("Experimental: If enabled, gluten will try to set the stage resource according " +
+            "to stage execution plan. Only worked when aqe is enabled at the same time!!")
+        .booleanConf
+        .createWithDefault(false)
+
+  val AUTO_ADJUST_STAGE_RESOURCES_HEAP_RATIO =
+    buildConf("spark.gluten.auto.adjustStageResources.heap.ratio")
+        .internal()
+        .doc("Experimental: Increase executor heap memory when match adjust stage resource rule.")
+        .doubleConf
+        .createWithDefault(2.0d)
+
+  val AUTO_ADJUST_STAGE_RESOURCES_FALLEN_NODE_RATIO_THRESHOLD =
+    buildConf("spark.gluten.auto.adjustStageResources.fallenNode.ratio.threshold")
+        .internal()
+        .doc("Experimental: Increase executor heap memory when stage contains fallen node " +
+            "count exceeds the total node count ratio.")
+        .doubleConf
+        .createWithDefault(0.5d)
+
+  val ENABLE_FILES_SPLIT_SINGLE_FILE = buildConf("spark.gluten.sql.columnar.filesSplitSingleFile.enabled")
+    .internal()
+    .doc("enable or disable split single file when scan from hive")
     .booleanConf
     .createWithDefault(true)
 }

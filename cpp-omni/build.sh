@@ -17,6 +17,58 @@
 
 set -e
 
+install_fmt() {
+  echo "Start build fmt.so"
+  local fmt_so_core="${OMNI_HOME}/lib/libfmt.so.10"
+  local fmt_tag="10.1.1"
+  local fmt_repo="https://gitee.com/mirrors/fmt.git"
+  local open_source_dir="open_source"
+  local workspace=$(readlink -f $(dirname "$BASH_SOURCE"))
+  local fmt_source_dir="${workspace}/${open_source_dir}/fmt"
+  local fmt_build_dir="${fmt_source_dir}/build"
+
+  if [ ! -f "${fmt_so_core}" ]; then
+    echo ">>>>> libfmt.so.10 not found in ${OMNI_HOME}/lib, start to clone fmt-${fmt_tag} source code and build..."
+    rm -rf ${fmt_source_dir} && mkdir -p ${fmt_source_dir}
+    git clone --branch ${fmt_tag} --depth=1 ${fmt_repo} ${fmt_source_dir}
+    cd ${fmt_source_dir} && mkdir -p build && cd build
+    # Cmake build with your specified params
+    cmake .. \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DFMT_TEST=OFF \
+    -DFMT_DOC=OFF \
+    -DFMT_INSTALL=ON \
+    -DBUILD_SHARED_LIBS=ON
+    make -j$(nproc)
+    sudo make install
+    # Copy all generated fmt so files to OMNI_HOME/lib directly
+    sudo cp -f libfmt.so* ${OMNI_HOME}/lib/
+    echo ">>>>> All fmt shared libraries copied to ${OMNI_HOME}/lib successfully."
+    # Back to workspace
+    cd ../../../../
+  else
+    echo ">>>>> libfmt.so.10 already exists in ${OMNI_HOME}/lib, skip fmt build process."
+  fi
+}
+
+install_folly() {
+  echo "Start build folly"
+  local folly_tag="v2024.07.01.00"
+  local folly_repo="https://gitee.com/mirrors/folly.git"
+  local open_source_dir="open_source"
+  local workspace=$(readlink -f $(dirname "$BASH_SOURCE"))
+  local folly_source_dir="${workspace}/${open_source_dir}/folly"
+  echo ">>>>> Start to clone folly-${folly_tag} source code and build..."
+  rm -rf ${folly_source_dir} && mkdir -p ${folly_source_dir}
+  git clone --branch ${folly_tag} --depth=1 ${folly_repo} ${folly_source_dir}
+  cd ${folly_source_dir} && mkdir -p build && cd build
+  cmake .. -DBUILD_TESTS=OFF -DFOLLY_HAVE_INT128_T=ON
+  make -j$(nproc)
+  sudo make install
+  echo ">>>>> folly-${folly_tag} build and install completed successfully."
+  cd ../../../../
+}
+
 if [ -z "$OMNI_HOME" ]; then
   echo "OMNI_HOME is empty"
   OMNI_HOME=/opt
@@ -61,10 +113,12 @@ if [ $# != 0 ] ; then
   cmake .. $options -DBUILD_CPP_TESTS=ON
 else
   echo "-- Enable Release"
+  install_fmt
+  install_folly
   cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_CPP_TESTS=OFF
 fi
 
-make -j5
+make -j$(nproc)
 
 if [ $# != 0 ] ; then
   if [ $1 = 'coverage' ]; then

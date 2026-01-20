@@ -21,6 +21,8 @@
 #include "utils.h"
 
 using namespace omniruntime::vec;
+using namespace omniruntime::vec::unsafe;
+using namespace omniruntime::type;
 
 SplitOptions SplitOptions::Defaults() { return SplitOptions(); }
 
@@ -89,6 +91,7 @@ int Splitter::AllocatePartitionBuffers(int32_t partition_id, int32_t new_size) {
             case SHUFFLE_BINARY: {
                 break;
             }
+            case SHUFFLE_ARRAY:
             case SHUFFLE_LARGE_BINARY:
             case SHUFFLE_NULL:
                  break;
@@ -132,6 +135,7 @@ int Splitter::AllocatePartitionBuffers(int32_t partition_id, int32_t new_size) {
                 break;
             }
             case SHUFFLE_BINARY:
+            case SHUFFLE_ARRAY:
             default: {
                 break;
             }
@@ -240,6 +244,12 @@ void HandleNull(VCBatchInfo &vcbInfo, bool isNull) {
     }
 }
 
+void HandleNullArray(ArrayBatchInfo &arrayBatchInfo, bool isNull) {
+    if(isNull) {
+        arrayBatchInfo.SetNullFlag(isNull);
+    }
+}
+
 template<bool hasNull>
 void Splitter::SplitBinaryVector(BaseVector *varcharVector, int col_schema) {
     int32_t num_rows = varcharVector->GetSize();
@@ -339,6 +349,158 @@ void Splitter::SplitBinaryVector(BaseVector *varcharVector, int col_schema) {
     }
 }
 
+int Splitter::ToBytes(DataTypeId omniType)
+{
+    switch (omniType) {
+        case OMNI_BYTE:
+        case OMNI_BOOLEAN:
+            return (1 << SHUFFLE_1BYTE);
+        case OMNI_SHORT:
+            return (1 << SHUFFLE_2BYTE);
+        case OMNI_INT:
+        case OMNI_FLOAT:
+        case OMNI_DATE32:
+            return (1 << SHUFFLE_4BYTE);
+        case OMNI_LONG:
+        case OMNI_TIMESTAMP:
+        case OMNI_DOUBLE:
+        case OMNI_DATE64:
+        case OMNI_DECIMAL64:
+            return (1 << SHUFFLE_8BYTE);
+        case OMNI_DECIMAL128:
+            return (1 << SHUFFLE_DECIMAL128);
+        case OMNI_CHAR:
+        case OMNI_VARCHAR:
+            return 0;
+        default: throw std::runtime_error("Unsupported DataTypeId: " + omniType);
+    }
+}
+
+template<bool hasNull>
+void Splitter::SplitArrayVector(BaseVector *arrayVector, int col_schema) {
+    int32_t num_rows = arrayVector->GetSize();
+    bool is_null = false;
+    auto ar = reinterpret_cast<ArrayVector *>(arrayVector);
+
+    DataTypeId elementType = ar->GetElementVector()->GetTypeId();
+    int typeBytes = ToBytes(elementType);
+    cached_vectorbatch_size_ += num_rows * (sizeof(int64_t) + sizeof(int64_t) + sizeof(int32_t) +
+        sizeof(int32_t) + sizeof(int64_t) + sizeof(bool)) + sizeof(int32_t);
+    for (auto &pid: partition_used_) {
+        auto &ar_partition_array = ar_partition_array_buffers_[pid];
+        uint64_t element_addr = 0;
+        uint64_t nulls_addr = 0;
+        uint32_t element_num = 0;
+        uint32_t element_len = 0;
+        uint64_t offset_addr = 0; // for varchar
+
+        auto index = 0;
+        auto pos = partition_row_offset_base_[pid];
+        auto end = partition_row_offset_base_[pid + 1];
+        for (; pos < end; ++pos, ++index) {
+            auto rowId = row_offset_row_id_[pos];
+            if constexpr (hasNull) {
+                if (!ar->IsNull(rowId)) {
+                    BaseVector* curVec = ar->GetArrayAt(rowId, false).get();
+
+                    nulls_addr = reinterpret_cast<int64_t>(UnsafeBaseVector::GetNulls(curVec));
+                    element_num = curVec->GetSize();
+
+                    if (elementType != OMNI_CHAR && elementType != OMNI_VARCHAR) {
+                        element_addr = reinterpret_cast<int64_t>(VectorHelper::UnsafeGetValues(curVec));
+                        element_len = element_num * typeBytes;
+                        offset_addr = reinterpret_cast<int64_t>(VectorHelper::UnsafeGetOffsetsAddr(curVec));
+                    } else {
+                        auto varCharVec = reinterpret_cast<Vector<LargeStringContainer<std::string_view>> *>(curVec);
+
+                        element_len = 0;
+                        uint32_t* offsets_varchar = new uint32_t[element_num + 1];
+                        for (int i = 0; i < element_num; i++) {
+                            std::string_view value = varCharVec->GetValue(i);
+                            element_len += static_cast<uint32_t>(value.length());
+
+                            if (i == 0) {
+                                offsets_varchar[0] = 0;
+                            } else {
+                                offsets_varchar[i] = offsets_varchar[i - 1] + value.length();
+                            }
+                        }
+                        offsets_varchar[element_num] = element_len;
+                        offset_addr = (uint64_t)offsets_varchar;
+
+                        uint8_t* concatenated_varchar = new uint8_t[element_len];
+
+                        for (int i = 0; i < element_num; i++) {
+                            std::string_view value = varCharVec->GetValue(i);
+                            std::memcpy(concatenated_varchar + offsets_varchar[i], value.data(), value.length());
+                        }
+                        element_addr = (uint64_t)concatenated_varchar;
+                    }
+                }
+            } else {
+                BaseVector* curVec = ar->GetArrayAt(rowId, false).get();
+
+                nulls_addr = reinterpret_cast<int64_t>(UnsafeBaseVector::GetNulls(curVec));
+                element_num = curVec->GetSize();
+
+                if (elementType != OMNI_CHAR && elementType != OMNI_VARCHAR) {
+                    element_addr = reinterpret_cast<int64_t>(VectorHelper::UnsafeGetValues(curVec));
+                    element_len = element_num * typeBytes;
+                    offset_addr = reinterpret_cast<int64_t>(VectorHelper::UnsafeGetOffsetsAddr(curVec));
+                } else {
+                    auto varCharVec = reinterpret_cast<Vector<LargeStringContainer<std::string_view>> *>(curVec);
+
+                    element_len = 0;
+                    uint32_t* offsets_varchar = new uint32_t[element_num + 1];
+                    for (int i = 0; i < element_num; i++) {
+                        std::string_view value = varCharVec->GetValue(i);
+                        element_len += static_cast<uint32_t>(value.length());
+
+                        if (i == 0) {
+                            offsets_varchar[0] = 0;
+                        } else {
+                            offsets_varchar[i] = offsets_varchar[i - 1] + value.length();
+                        }
+                    }
+                    offsets_varchar[element_num] = element_len;
+                    offset_addr = (uint64_t)offsets_varchar;
+
+                    uint8_t* concatenated_varchar = new uint8_t[element_len];
+
+                    for (int i = 0; i < element_num; i++) {
+                        std::string_view value = varCharVec->GetValue(i);
+                        std::memcpy(concatenated_varchar + offsets_varchar[i], value.data(), value.length());
+                    }
+                    element_addr = (uint64_t)concatenated_varchar;
+                }
+            }
+            if constexpr (hasNull) {
+                is_null = ar->IsNull(rowId);
+            }
+            cached_vectorbatch_size_ += element_len;
+            if ((ar_partition_array[col_schema].size() != 0) &&
+                (ar_partition_array[col_schema].back().getArrayList().size() <
+                    options_.spill_batch_row_num)) {
+                if constexpr (hasNull) {
+                    HandleNullArray(ar_partition_array[col_schema].back(), is_null);
+                }
+                ar_partition_array[col_schema].back().getArrayList().emplace_back(element_addr, nulls_addr,
+                    element_num, element_len, offset_addr, is_null);
+                ar_partition_array[col_schema].back().element_total_len += element_len;
+            } else {
+                ArrayBatchInfo arrayBatchInfo(options_.spill_batch_row_num, elementType);
+                arrayBatchInfo.getArrayList().emplace_back(element_addr, nulls_addr,
+                    element_num, element_len, offset_addr, is_null);
+                if constexpr (hasNull) {
+                    HandleNullArray(arrayBatchInfo, is_null);
+                }
+                arrayBatchInfo.element_total_len += element_len;
+                ar_partition_array[col_schema].emplace_back(arrayBatchInfo);
+            }
+        }
+    }
+}
+
 int Splitter::SplitBinaryArray(VectorBatch& vb)
 {
     auto vec_cnt_vb = vb.GetVectorCount();
@@ -356,6 +518,17 @@ int Splitter::SplitBinaryArray(VectorBatch& vb)
                 }
                 break;
             }
+            case SHUFFLE_ARRAY: {
+                auto col_vb = singlePartitionFlag ? col_schema : col_schema + 1;
+                auto *arrayVector = vb.Get(col_vb);
+                arrayVectorCache.insert(arrayVector);
+                if (arrayVector->HasNull()) {
+                    this->template SplitArrayVector<true>(arrayVector, col_schema);
+                } else {
+                    this->template SplitArrayVector<false>(arrayVector, col_schema);
+                }
+                break;
+            }
             case SHUFFLE_LARGE_BINARY:
                 break;
             default:{
@@ -370,7 +543,7 @@ int Splitter::SplitFixedWidthValidityBuffer(VectorBatch& vb){
     for (uint col = 0; col < fixed_width_array_idx_.size(); ++col) {
         auto col_idx = fixed_width_array_idx_[col];
         auto& dst_addrs = partition_fixed_width_validity_addrs_[col];
-        // 分配内存并初始化
+
         if (vb.Get(col_idx)->HasNull()) {
             for (auto pid = 0; pid < num_partitions_; ++pid) {
                 if (partition_id_cnt_cur_[pid] > 0 && dst_addrs[pid] == nullptr) {
@@ -391,7 +564,6 @@ int Splitter::SplitFixedWidthValidityBuffer(VectorBatch& vb){
                 }
             }
 
-            // 计算并填充数据
             auto src_addr = unsafe::UnsafeBaseVector::GetNulls(vb.Get(col_idx));
             for (auto &pid: partition_used_) {
                 auto dstPidBase = dst_addrs[pid] + partition_buffer_idx_base_[pid];
@@ -422,15 +594,18 @@ int Splitter::CacheVectorBatch(int32_t partition_id, bool reset_buffers) {
                 case SHUFFLE_LARGE_BINARY: {
                     break;
                 }
+                case SHUFFLE_ARRAY: {
+                    break;
+                }
                 case SHUFFLE_NULL: {
                     break;
                 }
                 default: {
                     auto& buffers = partition_fixed_width_buffers_[fixed_width_idx][partition_id];
                     if (buffers[0] != nullptr) {
-                        batch_partition_size += buffers[0]->capacity_; // 累计null数组所占内存大小
+                        batch_partition_size += buffers[0]->capacity_;
                     }
-                    batch_partition_size += buffers[1]->capacity_; // 累计value数组所占内存大小
+                    batch_partition_size += buffers[1]->capacity_;
                     if (reset_buffers) {
                         bufferArrayTotal[fixed_width_idx] = std::move(buffers);
                         buffers = {nullptr};
@@ -460,9 +635,9 @@ int Splitter::DoSplit(VectorBatch& vb) {
             partition_id_cnt_cur_[pid] > 0 &&
             partition_buffer_idx_base_[pid] + partition_id_cnt_cur_[pid] > partition_buffer_size_[pid]) {
             auto new_size = partition_id_cnt_cur_[pid] > options_.buffer_size ? partition_id_cnt_cur_[pid] : options_.buffer_size;
-            if (partition_buffer_size_[pid] == 0) { // first allocate?
+            if (partition_buffer_size_[pid] == 0) {
                 AllocatePartitionBuffers(pid, new_size);
-            } else { // not first allocate, spill
+            } else {
                     CacheVectorBatch(pid, true);
                     AllocatePartitionBuffers(pid, new_size);
             }
@@ -473,7 +648,7 @@ int Splitter::DoSplit(VectorBatch& vb) {
     SplitFixedWidthValueBuffer(vb);
     SplitFixedWidthValidityBuffer(vb);
 
-    current_fixed_alloc_buffer_size_ = 0; // 用于统计定长split但未cache部分内存大小
+    current_fixed_alloc_buffer_size_ = 0;
     for (auto pid = 0; pid < num_partitions_; ++pid) {
         // update partition buffer base
         partition_buffer_idx_base_[pid] += partition_id_cnt_cur_[pid];
@@ -538,6 +713,10 @@ void Splitter::ToSplitterTypeId(int num_cols)
                 CastOmniToShuffleType(OMNI_DOUBLE, SHUFFLE_8BYTE);
                 break;
             }
+            case OMNI_FLOAT: {
+                CastOmniToShuffleType(OMNI_FLOAT, SHUFFLE_4BYTE);
+                break;
+            }
             case OMNI_DATE32: {
                 CastOmniToShuffleType(OMNI_DATE32, SHUFFLE_4BYTE);
                 break;
@@ -560,6 +739,10 @@ void Splitter::ToSplitterTypeId(int num_cols)
             }
             case OMNI_VARCHAR: {
                 CastOmniToShuffleType(OMNI_VARCHAR, SHUFFLE_BINARY);
+                break;
+            }
+            case OMNI_ARRAY: {
+                CastOmniToShuffleType(OMNI_ARRAY, SHUFFLE_ARRAY);
                 break;
             }
             default: throw std::runtime_error("Unsupported DataTypeId: " + input_col_types.inputVecTypeIds[i]);
@@ -616,6 +799,7 @@ int Splitter::Split_Init(){
                 }
                 break;
             case ShuffleTypeId::SHUFFLE_BINARY:
+            case ShuffleTypeId::SHUFFLE_ARRAY:
             default:
                 break;
         }
@@ -635,6 +819,12 @@ int Splitter::Split_Init(){
     for (auto i = 0; i < num_partitions_; ++i) {
         vc_partition_array_buffers_[i].resize(column_type_id_.size());
     }
+
+    ar_partition_array_buffers_.resize(num_partitions_);
+    for (auto i = 0; i < num_partitions_; ++i) {
+        ar_partition_array_buffers_[i].resize(column_type_id_.size());
+    }
+
     partition_arena_.resize(num_partitions_);
     partition_row_batch.resize(num_partitions_);
     partition_row_batch_count.resize(num_partitions_);
@@ -645,10 +835,9 @@ int Splitter::Split_Init(){
 
 int Splitter::Split(VectorBatch& vb )
 {
-    // 计算vectorBatch分区信息
     LogsTrace(" split vb row number: %d ", vb.GetRowCount());
     TIME_NANO_OR_RAISE(total_compute_pid_time_, ComputeAndCountPartitionId(vb));
-    // 执行分区动作
+
     DoSplit(vb);
     return 0;
 }
@@ -739,7 +928,7 @@ std::shared_ptr<Buffer> Splitter::CaculateSpilledTmpFilePartitionOffsets() {
     }
     std::shared_ptr<Buffer> ptrPartitionOffsets (new Buffer((uint8_t*)ptr_tmp, 0, (num_partitions_ + 1) * sizeof(uint64_t)));
     uint64_t pidOffset = 0;
-    // 顺序记录每个partition的offset
+
     auto pid = 0;
     for (pid = 0; pid < num_partitions_; ++pid) {
         reinterpret_cast<uint64_t *>(ptrPartitionOffsets->data_)[pid] = pidOffset;
@@ -756,6 +945,7 @@ std::unordered_map<int32_t, spark::VecType::VecTypeId> omniTypeToVecTypeMap = {
     {OMNI_INT, spark::VecType::VEC_TYPE_INT},
     {OMNI_LONG, spark::VecType::VEC_TYPE_LONG},
     {OMNI_DOUBLE, spark::VecType::VEC_TYPE_DOUBLE},
+    {OMNI_FLOAT, spark::VecType::VEC_TYPE_FLOAT},
     {OMNI_BOOLEAN, spark::VecType::VEC_TYPE_BOOLEAN},
     {OMNI_SHORT, spark::VecType::VEC_TYPE_SHORT},
     {OMNI_DECIMAL64, spark::VecType::VEC_TYPE_DECIMAL64},
@@ -772,6 +962,7 @@ std::unordered_map<int32_t, spark::VecType::VecTypeId> omniTypeToVecTypeMap = {
     {OMNI_CONTAINER, spark::VecType::VEC_TYPE_CONTAINER},
     {OMNI_BYTE, spark::VecType::VEC_TYPE_BYTE},
     {OMNI_INVALID, spark::VecType::VEC_TYPE_INVALID},
+    {OMNI_ARRAY, spark::VecType::VEC_TYPE_ARRAY},
 };
 
 spark::VecType::VecTypeId Splitter::CastOmniTypeIdToProtoVecType(int32_t omniType) {
@@ -793,7 +984,7 @@ void Splitter::SerializingFixedColumns(int32_t partitionId,
         auto colIndexTmpSchema = 0;
         colIndexTmpSchema = singlePartitionFlag ? fixed_width_array_idx_[fixColIndexTmp] : fixed_width_array_idx_[fixColIndexTmp] - 1;
         auto onceCopyLen = splitRowInfoTmp->onceCopyRow * (1 << column_type_id_[colIndexTmpSchema]);
-        // 临时内存，拷贝拼接onceCopyRow批，用完释放
+
         std::string valueStr;
         valueStr.resize(onceCopyLen);
         std::string nullStr;
@@ -801,13 +992,12 @@ void Splitter::SerializingFixedColumns(int32_t partitionId,
         std::shared_ptr<Buffer> ptr_value (new Buffer((uint8_t*)valueStr.data(), 0, onceCopyLen, false));
         std::shared_ptr<Buffer> ptr_validity;
 
-        // options_.spill_batch_row_num长度切割与拼接
         uint destCopyedLength = 0;
         uint memCopyLen = 0;
         uint cacheBatchSize = 0;
         bool nullAllocated = false;
         while (destCopyedLength < onceCopyLen) {
-            if (splitRowInfoTmp->cacheBatchIndex[fixColIndexTmp] >= partition_cached_vectorbatch_[partitionId].size()) { // 数组越界保护
+            if (splitRowInfoTmp->cacheBatchIndex[fixColIndexTmp] >= partition_cached_vectorbatch_[partitionId].size()) {
                 throw std::runtime_error("Columnar shuffle CacheBatchIndex out of bound.");
             }
             cacheBatchSize = partition_cached_vectorbatch_[partitionId][splitRowInfoTmp->cacheBatchIndex[fixColIndexTmp]][fixColIndexTmp][1]->size_;
@@ -830,13 +1020,13 @@ void Splitter::SerializingFixedColumns(int32_t partitionId,
                        memCopyLen,
                        partition_cached_vectorbatch_[partitionId][splitRowInfoTmp->cacheBatchIndex[fixColIndexTmp]][fixColIndexTmp][1]->data_ + splitRowInfoTmp->cacheBatchCopyedLen[fixColIndexTmp],
                        memCopyLen);
-                // (destCopyedLength / (1 << column_type_id_[colIndexTmpSchema])) 等比例计算null数组偏移
+
                 if (partition_cached_vectorbatch_[partitionId][splitRowInfoTmp->cacheBatchIndex[fixColIndexTmp]][fixColIndexTmp][0] != nullptr) {
                     memcpy_s((uint8_t*)(ptr_validity->data_) + (destCopyedLength / (1 << column_type_id_[colIndexTmpSchema])),
                            memCopyLen / (1 << column_type_id_[colIndexTmpSchema]),
                            partition_cached_vectorbatch_[partitionId][splitRowInfoTmp->cacheBatchIndex[fixColIndexTmp]][fixColIndexTmp][0]->data_ + (splitRowInfoTmp->cacheBatchCopyedLen[fixColIndexTmp] / (1 << column_type_id_[colIndexTmpSchema])),
                            memCopyLen / (1 << column_type_id_[colIndexTmpSchema]));
-                    // 释放内存
+
                     options_.allocator->Free(partition_cached_vectorbatch_[partitionId][splitRowInfoTmp->cacheBatchIndex[fixColIndexTmp]][fixColIndexTmp][0]->data_,
                                              partition_cached_vectorbatch_[partitionId][splitRowInfoTmp->cacheBatchIndex[fixColIndexTmp]][fixColIndexTmp][0]->capacity_);
                     partition_cached_vectorbatch_[partitionId][splitRowInfoTmp->cacheBatchIndex[fixColIndexTmp]][fixColIndexTmp][0]->SetReleaseFlag();
@@ -911,6 +1101,64 @@ void Splitter::SerializingBinaryColumns(int32_t partitionId, spark::Vec& vec, in
     *protoOffset = std::move(offsetsStr);
 }
 
+void Splitter::SerializingArrayColumns(int32_t partitionId, spark::Vec& vec, int colIndex, int curBatch)
+{
+    LogsDebug(" ar_partition_array_buffers_[partitionId:%d][colIndex:%d] cacheBatchNum:%lu curBatch:%d", partitionId, colIndex, ar_partition_array_buffers_[partitionId][colIndex].size(), curBatch);
+    ArrayBatchInfo arrayBatchInfo = ar_partition_array_buffers_[partitionId][colIndex][curBatch];
+    int elementTotalLen = arrayBatchInfo.getElementTotalLen();
+    std::vector<ArrayLocation> lst = arrayBatchInfo.getArrayList();
+    int elementTotalNum = lst.size();
+
+    int elementType = arrayBatchInfo.getElementType();
+    DataTypeId dataTypeId = static_cast<DataTypeId>(elementType);
+
+    std::string numsStr;
+    numsStr.resize(sizeof(int32_t) * elementTotalNum);
+    std::string nullsStr;
+    std::string valuesStr;
+    valuesStr.resize(elementTotalLen);
+    std::string offsetStr;
+    if (dataTypeId == OMNI_VARCHAR || dataTypeId == OMNI_CHAR) {
+        int varcharTotalNum = 0;
+        for (int i = 0; i < elementTotalNum; i++) {
+            varcharTotalNum += lst[i].get_element_num();
+        }
+        offsetStr.resize(sizeof(int32_t) * (varcharTotalNum + 1));
+    } else {
+        offsetStr.resize(0);
+    }
+
+    if(arrayBatchInfo.hasNull()) {
+        BytesGenArray<true>(reinterpret_cast<uint64_t>(numsStr.data()),
+            nullsStr,
+            reinterpret_cast<uint64_t>(valuesStr.data()),
+            reinterpret_cast<uint64_t>(offsetStr.data()), dataTypeId, arrayBatchInfo);
+    } else {
+        BytesGenArray<false>(reinterpret_cast<uint64_t>(numsStr.data()),
+            nullsStr,
+            reinterpret_cast<uint64_t>(valuesStr.data()),
+            reinterpret_cast<uint64_t>(offsetStr.data()), dataTypeId, arrayBatchInfo);
+    }
+    auto *protoNums = vec.mutable_nums();
+    *protoNums = std::move(numsStr);
+    auto *protoValue = vec.mutable_values();
+    *protoValue = std::move(valuesStr);
+    auto *protoNulls = vec.mutable_nulls();
+    *protoNulls = std::move(nullsStr);
+    auto *protoOffset = vec.mutable_offset();
+    *protoOffset = std::move(offsetStr);
+
+    spark::VecType *vt = vec.mutable_vectype();
+    spark::VecType* childType = vt->add_children();
+    spark::VecType::VecTypeId childProtoType = omniTypeToVecTypeMap.find(elementType)->second;
+    childType->set_typeid_(childProtoType);
+
+    if (childProtoType == spark::VecType::VEC_TYPE_DECIMAL128 || vt->typeid_() == spark::VecType::VEC_TYPE_DECIMAL64) {
+        childType->set_precision(input_col_types.inputDataPrecisions[colIndex]);
+        childType->set_scale(input_col_types.inputDataScales[colIndex]);
+    }
+}
+
 int32_t Splitter::ProtoWritePartition(int32_t partition_id, std::unique_ptr<BufferedOutputStream> &bufferStream, void *bufferOut, int32_t &sizeOut) {
     SplitRowInfo splitRowInfoTmp;
     splitRowInfoTmp.copyedRow = 0;
@@ -938,11 +1186,15 @@ int32_t Splitter::ProtoWritePartition(int32_t partition_id, std::unique_ptr<Buff
                 case ShuffleTypeId::SHUFFLE_8BYTE:
                 case ShuffleTypeId::SHUFFLE_DECIMAL128: {
                     SerializingFixedColumns(partition_id, *vec, fixColIndexTmp, &splitRowInfoTmp);
-                    fixColIndexTmp++; // 定长序列化数量++
+                    fixColIndexTmp++;
                     break;
                 }
                 case ShuffleTypeId::SHUFFLE_BINARY: {
                     SerializingBinaryColumns(partition_id, *vec, indexSchema, curBatch);
+                    break;
+                }
+                case ShuffleTypeId::SHUFFLE_ARRAY: {
+                    SerializingArrayColumns(partition_id, *vec, indexSchema, curBatch);
                     break;
                 }
                 default: {
@@ -983,10 +1235,10 @@ int32_t Splitter::ProtoWritePartition(int32_t partition_id, std::unique_ptr<Buff
     partition_lengths_[partition_id] += partitionBatchSize;
     LogsDebug(" partitionBatch write length: %lu", partitionBatchSize);
 
-   // 及时清理分区数据
-    partition_cached_vectorbatch_[partition_id].clear(); // 定长数据内存释放
+    partition_cached_vectorbatch_[partition_id].clear();
     for (size_t col = 0; col < column_type_id_.size(); col++) {
-        vc_partition_array_buffers_[partition_id][col].clear(); // binary 释放内存
+        vc_partition_array_buffers_[partition_id][col].clear();
+        ar_partition_array_buffers_[partition_id][col].clear();
     }
 
     return 0;
@@ -1090,7 +1342,7 @@ int Splitter::protoSpillPartition(int32_t partition_id, std::unique_ptr<Buffered
                 case ShuffleTypeId::SHUFFLE_8BYTE:
                 case ShuffleTypeId::SHUFFLE_DECIMAL128: {
                     SerializingFixedColumns(partition_id, *vec, fixColIndexTmp, &splitRowInfoTmp);
-                    fixColIndexTmp++; // 定长序列化数量++
+                    fixColIndexTmp++;
                     break;
                 }
                 case ShuffleTypeId::SHUFFLE_BINARY: {
@@ -1139,10 +1391,9 @@ int Splitter::protoSpillPartition(int32_t partition_id, std::unique_ptr<Buffered
     partition_serialization_size_[partition_id] = partitionBatchSize;
     LogsDebug(" partitionBatch write length: %lu", partitionBatchSize);
 
-    // 及时清理分区数据
-    partition_cached_vectorbatch_[partition_id].clear(); // 定长数据内存释放
+    partition_cached_vectorbatch_[partition_id].clear();
     for (size_t col = 0; col < column_type_id_.size(); col++) {
-        vc_partition_array_buffers_[partition_id][col].clear(); // binary 释放内存
+        vc_partition_array_buffers_[partition_id][col].clear();
     }
 
     return 0;
@@ -1303,6 +1554,7 @@ void Splitter::MergeSpilled() {
 
     memset_s(partition_id_cnt_cache_, num_partitions_ * sizeof(uint64_t), 0, num_partitions_ * sizeof(uint64_t));
     ReleaseVarcharVector();
+    ReleaseArrayVector();
     num_row_splited_ = 0;
     cached_vectorbatch_size_ = 0;
     outStream->close();
@@ -1376,6 +1628,7 @@ void Splitter::WriteSplit() {
 
     memset_s(partition_id_cnt_cache_, num_partitions_ * sizeof(uint64_t), 0, num_partitions_ * sizeof(uint64_t));
     ReleaseVarcharVector();
+    ReleaseArrayVector();
     num_row_splited_ = 0;
     cached_vectorbatch_size_ = 0;
     outStream->close();

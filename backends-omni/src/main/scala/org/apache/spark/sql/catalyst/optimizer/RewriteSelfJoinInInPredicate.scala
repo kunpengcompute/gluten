@@ -43,11 +43,8 @@ case class RewriteSelfJoinInInPredicate(spark: SparkSession)
   with PredicateHelper {
   object ListQueryShim {
     def unapply(query: ListQuery)
-        : Option[(LogicalPlan, Seq[Expression], ExprId, Seq[Attribute], Seq[Expression])] = {
-      ListQuery.unapply(query).map {
-        case (plan, outerAttrs, exprId, childOutputs, joinCond) =>
-          (plan, outerAttrs, exprId, childOutputs, joinCond)
-      }
+      : Option[(LogicalPlan, Seq[Expression], ExprId, Seq[Attribute], Seq[Expression])] = {
+        Some((query.plan, query.outerAttrs, query.exprId, query.childOutputs, query.joinCond))
     }
   }
 

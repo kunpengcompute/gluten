@@ -23,11 +23,13 @@ import org.apache.gluten.component.Component.BuildInfo
 import org.apache.gluten.config.GlutenConfig
 import org.apache.gluten.extension.ValidationResult
 import org.apache.gluten.extension.columnar.transition.Convention
+import org.apache.gluten.sql.shims.SparkShimLoader
 import org.apache.gluten.substrait.plan.PlanNode
 import org.apache.gluten.substrait.rel.LocalFilesNode
 import org.apache.gluten.substrait.rel.LocalFilesNode.ReadFileFormat
 import org.apache.gluten.validate.NativePlanValidationInfo
 import org.apache.gluten.vectorized.OmniNativePlanEvaluator
+import org.apache.spark.shuffle.OmniShuffleUtil
 import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, Average, Count, First, Max, Min, StddevSamp, Sum}
 import org.apache.spark.sql.catalyst.expressions.{Alias, Attribute, CurrentRow, Literal, NamedExpression, Rank, RowNumber, SpecifiedWindowFrame, UnboundedFollowing, UnboundedPreceding, WindowExpression}
 import org.apache.spark.sql.catalyst.plans.physical.Partitioning
@@ -63,8 +65,23 @@ object OmniBackend {
   val CONF_PREFIX: String = GlutenConfig.prefixOf(BACKEND_NAME)
 }
 
+object DataTypeUtils {
+  def isPrimitiveType(dataType: DataType): Boolean = {
+    dataType match {
+      case BooleanType | ByteType | ShortType | IntegerType | LongType | DoubleType | FloatType | StringType |
+           _: DecimalType | DateType | TimestampType | NullType | FloatType =>
+        true
+      case _ => false
+    }
+  }
+}
+
 object OmniBackendSettings extends BackendSettingsApi {
   val SHUFFLE_SUPPORTED_CODEC = Set("lz4", "zstd")
+  val GLUTEN_OMNI_UDF_LIB_PATHS = OmniBackend.CONF_PREFIX + ".udfLibraryPaths"
+  val GLUTEN_OMNI_DRIVER_UDF_LIB_PATHS = OmniBackend.CONF_PREFIX + ".driver.udfLibraryPaths"
+  val GLUTEN_OMNI_INTERNAL_UDF_LIB_PATHS = OmniBackend.CONF_PREFIX + ".internal.udfLibraryPaths"
+  val GLUTEN_OMNI_UDF_ALLOW_TYPE_CONVERSION = OmniBackend.CONF_PREFIX + ".udfAllowTypeConversion"
 
   /** The columnar-batch type this backend is by default using. */
   override def primaryBatchType: Convention.BatchType = OmniBatch
@@ -78,9 +95,10 @@ object OmniBackendSettings extends BackendSettingsApi {
     def checkUnsupportedDataTypes: ValidationResult = {
       //Collect unsupported types
       val unsupportedDataTypes = fields.map(_.dataType).collect {
-        case _: MapType => "MapType"
-        case _: StructType => "StructType"
-        case _: ArrayType => "ArrayType"
+        case m: MapType
+          if (!DataTypeUtils.isPrimitiveType(m.keyType) || !DataTypeUtils.isPrimitiveType(m.valueType)) => "nested MapType"
+        case a: ArrayType
+          if (!DataTypeUtils.isPrimitiveType(a.elementType)) => "nested ArrayType"
       }
       for (unsupportedDataType <- unsupportedDataTypes) {
         return ValidationResult.failed(s"Validation failed for ${this.getClass.toString}"
@@ -94,7 +112,6 @@ object OmniBackendSettings extends BackendSettingsApi {
       case _ => ValidationResult.failed(s"Unsupported file format $format")
     }
   }
-
 
   override def needOutputSchemaForPlan(): Boolean = true
 
@@ -120,7 +137,11 @@ object OmniBackendSettings extends BackendSettingsApi {
 
   override def shuffleSupportedCodec(): Set[String] = SHUFFLE_SUPPORTED_CODEC
 
-  override def enableNativeWriteFiles(): Boolean = true
+  override def enableNativeWriteFiles(): Boolean = {
+    GlutenConfig.get.enableNativeWriter.getOrElse(
+      SparkShimLoader.getSparkShims.enableNativeWriteFilesByDefault()
+    )
+  }
 
   override def supportSortExec(): Boolean = true
 
@@ -167,6 +188,14 @@ object OmniBackendSettings extends BackendSettingsApi {
     isSupport
   }
 
+  override def supportColumnarShuffleExec(): Boolean = {
+    val conf = GlutenConfig.get
+    conf.enableColumnarShuffle && (conf.isUseGlutenShuffleManager
+      || conf.isUseColumnarShuffleManager
+      || conf.isUseCelebornShuffleManager
+      || conf.isUseUniffleShuffleManager)
+  }
+
   override def transformCheckOverflow: Boolean = false
 
   override def excludeScanExecFromCollapsedStage(): Boolean = {
@@ -207,32 +236,52 @@ class OmniValidatorApi extends ValidatorApi {
       // See: https://github.com/apache/incubator-gluten/issues/7600.
       return Some("Shuffle with empty input schema is not supported")
     }
-    doSchemaValidate(child.schema)
-  }
-
-  private def isPrimitiveType(dataType: DataType): Boolean = {
-    dataType match {
-      case BooleanType | ShortType | IntegerType | LongType | DoubleType | StringType |
-          _: DecimalType | DateType | TimestampType =>
-        true
-      case _ => false
+    val res = doSchemaValidateForShuffle(child.schema)
+    if (res.isDefined){
+      return res
     }
+    OmniShuffleUtil.doShuffleValidate(outputAttributes, outputPartitioning, child)
   }
 
-  override def doSchemaValidate(schema: DataType): Option[String] = {
-    if (isPrimitiveType(schema)) {
+  def doSchemaValidateForShuffle(schema: DataType): Option[String] = {
+    if (DataTypeUtils.isPrimitiveType(schema)) {
       return None
     }
-    // unsupported any complex type
     schema match {
       case struct: StructType =>
         struct.fields.foreach {
           f =>
-            if (!isPrimitiveType(f.dataType)) {
-              return Some(s"Schema / data type not supported: $schema")
+            val reason = doSchemaValidateForShuffle(f.dataType)
+            if (reason.isDefined) {
+              return reason
             }
         }
         None
+      case array: ArrayType =>
+        doSchemaValidate(array.elementType)
+      case _ =>
+        Some(s"Schema / data type not supported: $schema")
+    }
+  }
+
+  override def doSchemaValidate(schema: DataType): Option[String] = {
+    if (DataTypeUtils.isPrimitiveType(schema)) {
+      return None
+    }
+    schema match {
+      case map: MapType =>
+        doSchemaValidate(map.keyType).orElse(doSchemaValidate(map.valueType))
+      case struct: StructType =>
+        struct.fields.foreach {
+          f =>
+            val reason = doSchemaValidate(f.dataType)
+            if (reason.isDefined) {
+              return reason
+            }
+        }
+        None
+      case array: ArrayType =>
+        doSchemaValidate(array.elementType)
       case _ =>
         Some(s"Schema / data type not supported: $schema")
     }

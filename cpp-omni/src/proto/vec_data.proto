@@ -15,6 +15,7 @@ message Vec {
     bytes offset = 2;
     bytes values = 3;
     bytes nulls = 4;
+    bytes nums =5;
 }
 
 message VecType {
@@ -40,6 +41,7 @@ message VecType {
         VEC_TYPE_BYTE = 18;
         VEC_TYPE_FLOAT = 19;
         VEC_TYPE_INVALID = 20;
+        VEC_TYPE_ARRAY = 30;
     }
 
     VecTypeId typeId = 1;
@@ -58,6 +60,7 @@ message VecType {
         NANOSEC = 3;
     }
     TimeUnit timeUnit = 6;
+    repeated VecType children = 7;
 }
 
 message ProtoRowBatch {

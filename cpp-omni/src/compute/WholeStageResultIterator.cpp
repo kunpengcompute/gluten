@@ -111,6 +111,16 @@ std::unordered_map<std::string, std::string> WholeStageResultIterator::GetQueryC
             omniCfg_->Get<uint64_t>(KColumnarSpillWriteBufferSize, 4121440L));
         configs[config::QueryConfig::KColumnarSpillDirDiskReserveSize] = std::to_string(
             omniCfg_->Get<uint64_t>(KColumnarSpillDirDiskReserveSize, 10737418240L));
+        configs[config::QueryConfig::KColumnarSpillEnableCompress] = BoolToString(
+            omniCfg_->Get<bool>(KColumnarSpillEnableCompress, false));
+        configs[config::QueryConfig::KEnableAdaptivePartialAggregation] = omniCfg_->Get<std::string>(
+            KEnableAdaptivePartialAggregation, "true");
+        configs[config::QueryConfig::KAdaptivePartialAggregationMinRows] = std::to_string(
+            omniCfg_->Get<int32_t>(KAdaptivePartialAggregationMinRows, 500000));
+        configs[config::QueryConfig::KAdaptivePartialAggregationRatio] = std::to_string(
+            omniCfg_->Get<double>(KAdaptivePartialAggregationRatio, 0.8));
+        configs[config::QueryConfig::KPreferVectorizationExpression] = BoolToString(
+            omniCfg_->Get<bool>(KPreferVectorizationExpression, false));
         if (omniCfg_->Get<bool>(kSparkShuffleSpillCompress, true)) {
             configs[config::QueryConfig::kSpillCompressionKind] = omniCfg_->Get<std::string>(kSpillCompressionKind,
                 omniCfg_->Get<std::string>(kCompressionKind, "lz4"));

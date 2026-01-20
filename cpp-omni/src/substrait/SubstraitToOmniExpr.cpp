@@ -17,6 +17,10 @@
 
 #include "SubstraitToOmniExpr.h"
 #include "expression/parserhelper.h"
+#include "codegen/func_registry.h"
+#include "codegen/bloom_filter.h"
+#include "type/data_type.h"
+#include "codegen/bloom_filter.h"
 
 constexpr const char *SUBSTRAIT_PARSE_ERROR = "SUBSTRAIT_PARSE_ERROR";
 namespace omniruntime {
@@ -27,12 +31,16 @@ DataTypePtr GetScalarType(const ::substrait::Expression::Literal &literal)
     switch (typeCase) {
         case ::substrait::Expression_Literal::LiteralTypeCase::kBoolean:
             return BooleanType();
+        case ::substrait::Expression_Literal::LiteralTypeCase::kI8:
+            return ByteType();
         case ::substrait::Expression_Literal::LiteralTypeCase::kI16:
             return ShortType();
         case ::substrait::Expression_Literal::LiteralTypeCase::kI32:
             return IntType();
         case ::substrait::Expression_Literal::LiteralTypeCase::kI64:
             return LongType();
+        case ::substrait::Expression_Literal::LiteralTypeCase::kFp32:
+            return FloatType();
         case ::substrait::Expression_Literal::LiteralTypeCase::kFp64:
             return DoubleType();
         case ::substrait::Expression_Literal::LiteralTypeCase::kDecimal: {
@@ -82,16 +90,51 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
     switch (typeCase) {
         case ::substrait::Expression::FieldReference::ReferenceTypeCase::kDirectReference: {
             const auto &directRef = substraitField.direct_reference();
-
+            FieldExpr *fieldAccess = nullptr;
             const auto *tmp = &directRef.struct_field();
-            auto idx = tmp->field();
-            // not support complicated types
-            return new FieldExpr(idx, inputType->GetType(idx));
+
+            auto inputColumnType = inputType;
+            for (;;) {
+                auto idx = tmp->field();
+                fieldAccess = new FieldExpr(idx, inputColumnType->GetType(idx), idx, fieldAccess);
+
+                if (!tmp->has_child()) {
+                    break;
+                }
+
+                if (auto e = std::dynamic_pointer_cast<RowType>(inputType->GetType(idx))) {
+                    inputColumnType = std::make_shared<DataTypes>(e->Children());
+                } else {
+                    OMNI_THROW("SUBSTRAIT_ERROR:", "Substrait conversion not supported for Reference '{}'",
+                        std::to_string(typeCase));
+                }
+
+                tmp = &tmp->child().struct_field();
+            }
+            return fieldAccess;
         }
         default:
             OMNI_THROW(
                 "SUBSTRAIT_ERROR:", "Substrait conversion not supported for Reference '{}'", std::to_string(typeCase));
     }
+}
+
+void writeIntBigEndian(int32_t val, int8_t *buf) {
+    *buf = (val>>24) & 0xff;
+    *(buf+1) = (val>>16) & 0xff;
+    *(buf+2) = (val>>8) & 0xff;
+    *(buf+3) = val & 0xff;
+}
+
+void writeLongBigEndian(int64_t val, int8_t *buf) {
+    *buf = (val>>56) & 0xff;
+    *(buf+1) = (val>>48) & 0xff;
+    *(buf+2) = (val>>40) & 0xff;
+    *(buf+3) = (val>>32) & 0xff;
+    *(buf+4) = (val>>24) & 0xff;
+    *(buf+5) = (val>>16) & 0xff;
+    *(buf+6) = (val>>8) & 0xff;
+    *(buf+7) = val & 0xff;
 }
 
 TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
@@ -101,27 +144,30 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
     const auto &outputType = SubstraitParser::ParseType(substraitFunc.output_type());
     auto type = omniFunction.first;
     auto funcName = omniFunction.second;
-    Operator op = StringToOperator(funcName);
+    expressions::Operator op = StringToOperator(funcName);
     std::vector<Expr *> args;
     args.reserve(substraitFunc.arguments().size());
     for (const auto &sArg : substraitFunc.arguments()) {
         args.emplace_back(ToOmniExpr(sArg.value(), inputType));
     }
+    if (funcName == "get_array_item") {
+        //
+    }
     if (type == IS_NOT_NULL_OMNI_EXPR_TYPE) {
         OMNI_CHECK(args[0] != nullptr, "args[0] is null");
         auto isNullExpr = new IsNullExpr(args[0]);
-        return new UnaryExpr(Operator::NOT, isNullExpr, std::make_shared<BooleanDataType>());
+        return new UnaryExpr(expressions::Operator::NOT, isNullExpr, std::make_shared<BooleanDataType>());
     } else if (type == IS_NULL_OMNI_EXPR_TYPE) {
         OMNI_CHECK(args[0] != nullptr, "args[0] is null");
         return new IsNullExpr(args[0]);
     } else if (type == UNARY_OMNI_EXPR_TYPE) {
         OMNI_CHECK(args[0] != nullptr, "args[0] is null");
-        OMNI_CHECK(op != Operator::INVALIDOP, "the operator is INVALIDOP");
+        OMNI_CHECK(op != expressions::Operator::INVALIDOP, "the operator is INVALIDOP");
         return new UnaryExpr(op, args[0], std::make_shared<BooleanDataType>());
     } else if (type == BINARY_OMNI_EXPR_TYPE) {
         OMNI_CHECK(outputType != nullptr, "outputType is null");
         OMNI_CHECK(args[0] != nullptr, "args[0] is null");
-        OMNI_CHECK(op != Operator::INVALIDOP, "the operator is INVALIDOP");
+        OMNI_CHECK(op != expressions::Operator::INVALIDOP, "the operator is INVALIDOP");
         if (args[1] == nullptr) {
             delete args[0];
             OMNI_THROW("SUBSTRAIT_ERROR:", "The args[1] in ScalarFunction is nullptr");
@@ -150,23 +196,77 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
             }
             return func;
         }
+        if (funcName == "might_contain") {
+           LiteralExpr *childExpr = dynamic_cast<LiteralExpr *>(args[0]);
+           std::string *sp = childExpr->stringVal;
+           if (*sp == "NULL") {
+               LiteralExpr *nChildExpr = new LiteralExpr(0L, LongType(), true);
+               BloomFilterFuncExpr *bfFuncExpr = new BloomFilterFuncExpr(funcName, {nChildExpr, args[1]}, outputType, nullptr, nullptr);
+               delete childExpr;
+               return bfFuncExpr;
+           }
+           int64_t len = sp->length();
+           const char *dataPtr = sp->c_str();
+           std::unique_ptr<mem::AlignedBuffer<int8_t>>buf=std::make_unique<mem::AlignedBuffer<int8_t>>(len);
+           int8_t *bfBuf = buf->GetBuffer();
+
+           //decode
+           int32_t version = *reinterpret_cast<const int32_t *>(dataPtr);
+           dataPtr += 4;
+           int32_t numHashFunctions = *reinterpret_cast<const int32_t *>(dataPtr);
+           dataPtr += 4;
+           int32_t numWords = *reinterpret_cast<const int32_t *>(dataPtr);
+           dataPtr += 4;
+           writeIntBigEndian(version, bfBuf);
+           version = *reinterpret_cast<int32_t *>(bfBuf);
+           bfBuf += 4;
+           writeIntBigEndian(numHashFunctions, bfBuf);
+           bfBuf += 4;
+           writeIntBigEndian(numWords, bfBuf);
+           numWords = *reinterpret_cast<int32_t *>(bfBuf);
+           bfBuf += 4;
+
+           int64_t word;
+           for(int32_t i = 0; i < numWords; i++) {
+               word = *reinterpret_cast<const int64_t *>(dataPtr);
+               writeLongBigEndian(word, bfBuf);
+               dataPtr += 8;
+               bfBuf += 8;
+           }
+           std::unique_ptr<op::BloomFilter>bloomFilter = std::make_unique<op::BloomFilter>(buf->GetBuffer(), version);
+           LiteralExpr *nChildExpr = new LiteralExpr(reinterpret_cast<intptr_t>(bloomFilter.get()), LongType());
+           BloomFilterFuncExpr *bfFuncExpr = new BloomFilterFuncExpr(funcName, {nChildExpr, args[1]}, outputType, std::move(buf), std::move(bloomFilter));
+           delete childExpr;
+           return bfFuncExpr;
+         }
         // check the signature matches
         std::vector<DataTypeId> argTypes(args.size());
         std::transform(args.begin(), args.end(), argTypes.begin(),
             [](Expr *expr) -> DataTypeId { return expr->GetReturnTypeId(); });
         return new FuncExpr(funcName, args, std::move(outputType));
     } else if (type == COALESCE_OMNI_EXPR_TYPE) {
-        if (args.size() != COALESCE_INPUT) {
-            OMNI_THROW("SUBSTRAIT_ERROR:", "coalesce expression only support two input parameters");
+        if (args.size() < 2) {
+            OMNI_THROW("SUBSTRAIT_ERROR:", "coalesce expression requires at least two input parameters");
         }
-        OMNI_CHECK(args[0] != nullptr, "args[0] is null");
-        if (args[1] == nullptr) {
-            delete args[0];
-            OMNI_THROW("SUBSTRAIT_ERROR:", "The args[1] in COALESCE_OMNI_EXPR_TYPE is nullptr");
+        for (size_t i = 0; i < args.size(); ++i) {
+            if (args[i] == nullptr) {
+                OMNI_THROW("SUBSTRAIT_ERROR:", "The args[{}] in COALESCE_OMNI_EXPR_TYPE is nullptr", i);
+            }
         }
-        return new CoalesceExpr(args[0], args[1]);
+        CoalesceExpr* coalesceExpr = nullptr;
+        if (args.size() == 2) {
+            coalesceExpr = new CoalesceExpr(args[0], args[1]);
+        } else {
+            coalesceExpr = BuildNestedCoalesceExpr(args);
+        }
+        return coalesceExpr;
     } else if (type == HIVE_UDF_FUNCTION_OMNI_EXPR_TYPE) {
-        throw omniruntime::exception::OmniException(SUBSTRAIT_PARSE_ERROR, "The UDF function Unsupported yet");
+        DataTypePtr retType;
+        auto &hiveUdfClass = omniruntime::codegen::FunctionRegistry::LookupHiveUdf(funcName);
+        if (!hiveUdfClass.empty()) {
+            return new FuncExpr(hiveUdfClass, args, outputType, HIVE_UDF);
+        }
+        OMNI_THROW("SUBSTRAIT_ERROR:", "The UDF function {} Unsupported yet", funcName);
     } else {
         OMNI_THROW(
             "SUBSTRAIT_ERROR:", "function type {} and function {} is unsupported yet", std::to_string(type), funcName);
@@ -209,7 +309,7 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
     const ::substrait::Expression::Cast &castExpr, const DataTypesPtr &inputType)
 {
     auto retType = SubstraitParser::ParseType(castExpr.type());
-    auto expr = ToOmniExpr(castExpr.input(), inputType);
+    auto expr = ToOmniExpr(castExpr.input(), inputType, retType);
     auto retTypeId = retType->GetId();
     auto argReturnType = expr->GetReturnType();
     if (retTypeId == argReturnType->GetId()) {
@@ -239,18 +339,22 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
     return new FuncExpr("CAST", args, std::move(retType));
 }
 
-TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(const ::substrait::Expression::Literal &substraitLit)
+TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(const ::substrait::Expression::Literal &substraitLit, const DataTypePtr defaultType)
 {
     auto typeCase = substraitLit.literal_type_case();
     switch (typeCase) {
         case ::substrait::Expression_Literal::LiteralTypeCase::kBoolean:
             return new LiteralExpr(substraitLit.boolean(), BooleanType());
+        case ::substrait::Expression_Literal::LiteralTypeCase::kI8:
+            return new LiteralExpr(static_cast<int8_t>(substraitLit.i8()), ByteType());
         case ::substrait::Expression_Literal::LiteralTypeCase::kI16:
             return new LiteralExpr(static_cast<int16_t>(substraitLit.i16()), ShortType());
         case ::substrait::Expression_Literal::LiteralTypeCase::kI32:
             return new LiteralExpr(substraitLit.i32(), IntType());
         case ::substrait::Expression_Literal::LiteralTypeCase::kI64:
             return new LiteralExpr(substraitLit.i64(), LongType());
+        case ::substrait::Expression_Literal::LiteralTypeCase::kFp32:
+            return new LiteralExpr(substraitLit.fp32(), FloatType());
         case ::substrait::Expression_Literal::LiteralTypeCase::kFp64:
             return new LiteralExpr(substraitLit.fp64(), DoubleType());
         case ::substrait::Expression_Literal::LiteralTypeCase::kDate:
@@ -260,6 +364,10 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(const ::substrait::Expressio
         case ::substrait::Expression_Literal::LiteralTypeCase::kString: {
             auto *stringVal = new std::string(substraitLit.string());
             return new LiteralExpr(stringVal, VarcharType(stringVal->length()));
+        }
+        case ::substrait::Expression_Literal::LiteralTypeCase::kBinary: {
+            auto *stringVal = new std::string(substraitLit.binary());
+            return new LiteralExpr(stringVal, VarBinaryType(stringVal->length()));
         }
         case ::substrait::Expression_Literal::LiteralTypeCase::kDecimal: {
             auto decimal = substraitLit.decimal().value();
@@ -275,7 +383,12 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(const ::substrait::Expressio
             }
         }
         case ::substrait::Expression_Literal::LiteralTypeCase::kNull: {
-            auto dataType = SubstraitParser::ParseType(substraitLit.null());
+            DataTypePtr dataType;
+            if (defaultType != nullptr) {
+                dataType = defaultType;
+            } else {
+                dataType = SubstraitParser::ParseType(substraitLit.null());
+            }
             LiteralExpr *expr;
             if (TypeUtil::IsDecimalType(dataType->GetId())) {
                 auto precision = std::dynamic_pointer_cast<DecimalDataType>(dataType)->GetPrecision();
@@ -337,12 +450,12 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
 }
 
 TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
-    const substrait::Expression &substraitExpr, const DataTypesPtr &inputType)
+    const substrait::Expression &substraitExpr, const DataTypesPtr &inputType, DataTypePtr defaultType)
 {
     auto typeCase = substraitExpr.rex_type_case();
     switch (typeCase) {
         case ::substrait::Expression::RexTypeCase::kLiteral:
-            return ToOmniExpr(substraitExpr.literal());
+            return ToOmniExpr(substraitExpr.literal(), defaultType);
         case ::substrait::Expression::RexTypeCase::kScalarFunction:
             return ToOmniExpr(substraitExpr.scalar_function(), inputType);
         case ::substrait::Expression::RexTypeCase::kSelection:
@@ -357,5 +470,15 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
             OMNI_THROW(
                 "Substrait_Error:", "Substrait conversion not supported for Expression '{}'", std::to_string(typeCase));
     }
+}
+
+CoalesceExpr* SubstraitOmniExprConverter::BuildNestedCoalesceExpr(const std::vector<Expr*>& args) {
+    Expr* current = new CoalesceExpr(args[args.size()-2], args[args.size()-1]);
+
+    for (int i = args.size() - 3; i >= 0; --i) {
+        current = new CoalesceExpr(args[i], current);
+    }
+
+    return static_cast<CoalesceExpr*>(current);
 }
 } // namespace omniruntime

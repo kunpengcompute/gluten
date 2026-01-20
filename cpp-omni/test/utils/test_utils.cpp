@@ -75,6 +75,36 @@ VectorBatch* CreateVectorBatch_1row_varchar_withPid(int pid, std::string inputSt
 }
 
 /**
+ * create a VectorBatch with 1 col 1 row array<int> value and it's partition id
+ *
+ * @param {int} pid partition id for this row
+ * @param {int[]} elements of array
+ * @return {VectorBatch} a VectorBatch
+ */
+VectorBatch* CreateVectorBatch_1row_array_int_withPid(int pid, int* elements, int element_count) {
+    // gen vectorBatch
+    auto arrayColType = std::make_shared<omniruntime::type::ArrayType>(IntType());
+    DataTypes inputTypes(std::vector<DataTypePtr>({ IntType(), arrayColType }));
+    const int32_t numRows = 1;
+
+    auto *vecBatch = new VectorBatch(numRows);
+    auto* col1 = new int32_t[numRows];
+    col1[0] = pid;
+    vecBatch->Append(CreateVector(numRows, col1));
+
+    auto elementVector = std::make_shared<Vector<int32_t>>(element_count, OMNI_INT);
+    for (int i = 0; i < element_count; i++) {
+        elementVector->SetValue(i, elements[i]);
+    }
+    auto arrayVec = new ArrayVector(numRows, elementVector);
+    arrayVec->SetOffset(0, 0);
+    arrayVec->SetOffset(1, element_count);
+    vecBatch->Append(arrayVec);
+
+    return vecBatch;
+}
+
+/**
  * create a VectorBatch with 4col OMNI_INT OMNI_LONG OMNI_DOUBLE OMNI_VARCHAR and it's partition id
  * 
  * @param {int} parNum partition number

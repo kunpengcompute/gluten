@@ -29,9 +29,9 @@ import org.apache.gluten.extension.columnar.validator.{Validator, Validators}
 import org.apache.gluten.extension.injector.{Injector, SparkInjector}
 import org.apache.gluten.extension.injector.GlutenInjector.{LegacyInjector, RasInjector}
 import org.apache.gluten.extension.RewriteAQEShuffleRead
-import org.apache.spark.sql.catalyst.optimizer.{CombineJoinedAggregates, DedupLeftSemiJoin, MergeSubqueryFilters, PushOrderedLimitThroughAgg, ReorderJoinEnhances, RewriteSelfJoinInInPredicate, RollupOptimization, ShuffleJoinStrategy, RewriteTopNSort, CombineWindowSort, OmniRewriteSubqueryBroadcast, CombineJoinProject, CombineFilterProject}
+import org.apache.spark.sql.catalyst.optimizer.{CombineJoinedAggregates, DedupLeftSemiJoin, MergeSubqueryFilters, PushOrderedLimitThroughAgg, ReorderJoinEnhances, RewriteSelfJoinInInPredicate, RollupOptimization, ShuffleJoinStrategy, RewriteTopNSort, CombineWindowSort, OmniRewriteSubqueryBroadcast, CombineProject}
 import org.apache.gluten.extension.{FallbackBroadcastHashJoin, FallbackBroadcastHashJoinPrepQueryStage, PushDownFilterToOmniScan, RewriteAQEShuffleRead, OmniRewriteJoin}
-import org.apache.spark.sql.execution.{ColumnarCollapseTransformStages, GlutenFallbackReporter}
+import org.apache.spark.sql.execution.{ColumnarCollapseTransformStages, GlutenAutoAdjustStageResourceProfile, GlutenFallbackReporter}
 
 class OmniRuleApi extends RuleApi {
 
@@ -84,6 +84,7 @@ object OmniRuleApi {
       Seq(
         RewriteIn,
         RewriteMultiChildrenCount,
+        OmniGeneratePullOutPreProject,
         PullOutPostProject,
         ProjectColumnPruning)
     injector.injectTransform(
@@ -98,8 +99,7 @@ object OmniRuleApi {
     injector.injectPostTransform(_ => EnsureLocalSortRequirements)
     injector.injectPostTransform(_ => EliminateLocalSort)
     injector.injectPostTransform(_ => CollapseProjectExecTransformer)
-    injector.injectPostTransform(_ => CombineJoinProject())
-    injector.injectPostTransform(_ => CombineFilterProject())
+    injector.injectPostTransform(_ => CombineProject())
 //    injector.injectPostTransform(c => FlushableHashAggregateRule.apply(c.session))
     injector.injectPostTransform(c => InsertTransitions.create(c.outputsColumnar, OmniBatch))
     injector.injectPostTransform(_ => RewriteTopNSort())
@@ -118,6 +118,7 @@ object OmniRuleApi {
     // Gluten columnar: Final rules.
     injector.injectFinal(c => RollupOptimization.apply(c.session))
     injector.injectFinal(c => RemoveGlutenTableCacheColumnarToRow(c.session))
+    injector.injectFinal(c => GlutenAutoAdjustStageResourceProfile(c.glutenConf, c.session))
     injector.injectFinal(c => GlutenFallbackReporter(c.glutenConf, c.session))
     injector.injectFinal(_ => RemoveFallbackTagRule())
   }

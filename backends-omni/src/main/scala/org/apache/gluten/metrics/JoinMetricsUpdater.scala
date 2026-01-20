@@ -55,7 +55,7 @@ class HashJoinMetricsUpdater(override val metrics: Map[String, SQLMetric])
     val hashProbeMetrics = joinMetrics.get(idx);
     lookUpJoinInputRows += hashProbeMetrics.getLookupInputRows
     lookUpJoinOutputRows += hashProbeMetrics.getLookupOutputRows
-    lookUpJoinNumInputVecBatches += hashProbeMetrics.getLookupNumOutputVecBatches
+    lookUpJoinNumInputVecBatches += hashProbeMetrics.getLookupNumInputVecBatches
     lookUpJoinNumOutputVecBatches += hashProbeMetrics.getLookupNumOutputVecBatches
     lookUpJoinAddInputTime += hashProbeMetrics.getLookupAddInputTime
     lookUpJoinGetOutputTime += hashProbeMetrics.getLookupGetOutputTime

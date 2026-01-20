@@ -3,6 +3,8 @@ package org.apache.gluten.execution
 import com.google.protobuf.{Any, StringValue}
 import io.substrait.proto.JoinRel
 import org.apache.gluten.backendsapi.BackendsApiManager
+import org.apache.gluten.backendsapi.omni.OmniValidatorApi
+import org.apache.gluten.extension.ValidationResult
 import org.apache.gluten.substrait.{JoinParams, SubstraitContext}
 import org.apache.spark.sql.catalyst.expressions.{Attribute, Expression, NamedExpression}
 import org.apache.spark.sql.catalyst.optimizer.{BuildLeft, BuildRight, BuildSide}
@@ -51,6 +53,22 @@ case class OmniShuffledHashJoinExecTransformer(
   private lazy val isBuildLeft: Int = buildSide match {
     case BuildLeft => 1
     case BuildRight => 0
+  }
+
+  override protected def doValidateInternal(): ValidationResult = {
+    val validator = BackendsApiManager.getValidatorApiInstance.asInstanceOf[OmniValidatorApi]
+
+    validator.doSchemaValidateForShuffle(left.schema) match {
+      case Some(reason) =>
+        ValidationResult.failed(s"Found schema check failure for left schema ${left.schema}: $reason")
+      case None =>
+        validator.doSchemaValidateForShuffle(right.schema) match {
+          case Some(reason) =>
+            ValidationResult.failed(s"Found schema check failure for right schema ${right.schema}: $reason")
+          case None =>
+            ValidationResult.succeeded
+        }
+    }
   }
 
   override protected def doTransform(context: SubstraitContext): TransformContext = {

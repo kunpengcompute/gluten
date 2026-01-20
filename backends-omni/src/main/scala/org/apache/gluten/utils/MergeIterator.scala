@@ -19,13 +19,13 @@ package org.apache.gluten.utils
 
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
-import nova.hetu.omniruntime.`type`.DataType
-import nova.hetu.omniruntime.vector.{ByteVec, BooleanVec, Decimal128Vec, DoubleVec, IntVec, LongVec, ShortVec, VarcharVec, Vec, VecBatch}
+import nova.hetu.omniruntime.`type`._
+import nova.hetu.omniruntime.vector.{ByteVec, BooleanVec, Decimal128Vec, DoubleVec, FloatVec, IntVec, LongVec, ShortVec, VarcharVec, ArrayVec, Vec, VecBatch}
 import org.apache.spark.sql.execution.metric.SQLMetric
-import org.apache.spark.sql.types.{NullType, ByteType, BooleanType, DateType, DecimalType, DoubleType, IntegerType, LongType, ShortType, StringType, StructType, TimestampType}
+import org.apache.spark.sql.types.{NullType, ByteType, BooleanType, DateType, DecimalType, DoubleType, FloatType, IntegerType, LongType, ShortType, StringType, StructType, TimestampType, ArrayType, Metadata}
 import org.apache.spark.sql.vectorized.ColumnarBatch
 import org.apache.gluten.config.GlutenConfig
-import org.apache.gluten.expression.OmniExpressionAdaptor.sparkTypeToOmniType
+import org.apache.gluten.expression.OmniExpressionAdaptor.{sparkTypeToOmniType, sparkTypeToOmniTypeWithComplex}
 import org.apache.gluten.utils.OmniAdaptorUtil.transColBatchToOmniVecs
 import org.apache.gluten.vectorized.OmniColumnVector
 
@@ -41,31 +41,35 @@ class MergeIterator(iter: Iterator[ColumnarBatch], localSchema: StructType,
   private var totalRows = 0
   private var currentBatchSizeInBytes = 0
 
-  private def createOmniVectors(schema: StructType, columnSize: Int): Array[Vec] = {
+  private def createOmniVectors(schema: StructType, rowSize: Int): Array[Vec] = {
     val vecs = new Array[Vec](schema.fields.length)
     try {
       schema.fields.zipWithIndex.foreach { case (field, index) =>
         field.dataType match {
           case LongType | TimestampType =>
-            vecs(index) = new LongVec(columnSize)
+            vecs(index) = new LongVec(rowSize)
           case DateType | IntegerType =>
-            vecs(index) = new IntVec(columnSize)
+            vecs(index) = new IntVec(rowSize)
           case ShortType =>
-            vecs(index) = new ShortVec(columnSize)
+            vecs(index) = new ShortVec(rowSize)
           case DoubleType =>
-            vecs(index) = new DoubleVec(columnSize)
+            vecs(index) = new DoubleVec(rowSize)
+          case FloatType =>
+            vecs(index) = new FloatVec(rowSize)
           case BooleanType | NullType =>
-            vecs(index) = new BooleanVec(columnSize)
+            vecs(index) = new BooleanVec(rowSize)
           case ByteType =>
-            vecs(index) = new ByteVec(columnSize)
+            vecs(index) = new ByteVec(rowSize)
           case StringType =>
             val vecType: DataType = sparkTypeToOmniType(field.dataType, field.metadata)
-            vecs(index) = new VarcharVec(columnSize)
+            vecs(index) = new VarcharVec(rowSize)
+          case ArrayType(elementType, _) =>
+            vecs(index) = new ArrayVec(new ArrayDataType(sparkTypeToOmniTypeWithComplex(elementType, Metadata.empty)), 0)
           case dt: DecimalType =>
             if (DecimalType.is64BitDecimalType(dt)) {
-              vecs(index) = new LongVec(columnSize)
+              vecs(index) = new LongVec(rowSize)
             } else {
-              vecs(index) = new Decimal128Vec(columnSize)
+              vecs(index) = new Decimal128Vec(rowSize)
             }
           case _ =>
             throw new UnsupportedOperationException("Fail to create omni vector, unsupported fields")

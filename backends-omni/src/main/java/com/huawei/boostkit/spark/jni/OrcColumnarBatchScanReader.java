@@ -24,15 +24,23 @@ import com.huawei.boostkit.spark.timestamp.JulianGregorianRebase;
 import com.huawei.boostkit.spark.timestamp.TimestampUtil;
 
 import nova.hetu.omniruntime.type.DataType;
+import nova.hetu.omniruntime.type.ArrayDataType;
+import nova.hetu.omniruntime.type.MapDataType;
+import nova.hetu.omniruntime.type.StructDataType;
 import nova.hetu.omniruntime.vector.BooleanVec;
 import nova.hetu.omniruntime.vector.Decimal128Vec;
 import nova.hetu.omniruntime.vector.DoubleVec;
 import nova.hetu.omniruntime.vector.IntVec;
 import nova.hetu.omniruntime.vector.LongVec;
+import nova.hetu.omniruntime.vector.ArrayVec;
+import nova.hetu.omniruntime.vector.MapVec;
 import nova.hetu.omniruntime.vector.ShortVec;
+import nova.hetu.omniruntime.vector.StructVec;
 import nova.hetu.omniruntime.vector.VarcharVec;
+import nova.hetu.omniruntime.vector.FloatVec;
 import nova.hetu.omniruntime.vector.Vec;
 
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.orc.impl.writer.TimestampTreeWriter;
 import org.apache.spark.sql.catalyst.util.CharVarcharUtils;
 import org.apache.spark.sql.catalyst.util.RebaseDateTime;
@@ -71,6 +79,7 @@ import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.TimeZone;
 import java.util.regex.Matcher;
@@ -110,10 +119,18 @@ public class OrcColumnarBatchScanReader {
     // spark required schema
     private StructType requiredSchema;
 
+    private Boolean isCaseSensitive;
+
     public OrcColumnarBatchJniReader jniReader;
-    public OrcColumnarBatchScanReader() {
+
+    public OrcColumnarBatchScanReader(Boolean isCaseSensitive) {
         jniReader = new OrcColumnarBatchJniReader();
         allFieldsNames = new ArrayList<String>();
+        this.isCaseSensitive = isCaseSensitive;
+    }
+
+    public OrcColumnarBatchScanReader() {
+        this(false);
     }
 
     public String padZeroForDecimals(String [] decimalStrArray, int decimalScale) {
@@ -218,8 +235,10 @@ public class OrcColumnarBatchScanReader {
                 }
             }
         }
-
-        job.put("includedColumns", includedColumns.toArray());
+        // empty orc file skip put includedColumns
+        if (!allFieldsNames.isEmpty()){
+            job.put("includedColumns", includedColumns.toArray());
+        }
         addJulianGregorianInfo(job);
         recordReader = jniReader.initializeRecordReader(reader, job);
         return recordReader;
@@ -266,7 +285,7 @@ public class OrcColumnarBatchScanReader {
         }
     }
 
-    public int next(Vec[] vecList, int[] typeIds) {
+    public int next(Vec[] vecList, int[] typeIds, List<DataType> dataTypes) {
         long[] vecNativeIds = new long[typeIds.length];
         long rtn = jniReader.recordReaderNext(recordReader, batchReader, typeIds, vecNativeIds);
         if (rtn == 0) {
@@ -277,7 +296,7 @@ public class OrcColumnarBatchScanReader {
             if (colsToGet[i] != 0) {
                 continue;
             }
-            switch (DataType.DataTypeId.values()[typeIds[nativeGetId]]) {
+            switch (DataType.DataTypeId.fromValue(typeIds[nativeGetId])) {
                 case OMNI_BOOLEAN: {
                     vecList[i] = new BooleanVec(vecNativeIds[nativeGetId]);
                     break;
@@ -311,12 +330,28 @@ public class OrcColumnarBatchScanReader {
                     vecList[i] = new DoubleVec(vecNativeIds[nativeGetId]);
                     break;
                 }
+                case OMNI_FLOAT: {
+                    vecList[i] = new FloatVec(vecNativeIds[nativeGetId]);
+                    break;
+                }
                 case OMNI_VARCHAR: {
                     vecList[i] = new VarcharVec(vecNativeIds[nativeGetId]);
                     break;
                 }
                 case OMNI_DECIMAL128: {
                     vecList[i] = new Decimal128Vec(vecNativeIds[nativeGetId]);
+                    break;
+                }
+                case OMNI_ARRAY: {
+                    vecList[i] = new ArrayVec(vecNativeIds[nativeGetId], (ArrayDataType) dataTypes.get(i), (int) rtn);
+                    break;
+                }
+                case OMNI_MAP: {
+                    vecList[i] = new MapVec(vecNativeIds[nativeGetId], (MapDataType) dataTypes.get(i), (int) rtn);
+                    break;
+                }
+                case OMNI_ROW: {
+                    vecList[i] = new StructVec(vecNativeIds[nativeGetId], (StructDataType) dataTypes.get(i), (int) rtn);
                     break;
                 }
                 default: {
@@ -354,11 +389,27 @@ public class OrcColumnarBatchScanReader {
         DATE,
         DECIMAL,
         TIMESTAMP,
-        BOOLEAN
+        BOOLEAN,
+        STRUCT
     }
 
-    private OrcPredicateDataType getOrcPredicateDataType(String attribute) {
-        StructField field = requiredSchema.apply(attribute);
+    private Pair<String, OrcPredicateDataType> getOrcPredicateDataType(String attribute, StructType inputSchema) {
+        if (attribute.contains(".")) {
+            String[] args = attribute.split("\\.");
+            StructField field = inputSchema.apply(args[0]);
+            if (field.dataType() instanceof StructType) {
+                StructType struct = (StructType) field.dataType();
+                return getOrcPredicateDataType(args[1], struct);
+            } else {
+                throw new UnsupportedOperationException("Unsupported orc push down filter data type: " +
+                        field.dataType().getClass().getSimpleName());
+            }
+        }
+        StructField field = inputSchema.apply(attribute);
+        return Pair.of(attribute, getType(field));
+    }
+
+    private OrcPredicateDataType getType(StructField field) {
         org.apache.spark.sql.types.DataType dataType = field.dataType();
         if (dataType instanceof ShortType || dataType instanceof IntegerType ||
             dataType instanceof LongType) {
@@ -376,6 +427,8 @@ public class OrcColumnarBatchScanReader {
             return OrcPredicateDataType.DECIMAL;
         } else if (dataType instanceof BooleanType) {
             return OrcPredicateDataType.BOOLEAN;
+        } else if (dataType instanceof StructType) {
+            return OrcPredicateDataType.STRUCT;
         } else {
             throw new UnsupportedOperationException("Unsupported orc push down filter data type: " +
                 dataType.getClass().getSimpleName());
@@ -384,7 +437,7 @@ public class OrcColumnarBatchScanReader {
 
     // Check the type whether is char type, which orc native does not support push down
     private boolean isCharType(Metadata metadata) {
-        if (metadata != null) {
+        if (metadata != null && !metadata.toString().equals("{}")) {
             String rawTypeString = CharVarcharUtils.getRawTypeString(metadata).getOrElse(null);
             if (rawTypeString != null) {
                 Matcher matcher = CHAR_TYPE.matcher(rawTypeString);
@@ -449,17 +502,17 @@ public class OrcColumnarBatchScanReader {
         } else if (filterPredicate instanceof IsNotNull) {
             addToJsonExpressionTree("leaf-" + leafIndex, jsonExpressionTree, true);
             addLiteralToJsonLeaves("leaf-" + leafIndex, OrcLeafOperator.IS_NULL, jsonLeaves,
-                ((IsNotNull) filterPredicate).attribute(), "", null);
+                ((IsNotNull) filterPredicate).attribute(), null, null);
             leafIndex++;
         } else if (filterPredicate instanceof IsNull) {
             addToJsonExpressionTree("leaf-" + leafIndex, jsonExpressionTree, false);
             addLiteralToJsonLeaves("leaf-" + leafIndex, OrcLeafOperator.IS_NULL, jsonLeaves,
-                ((IsNull) filterPredicate).attribute(), "", null);
+                ((IsNull) filterPredicate).attribute(), null, null);
             leafIndex++;
         } else if (filterPredicate instanceof In) {
             addToJsonExpressionTree("leaf-" + leafIndex, jsonExpressionTree, false);
             addLiteralToJsonLeaves("leaf-" + leafIndex, OrcLeafOperator.IN, jsonLeaves,
-                ((In) filterPredicate).attribute(), "", Arrays.stream(((In) filterPredicate).values()).toArray());
+                ((In) filterPredicate).attribute(), null, Arrays.stream(((In) filterPredicate).values()).toArray());
             leafIndex++;
         } else {
             throw new UnsupportedOperationException("Unsupported orc push down filter operation: " +
@@ -471,10 +524,17 @@ public class OrcColumnarBatchScanReader {
                                         String name, Object literal, Object[] literals) {
         JSONObject leafJson = new JSONObject();
         leafJson.put("op", leafOperator.ordinal());
-        leafJson.put("name", name);
-        leafJson.put("type", getOrcPredicateDataType(name).ordinal());
+        Pair<String, OrcPredicateDataType> args = getOrcPredicateDataType(name, requiredSchema);
+        leafJson.put("name", args.getKey());
 
-        leafJson.put("literal", getLiteralValue(literal));
+        if (literal != null) {
+            leafJson.put("type", args.getValue().ordinal());
+            leafJson.put("literal", getLiteralValue(literal));
+        } else {
+            // FIXME use default type
+            leafJson.put("type", 2);
+            leafJson.put("literal", "");
+        }
 
         ArrayList<String> literalList = new ArrayList<>();
         if (literals != null) {
@@ -555,7 +615,8 @@ public class OrcColumnarBatchScanReader {
     private String buildVecPredicateCondition(Filter filterPredicate) {
         Map<String, Integer> nameToIndex = IntStream.range(0, includedColumns.size())
                 .boxed()
-                .collect(Collectors.toMap(includedColumns::get, i -> i));
+                .collect(Collectors.toMap(i -> isCaseSensitive ? includedColumns.get(i) :
+                        includedColumns.get(i).toLowerCase(), i -> i));
         return buildPredicateCondition(filterPredicate, nameToIndex).reduce().toString();
     }
 
@@ -597,23 +658,30 @@ public class OrcColumnarBatchScanReader {
 
     private PredicateCondition buildLeafPredicateCondition(PredicateOperatorType op, String attribute, Object literal,
                                                            Map<String, Integer> nameToIndex) {
+        if (!isCaseSensitive) {
+            attribute = attribute.toLowerCase();
+        }
         Integer index = nameToIndex.get(attribute);
         if (index == null) {
-            // fix the bug in the previously generated orc file
-            // where some fields are missing after adding new columns to the table.
-            return new LeafPredicateCondition(
-                    PredicateOperatorType.TRUE, 0, DataType.DataTypeId.OMNI_BOOLEAN, "true");
+            // fix the bug in the previously generated orc file where some fields are missing after adding new columns to the table.
+            if (op == PredicateOperatorType.IS_NULL) {
+                // is null (miss columns is null) -> true
+                return new LeafPredicateCondition(PredicateOperatorType.TRUE, 0, DataType.DataTypeId.OMNI_BOOLEAN, "true");
+            } else {
+                // other op generate with is not null (miss columns is not null) -> false
+                return new LeafPredicateCondition(PredicateOperatorType.FALSE, 0, DataType.DataTypeId.OMNI_BOOLEAN, "false");
+            }
         }
         if (op == PredicateOperatorType.IS_NOT_NULL || op == PredicateOperatorType.IS_NULL) {
             return new LeafPredicateCondition(op, index, DataType.DataTypeId.OMNI_INT, "-1");
         }
-        DataType.DataTypeId dataType = getSupportPredicateDataType(attribute);
+        DataType.DataTypeId dataType = getSupportPredicateDataType(index);
         String value = getLiteralValue(literal);
         return new LeafPredicateCondition(op, index, dataType, value);
     }
 
-    private DataType.DataTypeId getSupportPredicateDataType(String attribute) {
-        StructField field = requiredSchema.apply(attribute);
+    private DataType.DataTypeId getSupportPredicateDataType(Integer index) {
+        StructField field = requiredSchema.apply(index);
         org.apache.spark.sql.types.DataType dataType = field.dataType();
         if (dataType instanceof ShortType) {
             return DataType.DataTypeId.OMNI_SHORT;

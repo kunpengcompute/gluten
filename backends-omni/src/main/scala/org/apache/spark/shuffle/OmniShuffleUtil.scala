@@ -29,7 +29,7 @@ import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.{Attribute, AttributeReference, BoundReference, Expression, SortOrder, UnsafeProjection}
 import org.apache.spark.sql.catalyst.expressions.codegen.LazilyGeneratedOrdering
 import org.apache.spark.sql.catalyst.plans.physical.{HashPartitioning, Partitioning, RangePartitioning, RoundRobinPartitioning, SinglePartition}
-import org.apache.spark.sql.execution.SQLExecution
+import org.apache.spark.sql.execution.{SQLExecution, SparkPlan}
 import org.apache.spark.sql.execution.exchange.ShuffleExchangeExec.createShuffleWriteProcessor
 import org.apache.spark.sql.execution.metric.{SQLMetric, SQLMetrics}
 import org.apache.spark.sql.internal.SQLConf
@@ -389,6 +389,31 @@ object OmniShuffleUtil {
 //      logDebug(s"hash omni expression: $omniExpr")
         omniExpr
       }
+  }
+
+  def doShuffleValidate(
+      outputAttributes: Seq[Attribute],
+      newPartitioning: Partitioning,
+      child: SparkPlan): Option[String] = {
+    try {
+      newPartitioning match {
+        case h@HashPartitioning(expressions, numPartitions) =>
+          val isAllExpressionSimple = isAllSimpleExpression(expressions)
+          if (isAllExpressionSimple) {
+            getExprIdMap(outputAttributes)
+            getExprIdFromExpressions(expressions)
+          } else {
+            // omni project
+            val genHashExpression = genHashExpr()
+            genHashExpression(expressions, numPartitions, defaultMm3HashSeed, outputAttributes)
+          }
+        case _ =>
+      }
+    } catch {
+      case e: Exception =>
+        return Some(s"OmniShuffle not supported for: ${e.getMessage}")
+    }
+    None
   }
 }
 

@@ -16,6 +16,7 @@
  */
 package org.apache.spark.sql.execution
 
+import org.apache.gluten.config.GlutenConfig.ENABLE_FILES_SPLIT_SINGLE_FILE
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.{FileSourceOptions, InternalRow, TableIdentifier}
 import org.apache.spark.sql.catalyst.catalog.BucketSpec
@@ -27,7 +28,6 @@ import org.apache.spark.sql.execution.datasources.parquet.{ParquetFileFormat => 
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.vectorized.ColumnarBatch
 import org.apache.spark.util.collection.BitSet
-
 import org.apache.hadoop.fs.Path
 
 import java.util.concurrent.TimeUnit._
@@ -265,10 +265,11 @@ abstract class AbstractFileSourceScanExec(
           partition.files.flatMap {
             file =>
               if (shouldProcess(file.getPath)) {
-                val isSplitable = relation.fileFormat.isSplitable(
-                  relation.sparkSession,
-                  relation.options,
-                  file.getPath)
+                val isSplitable = if (relation.sparkSession.sessionState.conf.getConf(ENABLE_FILES_SPLIT_SINGLE_FILE)) {
+                  relation.fileFormat.isSplitable(relation.sparkSession, relation.options, file.getPath)
+                } else {
+                  false
+                }
                 PartitionedFileUtil.splitFiles(
                   sparkSession = relation.sparkSession,
                   file = file,

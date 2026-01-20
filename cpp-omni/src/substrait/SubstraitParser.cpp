@@ -20,6 +20,8 @@
 #include "google/protobuf/wrappers.pb.h"
 
 namespace omniruntime {
+const std::string HIVE_SIMPLE_TAG = "HiveSimpleUDF#";
+
 std::vector<type::DataTypePtr> SubstraitParser::ParseNamedStruct(
     const ::substrait::NamedStruct &namedStruct, bool asLowerCase)
 {
@@ -35,11 +37,26 @@ std::vector<type::DataTypePtr> SubstraitParser::ParseNamedStruct(
     }
     return typeList;
 }
+
+type::DataTypePtr SubstraitParser::ParseKStructType(const ::substrait::Type &substraitType, bool asLowerCase, bool isNest)
+{
+    const auto& substraitStruct = substraitType.struct_();
+    const auto& structTypes = substraitStruct.types();
+    std::vector<type::DataTypePtr> types;
+    for (int i = 0; i < structTypes.size(); i++) {
+        types.emplace_back(ParseType(structTypes[i], asLowerCase));
+    }
+    return std::make_shared<type::RowType>(types);
+}
+
 type::DataTypePtr SubstraitParser::ParseType(const ::substrait::Type &substraitType, bool asLowerCase, bool isNest)
 {
     switch (substraitType.kind_case()) {
+        case ::substrait::Type::KindCase::kNothing:
         case ::substrait::Type::KindCase::kBool:
             return type::BooleanType();
+        case ::substrait::Type::KindCase::kI8:
+            return type::ByteType();
         case ::substrait::Type::KindCase::kI16:
             return type::ShortType();
         case ::substrait::Type::KindCase::kI32:
@@ -48,12 +65,16 @@ type::DataTypePtr SubstraitParser::ParseType(const ::substrait::Type &substraitT
             return type::LongType();
         case ::substrait::Type::KindCase::kFp64:
             return type::DoubleType();
+        case ::substrait::Type::KindCase::kFp32:
+            return type::FloatType();
         case ::substrait::Type::KindCase::kString:
             return type::VarcharType();
         case ::substrait::Type::KindCase::kDate:
             return type::Date32Type();
         case ::substrait::Type::KindCase::kTimestamp:
             return type::TimestampType();
+        case ::substrait::Type::KindCase::kBinary:
+            return type::VarBinaryType();
         case ::substrait::Type::KindCase::kDecimal: {
             auto precision = substraitType.decimal().precision();
             auto scale = substraitType.decimal().scale();
@@ -63,16 +84,17 @@ type::DataTypePtr SubstraitParser::ParseType(const ::substrait::Type &substraitT
             return type::Decimal128Type(precision, scale);
         }
         case ::substrait::Type::KindCase::kStruct: {
-            if (isNest) {
-                OMNI_THROW("Substrait Error:", "Parsing for Substrait type not supported: {}", substraitType.DebugString());
-            }
-            const auto &substraitStruct = substraitType.struct_();
-            const auto &structTypes = substraitStruct.types();
-            std::vector<type::DataTypePtr> types;
-            for (const auto &structType : structTypes) {
-                types.emplace_back(ParseType(structType, asLowerCase, true));
-            }
-            return std::make_shared<type::RowType>(types);
+            return ParseKStructType(substraitType, asLowerCase, isNest);
+        }
+        case ::substrait::Type::KindCase::kList: {
+            const auto& fieldType = substraitType.list().type();
+            return std::make_shared<type::ArrayType>(ParseType(fieldType, asLowerCase));
+        }
+        case ::substrait::Type::KindCase::kMap: {
+            const auto& sMap = substraitType.map();
+            const auto& keyType = sMap.key();
+            const auto& valueType = sMap.value();
+            return std::make_shared<type::MapType>(ParseType(keyType, asLowerCase), ParseType(valueType, asLowerCase));
         }
         default:
             OMNI_THROW("Substrait Error:", "Parsing for Substrait type not supported: {}", substraitType.DebugString());
@@ -84,6 +106,9 @@ std::pair<SubstraitToOmniExprType, std::string> SubstraitParser::FindOmniFunctio
 {
     std::string funcSpec = FindFunctionSpec(functionMap, id);
     std::string funcName = GetNameBeforeDelimiter(funcSpec);
+    if (funcName.find(HIVE_SIMPLE_TAG) == 0) {
+        return {HIVE_UDF_FUNCTION_OMNI_EXPR_TYPE, funcName.erase(0, HIVE_SIMPLE_TAG.length())};
+    }
     return MapToOmniFunction(funcName);
 }
 
@@ -348,11 +373,18 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"substring", {FUNCTION_OMNI_EXPR_TYPE, "substr"}},
     {"cast", {FUNCTION_OMNI_EXPR_TYPE, "CAST"}},
     {"abs", {FUNCTION_OMNI_EXPR_TYPE, "abs"}},
+    {"get_array_item", {FUNCTION_OMNI_EXPR_TYPE, "get_array_item"}},
     {"round", {FUNCTION_OMNI_EXPR_TYPE, "round"}},
     {"rlike", {FUNCTION_OMNI_EXPR_TYPE, "RLike"}},
     {"like", {FUNCTION_OMNI_EXPR_TYPE, "LIKE"}},
+    {"size", {FUNCTION_OMNI_EXPR_TYPE, "size"}},
+    {"element_at", {FUNCTION_OMNI_EXPR_TYPE, "element_at"}},
+    {"split", {FUNCTION_OMNI_EXPR_TYPE, "split"}},
+{"hive_string_string", {FUNCTION_OMNI_EXPR_TYPE, "hive_string_string"}},
+    {"exp", {FUNCTION_OMNI_EXPR_TYPE, "exp"}},
     {"md5", {FUNCTION_OMNI_EXPR_TYPE, "Md5"}},
     {"concat", {FUNCTION_OMNI_EXPR_TYPE, "concat"}},
+    {"concat_ws", {FUNCTION_OMNI_EXPR_TYPE, "concat_ws"}},
     {"xxhash64", {FUNCTION_OMNI_EXPR_TYPE, "xxhash64"}},
     {"starts_with", {FUNCTION_OMNI_EXPR_TYPE, "StartsWith"}},
     {"ends_with", {FUNCTION_OMNI_EXPR_TYPE, "EndsWith"}},
@@ -370,12 +402,30 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"min", {FUNCTION_OMNI_EXPR_TYPE, "min"}},
     {"max", {FUNCTION_OMNI_EXPR_TYPE, "max"}},
     {"avg", {FUNCTION_OMNI_EXPR_TYPE, "avg"}},
+    {"power", {FUNCTION_OMNI_EXPR_TYPE, "power"}},
     {"first", {FUNCTION_OMNI_EXPR_TYPE, "first"}},
+    {"substring_index", {FUNCTION_OMNI_EXPR_TYPE, "substring_index"}},
+    {"regexp_extract", {FUNCTION_OMNI_EXPR_TYPE, "regexp_extract"}},
+    {"regexp_replace", {FUNCTION_OMNI_EXPR_TYPE, "regexp_replace"}},
     {"make_decimal", {FUNCTION_OMNI_EXPR_TYPE, "MakeDecimal"}},
     {"unix_timestamp", {FUNCTION_OMNI_EXPR_TYPE, "unix_timestamp"}},
     {"from_unixtime", {FUNCTION_OMNI_EXPR_TYPE, "from_unixtime"}},
     {"first_ignore_null", {FUNCTION_OMNI_EXPR_TYPE, "first_ignore_null"}},
     {"stddev_samp", {FUNCTION_OMNI_EXPR_TYPE, "stddev_samp"}},
     {"date_add", {FUNCTION_OMNI_EXPR_TYPE, "date_add"}},
-    {"trunc", {FUNCTION_OMNI_EXPR_TYPE, "trunc_date"}}};
+    {"datediff", {FUNCTION_OMNI_EXPR_TYPE, "date_diff"}},
+    {"date_format", {FUNCTION_OMNI_EXPR_TYPE, "DateFormat"}},
+    {"trunc", {FUNCTION_OMNI_EXPR_TYPE, "trunc_date"}},
+    {"trim", {FUNCTION_OMNI_EXPR_TYPE, "Trim"}},
+    {"ltrim", {FUNCTION_OMNI_EXPR_TYPE, "LTrim"}},
+    {"rtrim", {FUNCTION_OMNI_EXPR_TYPE, "RTrim"}},
+    {"floor", {FUNCTION_OMNI_EXPR_TYPE, "floor"}},
+    {"empty2null", {FUNCTION_OMNI_EXPR_TYPE, "empty2null"}},
+    {"get_json_object", {FUNCTION_OMNI_EXPR_TYPE, "GetJsonObject"}},
+    {"might_contain", {FUNCTION_OMNI_EXPR_TYPE, "might_contain"}},
+    {"bitwise_and", {FUNCTION_OMNI_EXPR_TYPE, "bitwise_and"}},
+    {"bitwise_or", {FUNCTION_OMNI_EXPR_TYPE, "bitwise_or"}},
+    {"shiftleft", {FUNCTION_OMNI_EXPR_TYPE, "shiftleft"}},
+    {"shiftright", {FUNCTION_OMNI_EXPR_TYPE, "shiftright"}},
+    {"negative", {FUNCTION_OMNI_EXPR_TYPE, "negative"}}};
 } // namespace omniruntime

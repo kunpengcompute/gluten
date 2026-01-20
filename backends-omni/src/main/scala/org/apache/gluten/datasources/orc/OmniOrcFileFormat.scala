@@ -40,6 +40,12 @@ import java.net.URI
 
 class OmniOrcFileFormat extends FileFormat with DataSourceRegister with Serializable {
 
+  var canVecPredicateFilter = false
+
+  def setVecPredicateFilter(): Unit = {
+    canVecPredicateFilter = true
+  }
+
   override def shortName(): String = "orc-native"
 
   override def toString: String = "ORC-NATIVE"
@@ -73,12 +79,12 @@ class OmniOrcFileFormat extends FileFormat with DataSourceRegister with Serializ
       sparkSession.sparkContext.broadcast(new SerializableConfiguration(hadoopConf))
     val isCaseSensitive = sparkSession.sessionState.conf.caseSensitiveAnalysis
     val orcFilterPushDown = sparkSession.sessionState.conf.orcFilterPushDown
-    val vecPredicateFilter = sparkSession.sessionState.conf.getConf(COLUMNAR_OMNI_ENABLE_VEC_PREDICATE_FILTER)
+    val vecPredicateFilter = sparkSession.sessionState.conf.getConf(COLUMNAR_OMNI_ENABLE_VEC_PREDICATE_FILTER) && canVecPredicateFilter
 
     (file: PartitionedFile) => {
       val conf = broadcastedConf.value.value
 
-      val filePath = new Path(new URI(file.filePath))
+      val filePath = new Path(new URI(file.filePath.toString))
 
       // ORC predicate pushdown
       val pushed = filters.reduceOption(And(_, _))
@@ -90,7 +96,7 @@ class OmniOrcFileFormat extends FileFormat with DataSourceRegister with Serializ
 
       // read data from vectorized reader
       val batchReader = new OmniOrcColumnarBatchReader(capacity, requiredSchema, pushed.orNull, vecPredicateFilter,
-        orcFilterPushDown)
+        orcFilterPushDown, isCaseSensitive)
       // SPARK-23399 Register a task completion listener first to call `close()` in all cases.
       // There is a possibility that `initialize` and `initBatch` hit some errors (like OOM)
       // after opening a file.

@@ -55,6 +55,9 @@ private:
     /// Used to validate whether the computing of this Window is supported.
     bool Validate(const ::substrait::WindowRel &windowRel);
 
+    /// Used to validate whether the computing of this WindowGroupLimit is supported.
+    bool Validate(const ::substrait::WindowGroupLimitRel &windowGroupLimitRel);
+
     /// Used to validate whether the computing of this Set is supported.
     bool Validate(const ::substrait::SetRel &setRel);
 
@@ -81,6 +84,9 @@ private:
 
     /// Used to validate whether the computing of this RelRoot is supported.
     bool Validate(const ::substrait::RelRoot &relRoot);
+
+    /// Used to validate whether the computing of this Generate is supported.
+    bool Validate(const ::substrait::GenerateRel& generateRel);
 
     /// A memory pool used for function validation.
     mem::MemoryPool *pool;
