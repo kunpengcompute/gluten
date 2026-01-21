@@ -380,6 +380,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"size", {FUNCTION_OMNI_EXPR_TYPE, "size"}},
     {"element_at", {FUNCTION_OMNI_EXPR_TYPE, "element_at"}},
     {"split", {FUNCTION_OMNI_EXPR_TYPE, "split"}},
+    {"slice", {FUNCTION_OMNI_EXPR_TYPE, "slice"}},
 {"hive_string_string", {FUNCTION_OMNI_EXPR_TYPE, "hive_string_string"}},
     {"exp", {FUNCTION_OMNI_EXPR_TYPE, "exp"}},
     {"md5", {FUNCTION_OMNI_EXPR_TYPE, "Md5"}},
