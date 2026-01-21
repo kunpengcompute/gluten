@@ -469,19 +469,7 @@ TypedExprPtr SubstraitOmniExprConverter::ToExtractExpr(const std::vector<TypedEx
 }
 
 std::unordered_map<std::string, std::string> SubstraitOmniExprConverter::extractDatetimeFunctionMap_ = {
-    // {"MILLISECOND", "millisecond"},
-    // {"SECOND", "second"},
-    // {"MINUTE", "minute"},
     {"HOUR", "hour"},
-    // {"DAY", "day"},
-    // {"DAY_OF_WEEK", "dayofweek"},
-    // {"WEEK_DAY", "weekday"},
-    // {"DAY_OF_YEAR", "dayofyear"},
-    // {"MONTH", "month"},
-    // {"QUARTER", "quarter"},
-    // {"YEAR", "year"},
-    // {"WEEK_OF_YEAR", "week_of_year"},
-    // {"YEAR_OF_WEEK", "year_of_week"}
 };
 
 CoalesceExpr* SubstraitOmniExprConverter::BuildNestedCoalesceExpr(const std::vector<Expr*>& args) {
