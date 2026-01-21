@@ -28,7 +28,7 @@ import org.apache.spark.shuffle.{GenShuffleWriterParameters, GlutenShuffleWriter
 import org.apache.spark.sql.catalyst.catalog.BucketSpec
 import org.apache.spark.sql.catalyst.catalog.CatalogTypes.TablePartitionSpec
 import org.apache.spark.sql.catalyst.expressions.{Attribute, AttributeReference, BloomFilterMightContain, Cast, DateDiff, ElementAt, Expression, FromUnixTime, Generator, GetMapValue, GetStructField, HashExpression, Like, Md5, NamedExpression, PosExplode, PythonUDF, SortOrder, UnixTimestamp}
-import org.apache.spark.sql.catalyst.expressions.aggregate.AggregateExpression
+import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, BloomFilterAggregate}
 import org.apache.spark.sql.catalyst.optimizer.BuildSide
 import org.apache.spark.sql.catalyst.plans.JoinType
 import org.apache.spark.sql.catalyst.plans.physical.{AllTuples, BroadcastMode, Partitioning}
@@ -56,6 +56,7 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
   override def extraExpressionMappings: Seq[Sig] = {
     Seq(
       Sig[BloomFilterMightContain](ExpressionNames.MIGHT_CONTAIN),
+      Sig[BloomFilterAggregate](ExpressionNames.BLOOM_FILTER_AGG),
     )
   }
 

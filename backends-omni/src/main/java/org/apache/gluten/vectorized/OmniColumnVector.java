@@ -136,6 +136,8 @@ public class OmniColumnVector extends WritableColumnVector {
             case "StringTypeNode":
             case "FixedCharTypeNode":
                 return DataTypes.StringType;
+            case "BinaryTypeNode":
+                return DataTypes.BinaryType;
             case "DecimalTypeNode":
                 DecimalTypeNode decimalTypeNode = (DecimalTypeNode) typeNode;
                 return new DecimalType(decimalTypeNode.precision, decimalTypeNode.scale);
@@ -713,6 +715,12 @@ public class OmniColumnVector extends WritableColumnVector {
 
     public ByteBuffer getByteBuffer(int rowId, int count) {
         throw new UnsupportedOperationException("getByteBuffer is not supported");
+    }
+
+    @Override
+    public byte[] getBinary(int rowId) {
+        // binary and varchar are implemented the same way
+        return charsTypeDataVec.get(rowId);
     }
 
     //

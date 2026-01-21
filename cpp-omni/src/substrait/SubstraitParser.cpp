@@ -344,6 +344,8 @@ op::FunctionType SubstraitParser::ParseFunctionType(
         return op::OMNI_WINDOW_TYPE_RANK;
     } else if (funcName == "row_number") {
         return op::OMNI_WINDOW_TYPE_ROW_NUMBER;
+    } else if (funcName == "bloom_filter_agg") {
+        return op::OMNI_AGGREGATION_TYPE_BLOOM_FILTER;
     } else {
         OMNI_THROW("Substrait Error:", "Unsupported aggregate or window function: {}", funcName);
     }
@@ -404,6 +406,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"avg", {FUNCTION_OMNI_EXPR_TYPE, "avg"}},
     {"power", {FUNCTION_OMNI_EXPR_TYPE, "power"}},
     {"first", {FUNCTION_OMNI_EXPR_TYPE, "first"}},
+    {"bloom_filter_agg", {FUNCTION_OMNI_EXPR_TYPE, "bloom_filter_agg"}},
     {"substring_index", {FUNCTION_OMNI_EXPR_TYPE, "substring_index"}},
     {"regexp_extract", {FUNCTION_OMNI_EXPR_TYPE, "regexp_extract"}},
     {"regexp_replace", {FUNCTION_OMNI_EXPR_TYPE, "regexp_replace"}},

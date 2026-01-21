@@ -119,24 +119,6 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
     }
 }
 
-void writeIntBigEndian(int32_t val, int8_t *buf) {
-    *buf = (val>>24) & 0xff;
-    *(buf+1) = (val>>16) & 0xff;
-    *(buf+2) = (val>>8) & 0xff;
-    *(buf+3) = val & 0xff;
-}
-
-void writeLongBigEndian(int64_t val, int8_t *buf) {
-    *buf = (val>>56) & 0xff;
-    *(buf+1) = (val>>48) & 0xff;
-    *(buf+2) = (val>>40) & 0xff;
-    *(buf+3) = (val>>32) & 0xff;
-    *(buf+4) = (val>>24) & 0xff;
-    *(buf+5) = (val>>16) & 0xff;
-    *(buf+6) = (val>>8) & 0xff;
-    *(buf+7) = val & 0xff;
-}
-
 TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
     const ::substrait::Expression::ScalarFunction &substraitFunc, const DataTypesPtr &inputType)
 {
@@ -196,49 +178,36 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
             }
             return func;
         }
+
         if (funcName == "might_contain") {
-           LiteralExpr *childExpr = dynamic_cast<LiteralExpr *>(args[0]);
-           std::string *sp = childExpr->stringVal;
-           if (*sp == "NULL") {
-               LiteralExpr *nChildExpr = new LiteralExpr(0L, LongType(), true);
-               BloomFilterFuncExpr *bfFuncExpr = new BloomFilterFuncExpr(funcName, {nChildExpr, args[1]}, outputType, nullptr, nullptr);
-               delete childExpr;
-               return bfFuncExpr;
-           }
-           int64_t len = sp->length();
-           const char *dataPtr = sp->c_str();
-           std::unique_ptr<mem::AlignedBuffer<int8_t>>buf=std::make_unique<mem::AlignedBuffer<int8_t>>(len);
-           int8_t *bfBuf = buf->GetBuffer();
+            LiteralExpr *childExpr = dynamic_cast<LiteralExpr *>(args[0]);
+            std::string *sp = childExpr->stringVal;
+            if (*sp == "NULL") {
+                LiteralExpr *nChildExpr = new LiteralExpr(0L, LongType(), true);
+                BloomFilterFuncExpr *bfFuncExpr = new BloomFilterFuncExpr(funcName, {nChildExpr, args[1]}, outputType, nullptr);
+                delete childExpr;
+                return bfFuncExpr;
+            }
+            size_t len = sp->length();
 
-           //decode
-           int32_t version = *reinterpret_cast<const int32_t *>(dataPtr);
-           dataPtr += 4;
-           int32_t numHashFunctions = *reinterpret_cast<const int32_t *>(dataPtr);
-           dataPtr += 4;
-           int32_t numWords = *reinterpret_cast<const int32_t *>(dataPtr);
-           dataPtr += 4;
-           writeIntBigEndian(version, bfBuf);
-           version = *reinterpret_cast<int32_t *>(bfBuf);
-           bfBuf += 4;
-           writeIntBigEndian(numHashFunctions, bfBuf);
-           bfBuf += 4;
-           writeIntBigEndian(numWords, bfBuf);
-           numWords = *reinterpret_cast<int32_t *>(bfBuf);
-           bfBuf += 4;
+            // here got the data is like: "version(int32)numHashFunctions(int32)numWords(int32)bit[](long[])".
+            // the data is big-endian string from network, we will convert it to little-endian in op::BloomFilter.
+            if (len <= 0) {
+                OMNI_THROW("OMNI_ERROR:", "bloom string is invaild when process might_contain func in SubstraitToOmniExpr.");
+            }
+            char *dataPtr = new char[len];
 
-           int64_t word;
-           for(int32_t i = 0; i < numWords; i++) {
-               word = *reinterpret_cast<const int64_t *>(dataPtr);
-               writeLongBigEndian(word, bfBuf);
-               dataPtr += 8;
-               bfBuf += 8;
-           }
-           std::unique_ptr<op::BloomFilter>bloomFilter = std::make_unique<op::BloomFilter>(buf->GetBuffer(), version);
-           LiteralExpr *nChildExpr = new LiteralExpr(reinterpret_cast<intptr_t>(bloomFilter.get()), LongType());
-           BloomFilterFuncExpr *bfFuncExpr = new BloomFilterFuncExpr(funcName, {nChildExpr, args[1]}, outputType, std::move(buf), std::move(bloomFilter));
-           delete childExpr;
-           return bfFuncExpr;
-         }
+            // dataPtr will be release in op::BloomFilter
+            std::memcpy(dataPtr, sp->c_str(), len);
+
+            // deserialize string to a BloomFilter tool for using its MightContain() method.
+            // args `true` means that dataPtr need to be released by BloomFilter.
+            std::unique_ptr<op::BloomFilter>bloomFilter = std::make_unique<op::BloomFilter>(dataPtr, true);
+            LiteralExpr *nChildExpr = new LiteralExpr(reinterpret_cast<intptr_t>(bloomFilter.get()), LongType());
+            BloomFilterFuncExpr *bfFuncExpr = new BloomFilterFuncExpr(funcName, {nChildExpr, args[1]}, outputType, std::move(bloomFilter));
+            delete childExpr;
+            return bfFuncExpr;
+        }
         // check the signature matches
         std::vector<DataTypeId> argTypes(args.size());
         std::transform(args.begin(), args.end(), argTypes.begin(),
