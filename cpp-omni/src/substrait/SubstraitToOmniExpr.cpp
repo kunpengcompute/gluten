@@ -119,6 +119,40 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
     }
 }
 
+TypedExprPtr SubstraitOmniExprConverter::toLambdaExpr(
+        const ::substrait::Expression::ScalarFunction &substraitFunc, const DataTypesPtr &inputType)
+{
+    std::vector<DataTypePtr> paramTypes;
+    paramTypes.reserve(substraitFunc.arguments().size() - 1);
+
+    std::vector<ParamRefExpr*> paramRefList;
+    paramRefList.reserve(substraitFunc.arguments().size() - 1);
+
+    for (int32_t i = 1; i < substraitFunc.arguments().size(); ++i) {
+        const auto& arg = substraitFunc.arguments(i).value();
+        OMNI_CHECK(arg.has_scalar_function(), "lambda param must be scalar function");
+
+        const auto& omniFunction = SubstraitParser::FindOmniFunction(functionMap_, arg.scalar_function().function_reference());
+        const auto& funcName = omniFunction.second;
+
+        Expr* expr = ToOmniExpr(arg, inputType);
+        ParamRefExpr* paramRef = dynamic_cast<ParamRefExpr*>(expr);
+        OMNI_CHECK(paramRef != nullptr, "namedlambdavariable must parse to ParamRefExpr");
+
+        paramRefList.emplace_back(paramRef);
+        paramTypes.emplace_back(paramRef->dataType);
+    }
+
+    for (int32_t realIdx = 0; realIdx < paramRefList.size(); ++realIdx) {
+        paramRefList[realIdx]->paramIdx_ = realIdx;
+    }
+
+    Expr* lambdaBody = ToOmniExpr(substraitFunc.arguments(0).value(), inputType);
+    OMNI_CHECK(lambdaBody != nullptr, "lambda body expr is null");
+
+    return new LambdaExpr(lambdaBody, std::move(paramTypes), lambdaBody->dataType);
+}
+
 TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
     const ::substrait::Expression::ScalarFunction &substraitFunc, const DataTypesPtr &inputType)
 {
@@ -134,6 +168,13 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
     }
     if (funcName == "get_array_item") {
         //
+    }
+    if (funcName == "lambdafunction") {
+        return toLambdaExpr(substraitFunc, inputType);
+    }
+    if (funcName == "namedlambdavariable") {
+        Expr* paramRefExpr = new ParamRefExpr(0, std::move(outputType));
+        return paramRefExpr;
     }
     if (type == IS_NOT_NULL_OMNI_EXPR_TYPE) {
         OMNI_CHECK(args[0] != nullptr, "args[0] is null");
