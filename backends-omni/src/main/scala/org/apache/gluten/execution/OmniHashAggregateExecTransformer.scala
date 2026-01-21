@@ -121,7 +121,7 @@ case class OmniHashAggregateExecTransformer(
                                              mode: AggregateMode): Boolean = {
     val alwaysSupported = Set(
      classOf[Sum], classOf[Min], classOf[Max], classOf[Count],
-     classOf[Average], classOf[First], classOf[StddevSamp]
+     classOf[Average], classOf[First], classOf[StddevSamp], classOf[BloomFilterAggregate],
     )
 
     var completeOnlySupported = Set(
@@ -212,7 +212,7 @@ case class OmniHashAggregateExecTransformer(
   protected override def checkType(dataType: DataType): Boolean = {
     dataType match {
       case ShortType | IntegerType | LongType | TimestampType | DoubleType | BooleanType |
-           StringType | DateType | NullType | FloatType => true
+           StringType | DateType | NullType | FloatType | BinaryType => true
       case _: DecimalType => true
       case _: ArrayType => true
       case _ => false

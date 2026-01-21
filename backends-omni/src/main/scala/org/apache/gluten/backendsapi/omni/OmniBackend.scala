@@ -69,7 +69,7 @@ object DataTypeUtils {
   def isPrimitiveType(dataType: DataType): Boolean = {
     dataType match {
       case BooleanType | ByteType | ShortType | IntegerType | LongType | DoubleType | FloatType | StringType |
-           _: DecimalType | DateType | TimestampType | NullType | FloatType =>
+           _: DecimalType | DateType | TimestampType | NullType | BinaryType =>
         true
       case _ => false
     }
@@ -282,6 +282,8 @@ class OmniValidatorApi extends ValidatorApi {
         None
       case array: ArrayType =>
         doSchemaValidate(array.elementType)
+      case _: BinaryType =>
+        None
       case _ =>
         Some(s"Schema / data type not supported: $schema")
     }

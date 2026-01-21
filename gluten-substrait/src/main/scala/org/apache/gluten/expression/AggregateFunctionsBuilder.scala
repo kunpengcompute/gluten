@@ -53,6 +53,8 @@ object AggregateFunctionsBuilder {
         ExpressionNames.FIRST_IGNORE_NULL
       case Last(_, ignoreNulls) if ignoreNulls =>
         ExpressionNames.LAST_IGNORE_NULL
+      case BloomFilterAggregate(_, _, _, _, _) =>
+        ExpressionNames.BLOOM_FILTER_AGG
       case _ =>
         val nameOpt = ExpressionMappings.expressionsMap.get(aggregateFunc.getClass)
         if (nameOpt.isEmpty) {
