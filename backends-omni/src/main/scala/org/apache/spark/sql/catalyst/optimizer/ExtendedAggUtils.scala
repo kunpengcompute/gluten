@@ -18,7 +18,7 @@
 package org.apache.spark.sql.catalyst.optimizer
 
 import org.apache.spark.sql.catalyst.expressions.{Alias, Attribute, Expression, NamedExpression}
-import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, Complete, Partial}
+import org.apache.spark.sql.catalyst.expressions.aggregate._
 import org.apache.spark.sql.catalyst.plans.logical.{Aggregate, LeafNode, Statistics}
 import org.apache.spark.sql.execution.SparkPlan
 import org.apache.spark.sql.execution.aggregate.{HashAggregateExec, ObjectHashAggregateExec, SortAggregateExec}
@@ -34,11 +34,25 @@ object ExtendedAggUtils {
     }
   }
 
-  private def supportsHashAggregate(aggregateBufferAttributes: Seq[Attribute]): Boolean = {
+  def supportsFilterPropagation(a: Aggregate): Boolean = {
+    a.groupingExpressions.isEmpty &&
+      a.aggregateExpressions.forall(
+        !_.exists {
+          case ae: AggregateExpression =>
+            ae.aggregateFunction match {
+              case _: Count | _: Sum | _: Average | _: Max | _: Min => false
+              case _ => true
+            }
+          case _ => false
+        }
+      )
+  }
+
+  def supportsHashAggregate(aggregateBufferAttributes: Seq[Attribute]): Boolean = {
     Aggregate.supportsHashAggregate(aggregateBufferAttributes)
   }
 
-  private def supportsObjectHashAggregate(aggregateExpressions: Seq[AggregateExpression]): Boolean = {
+  def supportsObjectHashAggregate(aggregateExpressions: Seq[AggregateExpression]): Boolean = {
     Aggregate.supportsObjectHashAggregate(aggregateExpressions)
   }
 
