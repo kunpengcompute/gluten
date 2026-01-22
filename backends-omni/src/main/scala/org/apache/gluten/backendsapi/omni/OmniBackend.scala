@@ -68,7 +68,7 @@ object OmniBackend {
 object DataTypeUtils {
   def isPrimitiveType(dataType: DataType): Boolean = {
     dataType match {
-      case BooleanType | ByteType | ShortType | IntegerType | LongType | DoubleType | FloatType | StringType |
+      case BooleanType | ShortType | IntegerType | LongType | DoubleType | FloatType | StringType |
            _: DecimalType | DateType | TimestampType | NullType | FloatType =>
         true
       case _ => false
