@@ -174,6 +174,7 @@ object ExpressionConverter extends SQLConfHelper with Logging {
               Seq(replaceWithExpressionTransformer0(arg0, attributeSeq, expressionsMap),
                 replaceWithExpressionTransformer0(arg1, attributeSeq, expressionsMap)),
               i)
+          case _ =>
         }
       case _ =>
     }
