@@ -1260,12 +1260,22 @@ int32_t Splitter::ProtoWritePartitionByRow(int32_t partition_id, std::unique_ptr
         for (uint32_t i = 0; i < proto_col_types_.size(); ++i) {
             spark::VecType *vt = protoRowBatch->add_vectypes();
             vt->set_typeid_(proto_col_types_[i]);
-            if(vt->typeid_() == spark::VecType::VEC_TYPE_DECIMAL128 || vt->typeid_() == spark::VecType::VEC_TYPE_DECIMAL64){
+            if (vt->typeid_() == spark::VecType::VEC_TYPE_DECIMAL128 || vt->typeid_() == spark::VecType::VEC_TYPE_DECIMAL64){
                 vt->set_precision(input_col_types.inputDataPrecisions[i]);
                 vt->set_scale(input_col_types.inputDataScales[i]);
                 LogsDebug("precision[indexSchema %d]: %d , scale[indexSchema %d]: %d ",
                           i, input_col_types.inputDataPrecisions[i],
                           i, input_col_types.inputDataScales[i]);
+            }
+            if (vt->typeid_() == spark::VecType::VEC_TYPE_ARRAY) {
+                spark::VecType* childType = vt->add_children();
+                spark::VecType::VecTypeId childProtoType = CastOmniTypeIdToProtoVecType(input_col_types.elementTypes->inputVecTypeIds[i]);
+                childType->set_typeid_(childProtoType);
+
+                if (childProtoType == spark::VecType::VEC_TYPE_DECIMAL128 || vt->typeid_() == spark::VecType::VEC_TYPE_DECIMAL64) {
+                    childType->set_precision(input_col_types.elementTypes->inputDataPrecisions[i]);
+                    childType->set_scale(input_col_types.elementTypes->inputDataScales[i]);
+                }
             }
         }
 
@@ -1423,6 +1433,16 @@ int Splitter::protoSpillPartitionByRow(int32_t partition_id, std::unique_ptr<Buf
                 LogsDebug("precision[indexSchema %d]: %d , scale[indexSchema %d]: %d ",
                           i, input_col_types.inputDataPrecisions[i],
                           i, input_col_types.inputDataScales[i]);
+            }
+            if (vt->typeid_() == spark::VecType::VEC_TYPE_ARRAY) {
+                spark::VecType* childType = vt->add_children();
+                spark::VecType::VecTypeId childProtoType = CastOmniTypeIdToProtoVecType(input_col_types.elementTypes->inputVecTypeIds[i]);
+                childType->set_typeid_(childProtoType);
+
+                if (childProtoType == spark::VecType::VEC_TYPE_DECIMAL128 || vt->typeid_() == spark::VecType::VEC_TYPE_DECIMAL64) {
+                    childType->set_precision(input_col_types.elementTypes->inputDataPrecisions[i]);
+                    childType->set_scale(input_col_types.elementTypes->inputDataScales[i]);
+                }
             }
         }
 
