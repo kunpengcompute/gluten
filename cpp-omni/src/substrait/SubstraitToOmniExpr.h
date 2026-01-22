@@ -75,6 +75,8 @@ public:
 
     CoalesceExpr* BuildNestedCoalesceExpr(const std::vector<Expr*>& args);
 
+    TypedExprPtr toLambdaExpr(const ::substrait::Expression::ScalarFunction &substraitFunc, const DataTypesPtr &inputType);
+
 private:
     /// Memory pool.
     // memory::MemoryPool* pool_;
