@@ -404,10 +404,12 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
   }
 
   override def genDateDiffTransformer(
-      substraitExprName: String,
-      endDate: ExpressionTransformer,
-      startDate: ExpressionTransformer,
-      original: DateDiff): ExpressionTransformer = null
+       substraitExprName: String,
+       endDate: ExpressionTransformer,
+       startDate: ExpressionTransformer,
+       original: DateDiff): ExpressionTransformer = {
+    GenericExpressionTransformer(substraitExprName, Seq(endDate, startDate), original)
+  }
 
   override def genGenerateTransformer(
       generator: Generator,

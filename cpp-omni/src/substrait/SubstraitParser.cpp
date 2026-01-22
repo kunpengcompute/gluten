@@ -353,6 +353,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"like", {FUNCTION_OMNI_EXPR_TYPE, "LIKE"}},
     {"md5", {FUNCTION_OMNI_EXPR_TYPE, "Md5"}},
     {"concat", {FUNCTION_OMNI_EXPR_TYPE, "concat"}},
+    {"concat_ws", {FUNCTION_OMNI_EXPR_TYPE, "concat_ws"}},
     {"xxhash64", {FUNCTION_OMNI_EXPR_TYPE, "xxhash64"}},
     {"starts_with", {FUNCTION_OMNI_EXPR_TYPE, "StartsWith"}},
     {"ends_with", {FUNCTION_OMNI_EXPR_TYPE, "EndsWith"}},
@@ -361,6 +362,9 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"modulus", {BINARY_OMNI_EXPR_TYPE, "MODULUS"}},
     {"strpos", {FUNCTION_OMNI_EXPR_TYPE, "instr"}},
     {"greatest", {FUNCTION_OMNI_EXPR_TYPE, "Greatest"}},
+    {"least", {FUNCTION_OMNI_EXPR_TYPE, "Least"}},
+    {"pmod", {FUNCTION_OMNI_EXPR_TYPE, "pmod"}},
+    {"StaticInvokeCharTypeWriteSideCheck", {FUNCTION_OMNI_EXPR_TYPE, "StaticInvokeCharTypeWriteSideCheck"}},
     {"contains", {FUNCTION_OMNI_EXPR_TYPE, "Contains"}},
     {"murmur3hash", {FUNCTION_OMNI_EXPR_TYPE, "mm3hash"}},
     {"rank", {FUNCTION_OMNI_EXPR_TYPE, "rank"}},
@@ -377,5 +381,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"first_ignore_null", {FUNCTION_OMNI_EXPR_TYPE, "first_ignore_null"}},
     {"stddev_samp", {FUNCTION_OMNI_EXPR_TYPE, "stddev_samp"}},
     {"date_add", {FUNCTION_OMNI_EXPR_TYPE, "date_add"}},
+    {"datediff", {FUNCTION_OMNI_EXPR_TYPE, "date_diff"}},
+    {"get_json_object", {FUNCTION_OMNI_EXPR_TYPE, "GetJsonObject"}},
     {"trunc", {FUNCTION_OMNI_EXPR_TYPE, "trunc_date"}}};
 } // namespace omniruntime
