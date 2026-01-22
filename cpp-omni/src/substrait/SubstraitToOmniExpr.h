@@ -62,6 +62,9 @@ public:
     /// Used to convert Substrait Literal into Omni Expression.
     TypedExprPtr ToOmniExpr(const ::substrait::Expression::Literal &substraitLit, const DataTypePtr defaultType = nullptr);
 
+    /// Create expression for extract.
+    static TypedExprPtr ToExtractExpr(const std::vector<TypedExprPtr>& params, const DataTypePtr& outputType);
+
     /// Convert Substrait Expression into Omni Expression.
     TypedExprPtr ToOmniExpr(const ::substrait::Expression &substraitExpr, const DataTypesPtr &inputType, const DataTypePtr defaultType = nullptr);
 
@@ -81,5 +84,9 @@ private:
     /// The map storing the relations between the function id and the function
     /// name.
     std::unordered_map<uint64_t, std::string> functionMap_;
+
+    // The map storing the Substrait extract function input field and velox
+    // function name.
+    static std::unordered_map<std::string, std::string> extractDatetimeFunctionMap_;
 };
 } // namespace omniruntime

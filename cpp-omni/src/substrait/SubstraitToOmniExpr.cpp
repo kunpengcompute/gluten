@@ -175,6 +175,9 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
     if (funcName == "namedlambdavariable") {
         Expr* paramRefExpr = new ParamRefExpr(0, std::move(outputType));
         return paramRefExpr;
+    }    
+    if (funcName == "extract") {
+        return ToExtractExpr(args, std::move(outputType));
     }
     if (type == IS_NOT_NULL_OMNI_EXPR_TYPE) {
         OMNI_CHECK(args[0] != nullptr, "args[0] is null");
@@ -481,6 +484,34 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
                 "Substrait_Error:", "Substrait conversion not supported for Expression '{}'", std::to_string(typeCase));
     }
 }
+
+TypedExprPtr SubstraitOmniExprConverter::ToExtractExpr(const std::vector<TypedExprPtr> &params,
+    const DataTypePtr &outputType)
+{
+    OMNI_CHECK(params.size()==2, "ToExtractExpr error!");
+    auto functionArg = dynamic_cast<LiteralExpr *>(params[0]);
+    if (functionArg) {
+        std::string *from = functionArg->stringVal;
+        if (!from) {
+            OMNI_THROW("Runtime error:", "Value expected in variant.");
+        }
+        // The second parameter is the function parameter.
+        std::vector<TypedExprPtr> exprParams;
+        exprParams.reserve(1);
+        exprParams.emplace_back(params[1]);
+        auto iter = extractDatetimeFunctionMap_.find(*from);
+        if (iter != extractDatetimeFunctionMap_.end()) {
+            return new FuncExpr(iter->second, std::move(exprParams), outputType);
+        } else {
+            OMNI_THROW("Runtime error:", "Extract from {} not supported.", *from);
+        }
+    }
+    OMNI_THROW("Runtime error:", "Constant is expected to be the first parameter in extract.");
+}
+
+std::unordered_map<std::string, std::string> SubstraitOmniExprConverter::extractDatetimeFunctionMap_ = {
+    {"HOUR", "hour"},
+};
 
 CoalesceExpr* SubstraitOmniExprConverter::BuildNestedCoalesceExpr(const std::vector<Expr*>& args) {
     Expr* current = new CoalesceExpr(args[args.size()-2], args[args.size()-1]);
