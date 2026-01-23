@@ -420,6 +420,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"date_format", {FUNCTION_OMNI_EXPR_TYPE, "DateFormat"}},
     {"trunc", {FUNCTION_OMNI_EXPR_TYPE, "trunc_date"}},
     {"extract", {FUNCTION_OMNI_EXPR_TYPE, "extract"}},
+    {"minute", {FUNCTION_OMNI_EXPR_TYPE, "minute"}},
     {"trim", {FUNCTION_OMNI_EXPR_TYPE, "Trim"}},
     {"ltrim", {FUNCTION_OMNI_EXPR_TYPE, "LTrim"}},
     {"rtrim", {FUNCTION_OMNI_EXPR_TYPE, "RTrim"}},
