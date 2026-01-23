@@ -396,6 +396,10 @@ op::FunctionType SubstraitParser::ParseFunctionType(
         return op::OMNI_WINDOW_TYPE_PERCENT_RANK;
     } else if (funcName == "row_number") {
         return op::OMNI_WINDOW_TYPE_ROW_NUMBER;
+    } else if (funcName == "lead") {
+        return op::OMNI_WINDOW_TYPE_LEAD;
+    } else if (funcName == "lag") {
+        return op::OMNI_WINDOW_TYPE_LAG;
     } else if (funcName == "bloom_filter_agg") {
         return op::OMNI_AGGREGATION_TYPE_BLOOM_FILTER;
     } else if (funcName == "bit_and") {
@@ -492,6 +496,8 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"rank", {FUNCTION_OMNI_EXPR_TYPE, "rank"}},
     {"percent_rank", {FUNCTION_OMNI_EXPR_TYPE, "percent_rank"}},
     {"row_number", {FUNCTION_OMNI_EXPR_TYPE, "row_number"}},
+    {"lead", {FUNCTION_OMNI_EXPR_TYPE, "lead"}},
+    {"lag", {FUNCTION_OMNI_EXPR_TYPE, "lag"}},
     {"count", {FUNCTION_OMNI_EXPR_TYPE, "count"}},
     {"sum", {FUNCTION_OMNI_EXPR_TYPE, "sum"}},
     {"min", {FUNCTION_OMNI_EXPR_TYPE, "min"}},
