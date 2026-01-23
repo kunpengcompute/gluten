@@ -511,6 +511,7 @@ TypedExprPtr SubstraitOmniExprConverter::ToExtractExpr(const std::vector<TypedEx
 
 std::unordered_map<std::string, std::string> SubstraitOmniExprConverter::extractDatetimeFunctionMap_ = {
     {"HOUR", "hour"},
+    {"MINUTE", "minute"},
 };
 
 CoalesceExpr* SubstraitOmniExprConverter::BuildNestedCoalesceExpr(const std::vector<Expr*>& args) {
