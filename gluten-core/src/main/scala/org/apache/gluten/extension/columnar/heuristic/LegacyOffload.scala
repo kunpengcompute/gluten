@@ -25,7 +25,12 @@ import org.apache.spark.sql.execution.SparkPlan
 class LegacyOffload(rules: Seq[OffloadSingleNode]) extends Rule[SparkPlan] with LogLevelUtil {
   def apply(plan: SparkPlan): SparkPlan = {
     val out =
-      rules.foldLeft(plan)((p, rule) => p.transformUp { case p => rule.offload(p) })
+      rules.foldLeft(plan)((p, rule) =>
+        p.transformUp {
+          case p =>
+            val offloaded = rule.offload(p)
+            if (offloaded == null) p else offloaded
+        })
     out
   }
 }
