@@ -748,7 +748,11 @@ public class OmniColumnVector extends WritableColumnVector {
     @Override
     public byte[] getBinary(int rowId) {
         // binary and varchar are implemented the same way
-        return charsTypeDataVec.get(rowId);
+        if (dictionaryData != null) {
+            return dictionaryData.getBytes(rowId);
+        } else {
+            return charsTypeDataVec.get(rowId);
+        }
     }
 
     //
