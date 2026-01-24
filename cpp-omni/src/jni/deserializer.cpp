@@ -20,6 +20,7 @@
 #include "jni_common.h"
 #include "deserializer.hh"
 #include "common/common.h"
+#include "type/data_type.h"
 
 using namespace omniruntime::vec;
 
@@ -99,7 +100,7 @@ Java_com_huawei_boostkit_spark_serialize_ShuffleDataSerializerUtils_columnarShuf
             auto elementDataTypeId = static_cast<omniruntime::type::DataTypeId>(childProtoType.typeid_());
             std::shared_ptr<DataType> elementDataType = std::make_shared<DataType>(elementDataTypeId);
 
-            auto arrayType = std::make_shared<ArrayType>(elementDataType);
+            auto arrayType = std::make_shared<type::ArrayType>(elementDataType);
             vecs[i] = VectorHelper::CreateEmptyComplexVector(arrayType.get(), rowCount);
         } else {
             vecs[i] = VectorHelper::CreateVector(OMNI_FLAT, vectorDataTypeId, rowCount);
