@@ -20,7 +20,11 @@ import nova.hetu.omniruntime.utils.OmniRuntimeException;
 import nova.hetu.omniruntime.vector.*;
 
 import org.apache.gluten.expression.OmniExpressionAdaptor;
-import org.apache.gluten.substrait.type.*;
+import org.apache.gluten.substrait.type.DecimalTypeNode;
+import org.apache.gluten.substrait.type.ListNode;
+import org.apache.gluten.substrait.type.MapNode;
+import org.apache.gluten.substrait.type.StructNode;
+import org.apache.gluten.substrait.type.TypeNode;
 import org.apache.spark.sql.execution.vectorized.WritableColumnVector;
 import org.apache.spark.sql.types.BooleanType;
 import org.apache.spark.sql.types.ByteType;
@@ -160,7 +164,7 @@ public class OmniColumnVector extends WritableColumnVector {
                     fieldDataTypes.add(populateVec(fieldTypeNode));
                 }
                 List<StructField> structFields = new ArrayList<>();
-                boolean nullable = structNode.getNullable() != null ? structNode.getNullable() : true;
+                boolean isNullable = structNode.getNullable() != null ? structNode.getNullable() : true;
                 for (int i = 0; i < fieldDataTypes.size(); i++) {
                     String fieldName;
                     if (structNode.getNames() != null && i < structNode.getNames().size()) {
@@ -172,7 +176,7 @@ public class OmniColumnVector extends WritableColumnVector {
                     StructField structField = DataTypes.createStructField(
                         fieldName,
                         fieldDataTypes.get(i),
-                        nullable
+                        isNullable
                     );
                     structFields.add(structField);
                 }
