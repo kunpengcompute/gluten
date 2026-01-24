@@ -44,7 +44,11 @@ object PushDownFilterToOmniScan extends Rule[SparkPlan] with PredicateHelper {
             (fileScan.relation.fileFormat.isInstanceOf[OmniParquetFileFormat] && !excludeScanExecFromCollapsedStage)=>
           val pushDownFilters = getPushedFilter(fileScan.dataFilters)
           val newScan = fileScan.copy(output = filter.output, dataFilters = pushDownFilters)
-          newScan.relation.fileFormat.asInstanceOf[OmniOrcFileFormat].setVecPredicateFilter()
+          newScan.relation.fileFormat match {
+            case orcFormat: OmniOrcFileFormat => orcFormat.setVecPredicateFilter()
+            case parquetFormat: OmniParquetFileFormat => parquetFormat.setVecPredicateFilter()
+            case _ => // Do nothing for other formats
+          }
           if (newScan.doValidate().ok()) {
             val pushDownFilterSet = pushDownFilters.toSet
             val newFilterConditions = splitConjunctivePredicates(filter.cond)
