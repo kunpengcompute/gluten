@@ -435,5 +435,6 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"transform", {FUNCTION_OMNI_EXPR_TYPE, "transform"}},
     {"lambdafunction", {FUNCTION_OMNI_EXPR_TYPE, "lambdafunction"}},
     {"namedlambdavariable", {FUNCTION_OMNI_EXPR_TYPE, "namedlambdavariable"}},
-    {"map_from_arrays", {FUNCTION_OMNI_EXPR_TYPE, "map_from_arrays"}}};
+    {"map_from_arrays", {FUNCTION_OMNI_EXPR_TYPE, "map_from_arrays"}},
+    {"acosh", {FUNCTION_OMNI_EXPR_TYPE, "acosh"}}};
 } // namespace omniruntime
