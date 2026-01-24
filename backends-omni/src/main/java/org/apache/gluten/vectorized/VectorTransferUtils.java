@@ -196,6 +196,7 @@ public class VectorTransferUtils {
                     longVec.put(values, 0, 0, size);
                 }
                 return longVec;
+            case "BinaryTypeNode":
             case "VarCharTypeNode":
             case "StringTypeNode":
             case "FixedCharTypeNode":

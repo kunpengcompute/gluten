@@ -20,10 +20,7 @@ import nova.hetu.omniruntime.utils.OmniRuntimeException;
 import nova.hetu.omniruntime.vector.*;
 
 import org.apache.gluten.expression.OmniExpressionAdaptor;
-import org.apache.gluten.substrait.type.DecimalTypeNode;
-import org.apache.gluten.substrait.type.ListNode;
-import org.apache.gluten.substrait.type.MapNode;
-import org.apache.gluten.substrait.type.TypeNode;
+import org.apache.gluten.substrait.type.*;
 import org.apache.spark.sql.execution.vectorized.WritableColumnVector;
 import org.apache.spark.sql.types.BooleanType;
 import org.apache.spark.sql.types.ByteType;
@@ -53,7 +50,9 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 /** OmniColumnVector */
 public class OmniColumnVector extends WritableColumnVector {
@@ -153,6 +152,31 @@ public class OmniColumnVector extends WritableColumnVector {
             case "MapNode":
                 MapNode mapNode = (MapNode) typeNode;
                 return new MapType(populateVec(mapNode.getKeyType()), populateVec(mapNode.getValueType()), true);
+            case "StructNode":
+                StructNode structNode = (StructNode) typeNode;
+                List<TypeNode> fieldTypeNodes = structNode.getFieldTypes();
+                List<DataType> fieldDataTypes = new ArrayList<>();
+                for (TypeNode fieldTypeNode : fieldTypeNodes) {
+                    fieldDataTypes.add(populateVec(fieldTypeNode));
+                }
+                List<StructField> structFields = new ArrayList<>();
+                boolean nullable = structNode.getNullable() != null ? structNode.getNullable() : true;
+                for (int i = 0; i < fieldDataTypes.size(); i++) {
+                    String fieldName;
+                    if (structNode.getNames() != null && i < structNode.getNames().size()) {
+                        fieldName = structNode.getNames().get(i);
+                    } else {
+                        fieldName = "field_" + i;
+                    }
+
+                    StructField structField = DataTypes.createStructField(
+                        fieldName,
+                        fieldDataTypes.get(i),
+                        nullable
+                    );
+                    structFields.add(structField);
+                }
+                return DataTypes.createStructType(structFields);
             default:
                 throw new RuntimeException("Not supported partition type: " + simpleName);
         }
@@ -1189,7 +1213,7 @@ public class OmniColumnVector extends WritableColumnVector {
             arrayDataVec.addOffsets(offsets);
         } else if (type instanceof StructType) {
             for (int i = 0; i < ((StructType) type).fields().length; i++) {
-                structVec.append(((OmniColumnVector) (getChild(i))).getVec());
+                structVec.addChild(((OmniColumnVector) (getChild(i))).getVec());
             }
         }
     }
