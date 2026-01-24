@@ -703,7 +703,7 @@ public class OmniColumnVector extends WritableColumnVector {
         if (dictionary != null) {
             return (byte) dictionary.decodeToInt(dictionaryIds.getDictId(rowId));
         } else if (dictionaryData != null) {
-            return dictionaryData.getBytes(rowId)[0];
+            return dictionaryData.getByte(rowId);
         } else if (type instanceof ByteType) {
             return byteDataVec.get(rowId);
         } else {
