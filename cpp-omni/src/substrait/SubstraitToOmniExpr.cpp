@@ -119,22 +119,38 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
     }
 }
 
-void writeIntBigEndian(int32_t val, int8_t *buf) {
-    *buf = (val>>24) & 0xff;
-    *(buf+1) = (val>>16) & 0xff;
-    *(buf+2) = (val>>8) & 0xff;
-    *(buf+3) = val & 0xff;
-}
+TypedExprPtr SubstraitOmniExprConverter::toLambdaExpr(
+        const ::substrait::Expression::ScalarFunction &substraitFunc, const DataTypesPtr &inputType)
+{
+    std::vector<DataTypePtr> paramTypes;
+    paramTypes.reserve(substraitFunc.arguments().size() - 1);
 
-void writeLongBigEndian(int64_t val, int8_t *buf) {
-    *buf = (val>>56) & 0xff;
-    *(buf+1) = (val>>48) & 0xff;
-    *(buf+2) = (val>>40) & 0xff;
-    *(buf+3) = (val>>32) & 0xff;
-    *(buf+4) = (val>>24) & 0xff;
-    *(buf+5) = (val>>16) & 0xff;
-    *(buf+6) = (val>>8) & 0xff;
-    *(buf+7) = val & 0xff;
+    std::vector<ParamRefExpr*> paramRefList;
+    paramRefList.reserve(substraitFunc.arguments().size() - 1);
+
+    for (int32_t i = 1; i < substraitFunc.arguments().size(); ++i) {
+        const auto& arg = substraitFunc.arguments(i).value();
+        OMNI_CHECK(arg.has_scalar_function(), "lambda param must be scalar function");
+
+        const auto& omniFunction = SubstraitParser::FindOmniFunction(functionMap_, arg.scalar_function().function_reference());
+        const auto& funcName = omniFunction.second;
+
+        Expr* expr = ToOmniExpr(arg, inputType);
+        ParamRefExpr* paramRef = dynamic_cast<ParamRefExpr*>(expr);
+        OMNI_CHECK(paramRef != nullptr, "namedlambdavariable must parse to ParamRefExpr");
+
+        paramRefList.emplace_back(paramRef);
+        paramTypes.emplace_back(paramRef->dataType);
+    }
+
+    for (int32_t realIdx = 0; realIdx < paramRefList.size(); ++realIdx) {
+        paramRefList[realIdx]->paramIdx_ = realIdx;
+    }
+
+    Expr* lambdaBody = ToOmniExpr(substraitFunc.arguments(0).value(), inputType);
+    OMNI_CHECK(lambdaBody != nullptr, "lambda body expr is null");
+
+    return new LambdaExpr(lambdaBody, std::move(paramTypes), lambdaBody->dataType);
 }
 
 TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
@@ -152,6 +168,16 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
     }
     if (funcName == "get_array_item") {
         //
+    }
+    if (funcName == "lambdafunction") {
+        return toLambdaExpr(substraitFunc, inputType);
+    }
+    if (funcName == "namedlambdavariable") {
+        Expr* paramRefExpr = new ParamRefExpr(0, std::move(outputType));
+        return paramRefExpr;
+    }    
+    if (funcName == "extract") {
+        return ToExtractExpr(args, std::move(outputType));
     }
     if (type == IS_NOT_NULL_OMNI_EXPR_TYPE) {
         OMNI_CHECK(args[0] != nullptr, "args[0] is null");
@@ -196,49 +222,36 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
             }
             return func;
         }
+
         if (funcName == "might_contain") {
-           LiteralExpr *childExpr = dynamic_cast<LiteralExpr *>(args[0]);
-           std::string *sp = childExpr->stringVal;
-           if (*sp == "NULL") {
-               LiteralExpr *nChildExpr = new LiteralExpr(0L, LongType(), true);
-               BloomFilterFuncExpr *bfFuncExpr = new BloomFilterFuncExpr(funcName, {nChildExpr, args[1]}, outputType, nullptr, nullptr);
-               delete childExpr;
-               return bfFuncExpr;
-           }
-           int64_t len = sp->length();
-           const char *dataPtr = sp->c_str();
-           std::unique_ptr<mem::AlignedBuffer<int8_t>>buf=std::make_unique<mem::AlignedBuffer<int8_t>>(len);
-           int8_t *bfBuf = buf->GetBuffer();
+            LiteralExpr *childExpr = dynamic_cast<LiteralExpr *>(args[0]);
+            std::string *sp = childExpr->stringVal;
+            if (*sp == "NULL") {
+                LiteralExpr *nChildExpr = new LiteralExpr(0L, LongType(), true);
+                BloomFilterFuncExpr *bfFuncExpr = new BloomFilterFuncExpr(funcName, {nChildExpr, args[1]}, outputType, nullptr);
+                delete childExpr;
+                return bfFuncExpr;
+            }
+            size_t len = sp->length();
 
-           //decode
-           int32_t version = *reinterpret_cast<const int32_t *>(dataPtr);
-           dataPtr += 4;
-           int32_t numHashFunctions = *reinterpret_cast<const int32_t *>(dataPtr);
-           dataPtr += 4;
-           int32_t numWords = *reinterpret_cast<const int32_t *>(dataPtr);
-           dataPtr += 4;
-           writeIntBigEndian(version, bfBuf);
-           version = *reinterpret_cast<int32_t *>(bfBuf);
-           bfBuf += 4;
-           writeIntBigEndian(numHashFunctions, bfBuf);
-           bfBuf += 4;
-           writeIntBigEndian(numWords, bfBuf);
-           numWords = *reinterpret_cast<int32_t *>(bfBuf);
-           bfBuf += 4;
+            // here got the data is like: "version(int32)numHashFunctions(int32)numWords(int32)bit[](long[])".
+            // the data is big-endian string from network, we will convert it to little-endian in op::BloomFilter.
+            if (len <= 0) {
+                OMNI_THROW("OMNI_ERROR:", "bloom string is invaild when process might_contain func in SubstraitToOmniExpr.");
+            }
+            char *dataPtr = new char[len];
 
-           int64_t word;
-           for(int32_t i = 0; i < numWords; i++) {
-               word = *reinterpret_cast<const int64_t *>(dataPtr);
-               writeLongBigEndian(word, bfBuf);
-               dataPtr += 8;
-               bfBuf += 8;
-           }
-           std::unique_ptr<op::BloomFilter>bloomFilter = std::make_unique<op::BloomFilter>(buf->GetBuffer(), version);
-           LiteralExpr *nChildExpr = new LiteralExpr(reinterpret_cast<intptr_t>(bloomFilter.get()), LongType());
-           BloomFilterFuncExpr *bfFuncExpr = new BloomFilterFuncExpr(funcName, {nChildExpr, args[1]}, outputType, std::move(buf), std::move(bloomFilter));
-           delete childExpr;
-           return bfFuncExpr;
-         }
+            // dataPtr will be release in op::BloomFilter
+            std::memcpy(dataPtr, sp->c_str(), len);
+
+            // deserialize string to a BloomFilter tool for using its MightContain() method.
+            // args `true` means that dataPtr need to be released by BloomFilter.
+            std::unique_ptr<op::BloomFilter>bloomFilter = std::make_unique<op::BloomFilter>(dataPtr, true);
+            LiteralExpr *nChildExpr = new LiteralExpr(reinterpret_cast<intptr_t>(bloomFilter.get()), LongType());
+            BloomFilterFuncExpr *bfFuncExpr = new BloomFilterFuncExpr(funcName, {nChildExpr, args[1]}, outputType, std::move(bloomFilter));
+            delete childExpr;
+            return bfFuncExpr;
+        }
         // check the signature matches
         std::vector<DataTypeId> argTypes(args.size());
         std::transform(args.begin(), args.end(), argTypes.begin(),
@@ -471,6 +484,34 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
                 "Substrait_Error:", "Substrait conversion not supported for Expression '{}'", std::to_string(typeCase));
     }
 }
+
+TypedExprPtr SubstraitOmniExprConverter::ToExtractExpr(const std::vector<TypedExprPtr> &params,
+    const DataTypePtr &outputType)
+{
+    OMNI_CHECK(params.size()==2, "ToExtractExpr error!");
+    auto functionArg = dynamic_cast<LiteralExpr *>(params[0]);
+    if (functionArg) {
+        std::string *from = functionArg->stringVal;
+        if (!from) {
+            OMNI_THROW("Runtime error:", "Value expected in variant.");
+        }
+        // The second parameter is the function parameter.
+        std::vector<TypedExprPtr> exprParams;
+        exprParams.reserve(1);
+        exprParams.emplace_back(params[1]);
+        auto iter = extractDatetimeFunctionMap_.find(*from);
+        if (iter != extractDatetimeFunctionMap_.end()) {
+            return new FuncExpr(iter->second, std::move(exprParams), outputType);
+        } else {
+            OMNI_THROW("Runtime error:", "Extract from {} not supported.", *from);
+        }
+    }
+    OMNI_THROW("Runtime error:", "Constant is expected to be the first parameter in extract.");
+}
+
+std::unordered_map<std::string, std::string> SubstraitOmniExprConverter::extractDatetimeFunctionMap_ = {
+    {"HOUR", "hour"},
+};
 
 CoalesceExpr* SubstraitOmniExprConverter::BuildNestedCoalesceExpr(const std::vector<Expr*>& args) {
     Expr* current = new CoalesceExpr(args[args.size()-2], args[args.size()-1]);

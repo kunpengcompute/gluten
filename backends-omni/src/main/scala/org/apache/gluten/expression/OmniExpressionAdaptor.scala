@@ -1040,6 +1040,7 @@ object OmniExpressionAdaptor extends Logging {
       case First(_, false) =>
         checkFirstParamType(agg)
         OMNI_AGGREGATION_TYPE_FIRST_INCLUDENULL
+      case _: BloomFilterAggregate => OMNI_AGGREGATION_TYPE_BLOOM_FILTER
       case _ => throw new UnsupportedOperationException(s"Unsupported aggregate function: $agg")
     }
   }
@@ -1078,6 +1079,7 @@ object OmniExpressionAdaptor extends Logging {
       case DoubleType => OMNI_DOUBLE_TYPE
       case BooleanType => OMNI_BOOLEAN_TYPE
       case StringType => OMNI_VARCHAR_TYPE
+      case BinaryType => OMNI_BINARY_TYPE
       case DateType => OMNI_DATE_TYPE
       case TimestampType => OMNI_TIMESTAMP_TYPE
       case dt: DecimalType =>
@@ -1191,6 +1193,8 @@ object OmniExpressionAdaptor extends Logging {
         BooleanDataType.BOOLEAN
       case StringType =>
         new VarcharDataType(getStringLength(metadata))
+      case BinaryType =>
+        VarBinaryDataType.VARCHAR
       case DateType =>
         Date32DataType.DATE32
       case dt: DecimalType =>
@@ -1228,6 +1232,8 @@ object OmniExpressionAdaptor extends Logging {
         BooleanDataType.BOOLEAN
       case StringType =>
         new VarcharDataType(getStringLength(metadata))
+      case BinaryType =>
+        VarBinaryDataType.VARCHAR
       case DateType =>
         Date32DataType.DATE32
       case dt: DecimalType =>

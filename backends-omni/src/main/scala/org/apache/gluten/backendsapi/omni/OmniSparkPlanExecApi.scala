@@ -27,8 +27,8 @@ import org.apache.spark.serializer.Serializer
 import org.apache.spark.shuffle.{GenShuffleWriterParameters, GlutenShuffleWriterWrapper, OmniColumnarBatchSerializer, OmniColumnarShuffleWriter, OmniShuffleUtil}
 import org.apache.spark.sql.catalyst.catalog.BucketSpec
 import org.apache.spark.sql.catalyst.catalog.CatalogTypes.TablePartitionSpec
-import org.apache.spark.sql.catalyst.expressions.{Attribute, AttributeReference, BloomFilterMightContain, Cast, DateDiff, ElementAt, Expression, FromUnixTime, Generator, GetMapValue, GetStructField, HashExpression, Like, Md5, NamedExpression, PosExplode, PythonUDF, SortOrder, UnixTimestamp}
-import org.apache.spark.sql.catalyst.expressions.aggregate.AggregateExpression
+import org.apache.spark.sql.catalyst.expressions.{ArrayTransform, Attribute, AttributeReference, BloomFilterMightContain, Cast, DateDiff, ElementAt, Expression, FromUnixTime, Generator, GetMapValue, GetStructField, HashExpression, LambdaFunction, Like, Md5, NamedExpression, PosExplode, PythonUDF, SortOrder, UnixTimestamp}
+import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, BloomFilterAggregate}
 import org.apache.spark.sql.catalyst.optimizer.BuildSide
 import org.apache.spark.sql.catalyst.plans.JoinType
 import org.apache.spark.sql.catalyst.plans.physical.{AllTuples, BroadcastMode, Partitioning}
@@ -56,6 +56,7 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
   override def extraExpressionMappings: Seq[Sig] = {
     Seq(
       Sig[BloomFilterMightContain](ExpressionNames.MIGHT_CONTAIN),
+      Sig[BloomFilterAggregate](ExpressionNames.BLOOM_FILTER_AGG),
     )
   }
 
@@ -318,6 +319,20 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
       right: ExpressionTransformer,
       original: Expression): ExpressionTransformer = {
     GenericExpressionTransformer(substraitExprName, Seq(left, right), original)
+  }
+
+  /** Transform array transform to Substrait. */
+  override def genArrayTransformTransformer(
+      substraitExprName: String,
+      argument: ExpressionTransformer,
+      function: ExpressionTransformer,
+      expr: ArrayTransform): ExpressionTransformer = {
+    expr.function match {
+      case LambdaFunction(_, arguments, _) if arguments.size == 2 =>
+        throw new GlutenNotSupportException(
+          "transform on array with lambda using index argument is not supported yet")
+      case _ => GenericExpressionTransformer(substraitExprName, Seq(argument, function), expr)
+    }
   }
 
   /** Transform posexplode to Substrait. */
