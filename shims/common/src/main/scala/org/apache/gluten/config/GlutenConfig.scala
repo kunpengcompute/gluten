@@ -545,6 +545,8 @@ class GlutenConfig(conf: SQLConf) extends Logging {
 
   def combineJoinedAggregatesEnabled: Boolean = conf.getConf(COMBINE_JOINED_AGGREGATES_ENABLED)
 
+  def combineProjectFilterEnabled: Boolean = conf.getConf(COMBINE_PROJECT_FILTER_ENABLED)
+
   def enableDedupLeftSemiJoin: Boolean = conf.getConf(ENABLE_DEDUP_LEFT_SEMI_JOIN)
 
   def dedupLeftSemiJoinThreshold: Int = conf.getConf(DEDUP_LEFT_SEMI_JOIN_THRESHOLD)
@@ -2533,6 +2535,12 @@ object GlutenConfig {
     .internal()
     .booleanConf
     .createWithDefault(false)
+
+  val COMBINE_PROJECT_FILTER_ENABLED = buildConf("spark.gluten.sql.columnar.backend.omni.combineProjectFilter")
+    .internal()
+    .doc("Enable combining Project and Filter operators into OmniFilterExecTransformer")
+    .booleanConf
+    .createWithDefault(true)
 
   val ENABLE_OMNI_ROW_SHUFFLE =
     buildConf("spark.gluten.sql.columnar.backend.omni.rowShuffle.enabled")
