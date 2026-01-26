@@ -396,6 +396,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"strpos", {FUNCTION_OMNI_EXPR_TYPE, "instr"}},
     {"greatest", {FUNCTION_OMNI_EXPR_TYPE, "Greatest"}},
     {"contains", {FUNCTION_OMNI_EXPR_TYPE, "Contains"}},
+    {"locate", {FUNCTION_OMNI_EXPR_TYPE, "locate"}},
     {"murmur3hash", {FUNCTION_OMNI_EXPR_TYPE, "mm3hash"}},
     {"rank", {FUNCTION_OMNI_EXPR_TYPE, "rank"}},
     {"row_number", {FUNCTION_OMNI_EXPR_TYPE, "row_number"}},
