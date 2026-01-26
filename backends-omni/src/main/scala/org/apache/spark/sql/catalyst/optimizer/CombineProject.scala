@@ -18,6 +18,7 @@
 
 package org.apache.spark.sql.catalyst.optimizer
 
+import org.apache.gluten.config.GlutenConfig
 import org.apache.gluten.execution._
 import org.apache.gluten.expression.OmniExpressionAdaptor.isSimpleProjectForAll
 import org.apache.spark.sql.catalyst.expressions.NamedExpression
@@ -71,20 +72,24 @@ case class CombineProject ()
           case _ => p
         }
       case pf @ ProjectExecTransformer(_, child: FilterExecTransformerBase) =>
-        child match {
-          case child: FilterExecTransformerBase =>
-            if (pf.projectList.forall(e => isSimpleProjectForAll(e))) {
-              val projectList: collection.immutable.Seq[NamedExpression] = pf.projectList.to[collection.immutable.Seq]
-              val filter = OmniFilterExecTransformer(
-                child.cond,
-                child.child,
-                projectList
-              )
-              filter
-            } else {
-              pf
-            }
-          case _ => pf
+        if (!GlutenConfig.get.combineProjectFilterEnabled) {
+          pf
+        } else {
+          child match {
+            case child: FilterExecTransformerBase =>
+              if (pf.projectList.forall(e => isSimpleProjectForAll(e))) {
+                val projectList: collection.immutable.Seq[NamedExpression] = pf.projectList.to[collection.immutable.Seq]
+                val filter = OmniFilterExecTransformer(
+                  child.cond,
+                  child.child,
+                  projectList
+                )
+                filter
+              } else {
+                pf
+              }
+            case _ => pf
+          }
         }
     }
   }
