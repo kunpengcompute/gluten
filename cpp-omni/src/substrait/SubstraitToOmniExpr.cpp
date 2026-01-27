@@ -21,6 +21,7 @@
 #include "codegen/bloom_filter.h"
 #include "type/data_type.h"
 #include "codegen/bloom_filter.h"
+#include "type/tz/TimeZoneMap.h"
 
 constexpr const char *SUBSTRAIT_PARSE_ERROR = "SUBSTRAIT_PARSE_ERROR";
 namespace omniruntime {
@@ -501,6 +502,12 @@ TypedExprPtr SubstraitOmniExprConverter::ToExtractExpr(const std::vector<TypedEx
         exprParams.emplace_back(params[1]);
         auto iter = extractDatetimeFunctionMap_.find(*from);
         if (iter != extractDatetimeFunctionMap_.end()) {
+            try {
+                tz::locateZone("Asia/Shanghai");
+            } catch (const std::runtime_error& e) {
+                // error while loading time zone map
+                OMNI_THROW("SUBSTRAIT_ERROR:", "load time zone error");
+            }
             return new FuncExpr(iter->second, std::move(exprParams), outputType);
         } else {
             OMNI_THROW("Runtime error:", "Extract from {} not supported.", *from);
