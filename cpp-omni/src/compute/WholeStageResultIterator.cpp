@@ -18,10 +18,11 @@ std::string BoolToString(const bool value)
 WholeStageResultIterator::WholeStageResultIterator(MemoryManager *memoryManager,
     const std::shared_ptr<const PlanNode> &planNode, const std::vector<PlanNodeId> &scanNodeIds,
     const std::vector<PlanNodeId> &streamIds, const std::string &spillDir,
-    const std::unordered_map<std::string, std::string> &confMap)
+    const std::unordered_map<std::string, std::string> &confMap,
+    const std::vector<std::shared_ptr<SplitInfo>>& scanSplitInfos)
     : memoryManager_(memoryManager), omniPlan_(planNode),
     omniCfg_(std::make_shared<config::ConfigBase>(std::unordered_map<std::string, std::string>(confMap))),
-    scanNodeIds_(scanNodeIds), streamIds_(streamIds)
+    scanNodeIds_(scanNodeIds), streamIds_(streamIds), scanInfos_(scanSplitInfos)
 {
     // Create task instance.
     config::QueryConfig queryConfig(GetQueryContextConf(spillDir));
@@ -29,6 +30,54 @@ WholeStageResultIterator::WholeStageResultIterator(MemoryManager *memoryManager,
     PlanFragment planFragment{planNode, ExecutionStrategy::K_UNGROUPED, 1, emptySet};
     task_ = std::make_shared<OmniTask>(planFragment, std::move(queryConfig));
     getOrderedNodeIds(omniPlan_, orderedNodeIds_);
+
+    omniruntime::connector::registerConnector(std::make_shared<HiveConnector>(kHiveConnectorId(), omniCfg_));
+    splits_.reserve(scanInfos_.size());
+    if (scanNodeIds_.size() != scanInfos_.size()) {
+        throw std::runtime_error("Invalid scan information.");
+    }
+    for (const auto& scanInfo : scanInfos_) {
+        const auto& paths = scanInfo->paths;
+        const auto& starts = scanInfo->starts;
+        const auto& lengths = scanInfo->lengths;
+        const auto& properties = scanInfo->properties;
+        const auto& format = scanInfo->format;
+        const auto& partitionColumns = scanInfo->partitionColumns;
+        const auto& metadataColumns = scanInfo->metadataColumns;
+        std::vector<std::shared_ptr<ConnectorSplit>> connectorSplits;
+        connectorSplits.reserve(paths.size());
+        for (int idx = 0; idx < paths.size(); idx++) {
+            auto partitionColumn = partitionColumns[idx];
+            auto metadataColumn = metadataColumns[idx];
+            std::unordered_map<std::string, std::optional<std::string>> partitionKeys;
+            ConstructPartitionColumns(partitionKeys, partitionColumn);
+            std::shared_ptr<ConnectorSplit> split;
+            split = std::make_shared<HiveConnectorSplit>(
+                kHiveConnectorId(),
+                paths[idx],
+                format,
+                starts[idx],
+                lengths[idx],
+                partitionKeys,
+                std::unordered_map<std::string, std::string>(),
+                nullptr,
+                std::unordered_map<std::string, std::string>(),
+                std::unordered_map<std::string, std::string>(),
+                0,
+                true,
+                std::unordered_map<std::string, std::string>(),
+                properties[idx]);
+            connectorSplits.emplace_back(split);
+        }
+        std::vector<Split> scanSplits;
+        scanSplits.reserve(connectorSplits.size());
+        for (const auto& connectorSplit : connectorSplits) {
+            auto splitCopy = connectorSplit;
+            int32_t groupId = -1;
+            scanSplits.emplace_back(Split(std::move(splitCopy), groupId));
+        }
+        splits_.emplace_back(scanSplits);
+    }
 }
 
 void WholeStageResultIterator::getOrderedNodeIds(const std::shared_ptr<const PlanNode>& planNode,
@@ -42,8 +91,39 @@ void WholeStageResultIterator::getOrderedNodeIds(const std::shared_ptr<const Pla
     nodeIds.emplace_back(planNode->Id());
 }
 
+void WholeStageResultIterator::ConstructPartitionColumns(
+    std::unordered_map<std::string, std::optional<std::string>>& partitionKeys,
+    const std::unordered_map<std::string, std::string>& map)
+{
+    for (const auto& partitionColumn : map) {
+        auto key = partitionColumn.first;
+        const auto value = partitionColumn.second;
+        if (value == kHiveDefaultPartition) {
+            partitionKeys[key] = std::nullopt;
+        } else {
+            partitionKeys[key] = value;
+        }
+    }
+}
+
+void WholeStageResultIterator::TryAddSplitsToTask()
+{
+    if (noMoreSplits_) {
+        return;
+    }
+    for (int idx = 0; idx < scanNodeIds_.size(); idx++) {
+        for (auto& split : splits_[idx]) {
+            task_->addSplit(scanNodeIds_[idx], std::move(split));
+        }
+        task_->noMoreSplits(scanNodeIds_[idx]);
+    }
+    noMoreSplits_ = true;
+}
+
+
 VectorBatch *WholeStageResultIterator::Next()
 {
+    TryAddSplitsToTask();
     VectorBatch *vectorBatch = nullptr;
     while (true) {
         auto future = OmniFuture::makeEmpty();
@@ -121,6 +201,8 @@ std::unordered_map<std::string, std::string> WholeStageResultIterator::GetQueryC
             omniCfg_->Get<double>(KAdaptivePartialAggregationRatio, 0.8));
         configs[config::QueryConfig::KPreferVectorizationExpression] = BoolToString(
             omniCfg_->Get<bool>(KPreferVectorizationExpression, false));
+        configs[config::QueryConfig::KMaxBatchSize] = std::to_string(
+            omniCfg_->Get<uint64_t>(kSparkBatchSize, 4096));
         if (omniCfg_->Get<bool>(kSparkShuffleSpillCompress, true)) {
             configs[config::QueryConfig::kSpillCompressionKind] = omniCfg_->Get<std::string>(kSpillCompressionKind,
                 omniCfg_->Get<std::string>(kCompressionKind, "lz4"));

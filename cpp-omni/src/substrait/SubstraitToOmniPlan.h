@@ -27,7 +27,55 @@
 #include "plannode/planNode.h"
 #include "operator/window/window_frame.h"
 
+#include "connectors/Connector.h"
+#include "connectors/hive/TableHandle.h"
+#include "type/data_type.h"
+#include "type/data_types.h"
+#include "codegen/Options.h"
+#include "connectors/hive/FileProperties.h"
+#include "type/Subfield.h"
+
+using HiveColumnHandle = omniruntime::connector::hive::HiveColumnHandle;
+using ColumnHandle = omniruntime::connector::ColumnHandle;
+using ColumnParseParameters = omniruntime::connector::hive::HiveColumnHandle::ColumnParseParameters;
+using TableScanNode = omniruntime::TableScanNode;
+using DataTypes = omniruntime::type::DataTypes;
+using FileFormat = omniruntime::codegen::FileFormat;
+using FileProperties = omniruntime::FileProperties;
+
 namespace omniruntime {
+
+struct SplitInfo {
+    /// Whether the split comes from arrow array stream node.
+    bool isStream = false;
+
+    /// The Partition index.
+    u_int32_t partitionIndex;
+
+    /// The partition columns associated with partitioned table.
+    std::vector<std::unordered_map<std::string, std::string>> partitionColumns;
+
+    /// The metadata columns associated with partitioned table.
+    std::vector<std::unordered_map<std::string, std::string>> metadataColumns;
+
+    /// The file paths to be scanned.
+    std::vector<std::string> paths;
+
+    /// The file starts in the scan.
+    std::vector<uint64_t> starts;
+
+    /// The lengths to be scanned.
+    std::vector<uint64_t> lengths;
+
+    /// The file format of the files to be scanned.
+    FileFormat format;
+
+    /// The file sizes and modification times of the files to be scanned.
+    std::vector<std::optional<FileProperties>> properties;
+
+    /// Make SplitInfo polymorphic
+    virtual ~SplitInfo() = default;
+};
 /// This class is used to convert the Substrait plan into Omni plan.
 using SortWithExprTuple =
 	std::tuple<std::vector<TypedExprPtr>, std::vector<int32_t>, std::vector<int32_t>>;
@@ -168,6 +216,15 @@ public:
     std::vector<TypedExprPtr> ProcessExtensionProjectNode(
         const ::substrait::extensions::AdvancedExtension &extension, const DataTypesPtr &inputType);
 
+    const std::unordered_map<PlanNodeId, std::shared_ptr<SplitInfo>>& splitInfos() const
+    {
+        return splitInfoMap_;
+    }
+
+    void setSplitInfos(std::vector<std::shared_ptr<SplitInfo>> splitInfos)
+    {
+        splitInfos_ = splitInfos;
+    }
 private:
     /// Integrate Substrait emit feature. Here a given 'substrait::RelCommon'
     /// is passed and check if emit is defined for this relation. Basically a
@@ -211,7 +268,7 @@ private:
     std::unordered_map<uint64_t, std::string> functionMap;
 
     // /// The map storing the split stats for each PlanNode.
-    // std::unordered_map<PlanNodeId, std::shared_ptr<SplitInfo>> splitInfoMap_;
+    std::unordered_map<PlanNodeId, std::shared_ptr<SplitInfo>> splitInfoMap_;
     //
     // std::function<PlanNodePtr(std::string, memory::MemoryPool*, int32_t, RowTypePtr)> valueStreamNodeFactory_;
     //
@@ -223,7 +280,7 @@ private:
     std::unordered_map<uint64_t, std::shared_ptr<const PlanNode>> inputNodesMap;
 
     int32_t splitInfoIdx_{0};
-    // std::vector<std::shared_ptr<SplitInfo>> splitInfos_;
+    std::vector<std::shared_ptr<SplitInfo>> splitInfos_;
 
     /// The Expression converter used to convert Substrait representations into
     /// Omni expressions.

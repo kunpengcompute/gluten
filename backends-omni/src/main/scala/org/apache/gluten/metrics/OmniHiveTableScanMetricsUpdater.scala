@@ -22,12 +22,21 @@ import org.apache.spark.sql.utils.SparkInputMetricsUtil.InputMetricsWrapper
 class OmniHiveTableScanMetricsUpdater(@transient val metrics: Map[String, SQLMetric])
   extends MetricsUpdater {
 
+  val outputRows: SQLMetric = metrics("outputRows")
+  val outputVectors: SQLMetric = metrics("outputVectors")
+  val outputBytes: SQLMetric = metrics("outputBytes")
+  val scanTime: SQLMetric = metrics("scanTime")
+
   override def updateInputMetrics(inputMetrics: InputMetricsWrapper): Unit = {
   }
 
   override def updateNativeMetrics(opMetrics: IOperatorMetrics): Unit = {
     if (opMetrics != null) {
       val operatorMetrics = opMetrics.asInstanceOf[OperatorMetrics]
+      outputRows += operatorMetrics.getNumOutputRows
+      outputVectors += operatorMetrics.getNumOutputVecBatches
+      outputBytes += operatorMetrics.getNumOutputBytes
+      scanTime += operatorMetrics.getScanTime
     }
   }
 }

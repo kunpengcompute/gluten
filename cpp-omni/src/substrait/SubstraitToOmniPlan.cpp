@@ -22,6 +22,7 @@
 #include <vector>
 #include <stack>
 #include <algorithm>
+#include "config/OmniConfig.h"
 
 namespace omniruntime {
 namespace {
@@ -503,13 +504,13 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::Aggregat
 {
     auto childNode = ConvertSingleInput<::substrait::AggregateRel>(aggRel);
     PlanNodePtr expandPlanNode = nullptr;
-    if (aggRel.has_advanced_extension()) {
+    if (aggRel.has_advanced_extension() && std::dynamic_pointer_cast<const ExpandNode>(childNode) != nullptr) {
         const auto &advancedExtension = aggRel.advanced_extension();
         if (advancedExtension.has_optimization()) {
             const auto &optimization = advancedExtension.optimization();
             ::substrait::Rel expandRel;
             optimization.UnpackTo(&expandRel);
-            expandPlanNode = ToOmniPlan(expandRel);
+            expandPlanNode = std::dynamic_pointer_cast<const ExpandNode>(childNode);
         }
     }
     const auto &sourceDataTypes = childNode->OutputType();
@@ -728,7 +729,65 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::ReadRel 
     if (streamIdx >= 0) {
         return ConstructValueStreamNode(readRel, streamIdx);
     }
-    return nullptr;
+    auto splitInfo = std::make_shared<SplitInfo>();
+    if (!validationMode) {
+        splitInfo = splitInfos_[splitInfoIdx_++];
+    }
+    std::vector<std::string> colNameList;
+    std::vector<DataTypePtr> omniTypeList;
+    std::vector<ColumnType> columnTypes;
+    bool asLowerCase = false;
+    if (readRel.has_base_schema()) {
+        const auto& baseSchema = readRel.base_schema();
+        colNameList.reserve(baseSchema.names().size());
+        for (const auto& name : baseSchema.names()) {
+            std::string fieldName = name;
+            if (asLowerCase) {
+                // folly::toLowerAscii(fieldName);
+            }
+            colNameList.emplace_back(fieldName);
+        }
+        omniTypeList = SubstraitParser::ParseNamedStruct(baseSchema, asLowerCase);
+        SubstraitParser::ParseColumnTypes(baseSchema, columnTypes);
+    }
+    static const std::string K_HIVE_CONNECTOR_ID = "test-hive";
+    static const std::string TABLE_NAME = "hive_table";
+    bool filterPushdownEnabled = true;
+    std::shared_ptr<HiveTableHandle> tableHandle;
+    if (!readRel.has_advanced_extension() || !readRel.advanced_extension().has_enhancement()) {
+        tableHandle = std::make_shared<connector::hive::HiveTableHandle>(
+            kHiveConnectorId(), TABLE_NAME, filterPushdownEnabled, "");
+    } else {
+        auto names = colNameList;
+        auto types = omniTypeList;
+        google::protobuf::StringValue msg;
+        readRel.advanced_extension().enhancement().UnpackTo(&msg);
+        tableHandle = std::make_shared<HiveTableHandle>(
+            kHiveConnectorId(), TABLE_NAME, filterPushdownEnabled, msg.value());
+    }
+
+    std::vector<std::string> outNames;
+    outNames.reserve(colNameList.size());
+    std::unordered_map<std::string, std::shared_ptr<omniruntime::connector::ColumnHandle>> assignments;
+    for (int idx = 0; idx < colNameList.size(); idx++) {
+        auto outName = omniruntime::SubstraitParser::MakeNodeName(planNodeId, idx);
+        assignments[outName] = std::make_shared<omniruntime::connector::hive::HiveColumnHandle>(
+            colNameList[idx],
+            columnTypes[idx],
+            omniTypeList[idx],
+            omniTypeList[idx],
+            std::vector<omniruntime::type::Subfield>{},
+            ColumnParseParameters{ColumnParseParameters::kISO8601});
+        outNames.emplace_back(outName);
+    }
+    if (readRel.has_virtual_table()) {
+        OMNI_THROW("readRel virtual error", "readRel virtual error");
+    } else {
+        auto tableScanNode = std::make_shared<TableScanNode>(
+            NextPlanNodeId(), omniTypeList, outNames, std::move(tableHandle), std::move(assignments));
+        splitInfoMap_[tableScanNode->Id()] = splitInfo;
+        return tableScanNode;
+    }
 }
 
 PlanNodePtr SubstraitToOmniPlanConverter::ConstructValueStreamNode(

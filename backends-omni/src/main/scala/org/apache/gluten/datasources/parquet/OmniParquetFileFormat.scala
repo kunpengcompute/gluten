@@ -45,6 +45,12 @@ import scala.collection.JavaConverters._
 
 class OmniParquetFileFormat extends FileFormat with DataSourceRegister with Logging with Serializable {
 
+  var canVecPredicateFilter = false
+
+  def setVecPredicateFilter(): Unit = {
+    canVecPredicateFilter = true
+  }
+
   override def shortName(): String = "parquet-native"
 
   override def toString: String = "PARQUET-NATIVE"

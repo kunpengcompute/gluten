@@ -20,6 +20,8 @@
 
 #include "compute/ProtobufUtils.h"
 #include "config.pb.h"
+#include <thread>
+#include <functional>
 
 namespace omniruntime {
 // store configurations that are general to all backend types
@@ -132,7 +134,10 @@ const bool kEnableSystemExceptionStacktraceDefault = true;
 const std::string kMemoryUseHugePages = "spark.gluten.sql.columnar.backend.omni.memoryUseHugePages";
 const bool kMemoryUseHugePagesDefault = false;
 
-const std::string kHiveConnectorId = "test-hive";
+inline const std::string kHiveConnectorId()
+{
+   return "test-hive" + std::to_string(std::hash<std::thread::id>{}(std::this_thread::get_id()));
+}
 
 // memory cache
 constexpr int64_t kMaxMemory = std::numeric_limits<int64_t>::max();

@@ -817,6 +817,7 @@ object GlutenConfig {
       COLUMNAR_OMNI_ROW_SHUFFLE_COLUMNS_THRESHOLD.key,
       COLUMNAR_OMNI_MAX_BATCH_SIZE_IN_BYTES.key,
       COLUMNAR_OMNI_MAX_ROW_COUNT.key,
+      COLUMNAR_MAX_BATCH_SIZE.key,
       COLUMNAR_OMNI_MERGED_BATCH_THRESHOLD.key,
       COLUMNAR_OMNI_AQE_SHUFFLE_MERGE.key)
     nativeConfMap.putAll(conf.filter(e => keys.contains(e._1)).asJava)

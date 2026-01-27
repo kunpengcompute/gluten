@@ -35,6 +35,11 @@ public:
     std::shared_ptr<const PlanNode> ToOmniPlan(const ::substrait::Plan &substraitPlan,
         std::vector<::substrait::ReadRel_LocalFiles> localFiles);
 
+    const std::unordered_map<omniruntime::PlanNodeId, std::shared_ptr<SplitInfo>> &splitInfos()
+    {
+        return substraitOmniPlanConverter_.splitInfos();
+    }
+
 private:
     std::string nextPlanNodeId();
 

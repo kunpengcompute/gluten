@@ -123,6 +123,8 @@ public class VectorTransferUtils {
                         type.getDecimal().getScale());
             case STRING:
                 return new StringTypeNode(isNullable(type.getString().getNullability()));
+            case TIMESTAMP:
+                return new TimestampTypeNode(isNullable(type.getTimestamp().getNullability()));
             default:
                 throw new RuntimeException("Unsupported TypeNode: " + type);
         }

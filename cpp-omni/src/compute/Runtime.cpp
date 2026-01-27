@@ -29,9 +29,26 @@ std::unique_ptr<ResultIterator> Runtime::CreateResultIterator(const std::string 
     // Scan node can be required.
     std::vector<PlanNodeId> scanIds;
     std::vector<PlanNodeId> streamIds;
+    std::vector<std::shared_ptr<SplitInfo>> scanInfos;
+
+    const std::unordered_map<omniruntime::PlanNodeId, std::shared_ptr<SplitInfo>>& splitInfoMap
+        = omniPlanConverter.splitInfos();
+    for (const auto& pair : splitInfoMap) {
+        omniruntime::PlanNodeId nodeId = pair.first;
+        const std::shared_ptr<SplitInfo>& splitInfoPtr = pair.second;
+        if (!splitInfoPtr) {
+            continue;
+        }
+        if (splitInfoPtr->isStream) {
+            streamIds.emplace_back(nodeId);
+        } else {
+            scanInfos.emplace_back(splitInfoPtr);
+            scanIds.emplace_back(nodeId);
+        }
+    }
 
     auto wholeStageIter = std::make_unique<WholeStageResultIterator>(MemoryManager::GetGlobalMemoryManager(), omniPlan_,
-        scanIds, streamIds, spillDir, confMap_);
+        scanIds, streamIds, spillDir, confMap_, scanInfos);
     return std::move(std::make_unique<ResultIterator>(std::move(wholeStageIter)));
 }
 }

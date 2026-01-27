@@ -28,6 +28,8 @@
 #include "compute/WholeStageResultIterator.h"
 #include "compute/Runtime.h"
 #include "config/OmniConfig.h"
+#include "compute/ProtobufUtils.h"
+#include "substrait/SubstraitToOmniPlan.h"
 #include "SparkJniWrapper.hh"
 #include "compute/OmniBackend.h"
 #include "JniUdf.h"
@@ -287,6 +289,20 @@ JNIEXPORT jlong JNICALL Java_org_apache_gluten_vectorized_OmniPlanEvaluatorJniWr
             auto resultIter = std::make_shared<omniruntime::ResultIterator>(std::move(arrayIter));
             inputIters.push_back(std::move(resultIter));
         }
+
+        // splitInfosArr 添加到localFiles protobuf.cc
+        std::vector<::substrait::ReadRel_LocalFiles> localFiles;
+        for (jsize i = 0, splitInfoArraySize = env->GetArrayLength(splitInfosArr); i < splitInfoArraySize; i++) {
+            jbyteArray splitInfoArray = static_cast<jbyteArray>(env->GetObjectArrayElement(splitInfosArr, i));
+            jsize splitInfoSize = env->GetArrayLength(splitInfoArray);
+            jbyte* nativeArray = env->GetByteArrayElements(splitInfoArray, nullptr);
+            uint8_t* splitInfoData = reinterpret_cast<uint8_t*>(nativeArray);
+            ::substrait::ReadRel_LocalFiles localFile;
+            ParseProtobuf(splitInfoData, splitInfoSize, &localFile);
+            localFiles.push_back(localFile);
+            env->ReleaseByteArrayElements(splitInfoArray, nativeArray, JNI_ABORT);
+        }
+        ctx->setLocalFiles(localFiles);
         auto spillDirStr = JStringToCString(env, spillDir);
         auto resultIterator = ctx->CreateResultIterator(spillDirStr, inputIters, conf);
         return reinterpret_cast<long>(resultIterator.release());
