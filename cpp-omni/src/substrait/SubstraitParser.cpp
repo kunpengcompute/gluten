@@ -419,6 +419,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"date_add", {FUNCTION_OMNI_EXPR_TYPE, "date_add"}},
     {"datediff", {FUNCTION_OMNI_EXPR_TYPE, "date_diff"}},
     {"date_format", {FUNCTION_OMNI_EXPR_TYPE, "DateFormat"}},
+    {"add_months", {FUNCTION_OMNI_EXPR_TYPE, "add_months"}},
     {"trunc", {FUNCTION_OMNI_EXPR_TYPE, "trunc_date"}},
     {"extract", {FUNCTION_OMNI_EXPR_TYPE, "extract"}},
     {"minute", {FUNCTION_OMNI_EXPR_TYPE, "minute"}},
