@@ -426,6 +426,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"second", {FUNCTION_OMNI_EXPR_TYPE, "second"}},
     {"month", {FUNCTION_OMNI_EXPR_TYPE, "month"}},
     {"quarter", {FUNCTION_OMNI_EXPR_TYPE, "quarter"}},
+    {"year", {FUNCTION_OMNI_EXPR_TYPE, "year"}},
     {"trim", {FUNCTION_OMNI_EXPR_TYPE, "Trim"}},
     {"ltrim", {FUNCTION_OMNI_EXPR_TYPE, "LTrim"}},
     {"rtrim", {FUNCTION_OMNI_EXPR_TYPE, "RTrim"}},
