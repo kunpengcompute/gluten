@@ -438,5 +438,13 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"map_from_arrays", {FUNCTION_OMNI_EXPR_TYPE, "map_from_arrays"}},
     {"acosh", {FUNCTION_OMNI_EXPR_TYPE, "acosh"}},
     {"map_keys", {FUNCTION_OMNI_EXPR_TYPE, "map_keys"}},
-    {"map_values", {FUNCTION_OMNI_EXPR_TYPE, "map_values"}}};
+    {"map_values", {FUNCTION_OMNI_EXPR_TYPE, "map_values"}},
+    {"asin", {FUNCTION_OMNI_EXPR_TYPE, "asin"}},
+    {"asinh", {FUNCTION_OMNI_EXPR_TYPE, "asinh"}},
+    {"atan", {FUNCTION_OMNI_EXPR_TYPE, "atan"}},
+    {"atan2", {FUNCTION_OMNI_EXPR_TYPE, "atan2"}},
+    {"cos", {FUNCTION_OMNI_EXPR_TYPE, "cos"}},
+    {"cosh", {FUNCTION_OMNI_EXPR_TYPE, "cosh"}},
+    {"cbrt", {FUNCTION_OMNI_EXPR_TYPE, "cbrt"}},
+    {"ceil", {FUNCTION_OMNI_EXPR_TYPE, "ceil"}}};
 } // namespace omniruntime
