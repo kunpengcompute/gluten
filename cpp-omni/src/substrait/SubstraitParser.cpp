@@ -492,5 +492,9 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"log2", {FUNCTION_OMNI_EXPR_TYPE, "log2"}},
     {"log10", {FUNCTION_OMNI_EXPR_TYPE, "log10"}},
     {"log", {FUNCTION_OMNI_EXPR_TYPE, "log"}},
+    {"sign", {FUNCTION_OMNI_EXPR_TYPE, "sign"}},
+    {"sinh", {FUNCTION_OMNI_EXPR_TYPE, "sinh"}},
+    {"sqrt", {FUNCTION_OMNI_EXPR_TYPE, "sqrt"}},
+    {"sec", {FUNCTION_OMNI_EXPR_TYPE, "sec"}},
 };
 } // namespace omniruntime
