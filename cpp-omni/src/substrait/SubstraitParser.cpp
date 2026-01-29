@@ -480,5 +480,8 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"cos", {FUNCTION_OMNI_EXPR_TYPE, "cos"}},
     {"cosh", {FUNCTION_OMNI_EXPR_TYPE, "cosh"}},
     {"cbrt", {FUNCTION_OMNI_EXPR_TYPE, "cbrt"}},
-    {"ceil", {FUNCTION_OMNI_EXPR_TYPE, "ceil"}}};
+    {"ceil", {FUNCTION_OMNI_EXPR_TYPE, "ceil"}},
+    {"timestamp_micros", {FUNCTION_OMNI_EXPR_TYPE, "timestamp_micros"}},
+    {"timestamp_millis", {FUNCTION_OMNI_EXPR_TYPE, "timestamp_millis"}},
+    {"timestamp_seconds", {FUNCTION_OMNI_EXPR_TYPE, "timestamp_seconds"}}};
 } // namespace omniruntime
