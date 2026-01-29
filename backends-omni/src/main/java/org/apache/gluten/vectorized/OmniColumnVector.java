@@ -318,6 +318,7 @@ public class OmniColumnVector extends WritableColumnVector {
 
     @Override
     public void close() {
+        childColumns = null;
         super.close();
         if (booleanDataVec != null) {
             booleanDataVec.close();

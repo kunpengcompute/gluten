@@ -15,7 +15,8 @@
  * limitations under the License.
  */
 package org.apache.gluten.sql.shims.spark35
-
+import org.apache.gluten.execution.datasource.GlutenFormatFactory
+import org.apache.spark.sql.execution.datasources._
 import org.apache.gluten.expression.{ExpressionNames, Sig}
 import org.apache.gluten.sql.shims.{ShimDescriptor, SparkShims}
 
@@ -59,7 +60,7 @@ import org.apache.hadoop.fs.{FileStatus, Path}
 import org.apache.parquet.schema.MessageType
 
 import java.time.ZoneOffset
-import java.util.{HashMap => JHashMap, Map => JMap, Properties}
+import java.util.{Properties, HashMap => JHashMap, Map => JMap}
 
 import scala.reflect.ClassTag
 
@@ -306,16 +307,16 @@ class Spark35Shims extends SparkShims {
     (getLimit(plan.limit, plan.offset), plan.offset)
   }
 
-  override def getExtendedColumnarPostRules(): List[SparkSession => Rule[SparkPlan]] = List()
+  override def getExtendedColumnarPostRules(): List[SparkSession => Rule[SparkPlan]] = List(session => GlutenFormatFactory.getExtendedColumnarPostRule(session))
 
   override def writeFilesExecuteTask(
-      description: WriteJobDescription,
-      jobTrackerID: String,
-      sparkStageId: Int,
-      sparkPartitionId: Int,
-      sparkAttemptNumber: Int,
-      committer: FileCommitProtocol,
-      iterator: Iterator[InternalRow]): WriteTaskResult = {
+                                      description: WriteJobDescription,
+                                      jobTrackerID: String,
+                                      sparkStageId: Int,
+                                      sparkPartitionId: Int,
+                                      sparkAttemptNumber: Int,
+                                      committer: FileCommitProtocol,
+                                      iterator: Iterator[InternalRow]): WriteTaskResult = {
     GlutenFileFormatWriter.writeFilesExecuteTask(
       description,
       jobTrackerID,
