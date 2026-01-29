@@ -30,15 +30,23 @@ import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DateType;
 import org.apache.spark.sql.types.DecimalType;
 import org.apache.spark.sql.types.DoubleType;
+import org.apache.spark.sql.types.FloatType;
 import org.apache.spark.sql.types.IntegerType;
 import org.apache.spark.sql.types.LongType;
 import org.apache.spark.sql.types.ShortType;
 import org.apache.spark.sql.types.StringType;
 import org.apache.spark.sql.types.StructType;
 import org.apache.spark.sql.types.VarcharType;
+import org.apache.spark.sql.types.BinaryType;
+import org.apache.spark.sql.types.ByteType;
+import org.apache.spark.sql.types.TimestampType;
+import org.apache.spark.sql.types.ArrayType;
+import org.apache.spark.sql.types.MapType;
+import org.apache.spark.sql.types.StructField;
+import java.util.List;
+import java.util.ArrayList;
 import org.apache.spark.sql.vectorized.ColumnarBatch;
 import org.json.JSONObject;
-import org.apache.spark.sql.catalyst.util.RebaseDateTime;
 
 import java.net.URI;
 
@@ -90,23 +98,37 @@ public class OrcColumnarBatchWriter {
         outputStream = jniWriter.initializeOutputStream(uriJson);
     }
 
-    /**
-     * convertGreGorianToJulian
-     * @param intVec IntVec
-     * @param startPos startPos
-     * @param endPos endPos
-     */
-    public void convertGreGorianToJulian(IntVec intVec, int startPos, int endPos) {
-        int julianValue;
-        for (int rowIndex = startPos; rowIndex < endPos; rowIndex++) {
-            julianValue = RebaseDateTime.rebaseGregorianToJulianDays(intVec.get(rowIndex));
-            intVec.set(rowIndex, julianValue);
+    public void initializeSchemaTypeJava(StructType dataSchema) {
+        List<Integer> flatTypes = new ArrayList<>();
+        for (StructField field : dataSchema.fields()) {
+            addTypeRecursive(field.dataType(), flatTypes);
         }
+
+        //convert list to array so it can be transfered by jni
+        int[] orcTypeIds = flatTypes.stream().mapToInt(i -> i).toArray();
+
+        schemaType = jniWriter.initializeSchemaType(
+                orcTypeIds,
+                extractSchemaName(dataSchema),
+                extractDecimalParam(dataSchema)
+        );
     }
 
-    public void initializeSchemaTypeJava(StructType dataSchema) {
-        schemaType = jniWriter.initializeSchemaType(sparkTypeToOrcLibType(dataSchema), extractSchemaName(dataSchema),
-                extractDecimalParam(dataSchema));
+    private void addTypeRecursive(DataType dataType, List<Integer> result) {
+        if (dataType instanceof ArrayType) {
+            result.add(OrcLibTypeKind.LIST.ordinal());
+            ArrayType arrayType = (ArrayType) dataType;
+            //OrcColumnarBatchJniWriter_initializeSchemaType typeOffset += 1
+            addTypeRecursive(arrayType.elementType(), result);
+        } else if (dataType instanceof MapType) {
+            result.add(OrcLibTypeKind.MAP.ordinal());
+            MapType mapType = (MapType) dataType;
+            //OrcColumnarBatchJniWriter_initializeSchemaType typeOffset += 2
+            addTypeRecursive(mapType.keyType(), result);
+            addTypeRecursive(mapType.valueType(), result);
+        } else {
+            result.add(sparkTypeToOrcLibType(dataType));
+        }
     }
 
     /**
@@ -131,6 +153,18 @@ public class OrcColumnarBatchWriter {
         writerOptionsJson.put("padding tolerance", options.getPaddingTolerance());
         writerOptionsJson.put("columns use bloom filter", options.getBloomFilterColumns());
         writerOptionsJson.put("bloom filter fpp", options.getBloomFilterFpp());
+
+        //for jniWriter to initialize writerOptions and OmniTimestampColumnWriter
+        String tzId = java.util.TimeZone.getDefault().getID();
+        if ("GMT+08:00".equals(tzId)) {
+            tzId = "Asia/Shanghai";
+        } else if (tzId != null && tzId.startsWith("GMT") && java.util.TimeZone.getDefault().getRawOffset() == 28800000) {
+            tzId = "Asia/Shanghai";
+        }
+        if (tzId == null || tzId.isEmpty()) {
+            tzId = "Asia/Shanghai";
+        }
+        writerOptionsJson.put("timezone", tzId);
 
         writer = jniWriter.initializeWriter(outputStream, schemaType, writerOptionsJson);
     }
@@ -169,6 +203,14 @@ public class OrcColumnarBatchWriter {
             return OrcLibTypeKind.CHAR.ordinal();
         } else if (dataType instanceof DecimalType) {
             return OrcLibTypeKind.DECIMAL.ordinal();
+        } else if (dataType instanceof FloatType) {
+            return OrcLibTypeKind.FLOAT.ordinal();
+        } else if (dataType instanceof BinaryType) {
+            return OrcLibTypeKind.BINARY.ordinal();
+        } else if (dataType instanceof ByteType) {
+            return OrcLibTypeKind.BYTE.ordinal();
+        } else if (dataType instanceof TimestampType) {
+            return OrcLibTypeKind.TIMESTAMP.ordinal();
         } else {
             throw new RuntimeException(
                     "UnSupport type convert  spark type " + dataType.simpleString() + " to orc lib type");
@@ -221,10 +263,6 @@ public class OrcColumnarBatchWriter {
             OmniColumnVector omniVec = (OmniColumnVector) columBatch.column(i);
             Vec vec = omniVec.getVec();
             vecNativeIds[i] = vec.getNativeVector();
-            boolean isDateType = (omniTypes[i] == 8);
-            if (isDateType) {
-                convertGreGorianToJulian((IntVec) vec, 0, columBatch.numRows());
-            }
         }
 
         jniWriter.write(writer, vecNativeIds, omniTypes, dataColumnsIds, columBatch.numRows());
@@ -245,10 +283,6 @@ public class OrcColumnarBatchWriter {
             OmniColumnVector omniVec = (OmniColumnVector) inputBatch.column(i);
             Vec vec = omniVec.getVec();
             vecNativeIds[i] = vec.getNativeVector();
-            boolean isDateType = (allOmniTypes[i] == 8);
-            if (isDateType) {
-                convertGreGorianToJulian((IntVec) vec, (int) startPos, (int) endPos);
-            }
         }
 
         jniWriter.splitWrite(writer, vecNativeIds, omniTypes, dataColumnsIds, startPos, endPos);

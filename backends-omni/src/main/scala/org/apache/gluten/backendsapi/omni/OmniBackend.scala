@@ -30,12 +30,15 @@ import org.apache.gluten.substrait.rel.LocalFilesNode.ReadFileFormat
 import org.apache.gluten.validate.NativePlanValidationInfo
 import org.apache.gluten.vectorized.OmniNativePlanEvaluator
 import org.apache.spark.shuffle.OmniShuffleUtil
+import org.apache.spark.sql.catalyst.catalog.BucketSpec
 import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, Average, Count, First, Max, Min, StddevSamp, Sum}
 import org.apache.spark.sql.catalyst.expressions.{Alias, Attribute, CurrentRow, Literal, NamedExpression, Rank, RowNumber, SpecifiedWindowFrame, UnboundedFollowing, UnboundedPreceding, WindowExpression}
 import org.apache.spark.sql.catalyst.plans.physical.Partitioning
 import org.apache.spark.sql.connector.read.Scan
 import org.apache.spark.sql.execution.SparkPlan
 import org.apache.spark.sql.execution.datasources.FileFormat
+import org.apache.spark.sql.execution.datasources.orc.OrcFileFormat
+import org.apache.spark.sql.hive.execution.HiveFileFormat
 import org.apache.spark.sql.types._
 import org.apache.spark.task.TaskResources
 import org.apache.spark.util.SerializableConfiguration
@@ -132,6 +135,81 @@ object OmniBackendSettings extends BackendSettingsApi {
       case "ParquetScan" => ReadFileFormat.ParquetReadFormat
       case "DwrfScan" => ReadFileFormat.DwrfReadFormat
       case _ => ReadFileFormat.UnknownFormat
+    }
+  }
+
+  override def supportNativeWrite(fields: Array[StructField]): Boolean = {
+    fields.map {
+      field =>
+        field.dataType match {
+          case _: StructType | _: YearMonthIntervalType => return false
+          case _ =>
+        }
+    }
+    true
+  }
+
+  override def supportWriteFilesExec(
+                                      format: FileFormat,
+                                      fields: Array[StructField],
+                                      bucketSpec: Option[BucketSpec],
+                                      options: Map[String, String]): ValidationResult = {
+
+    def validateHiveFileFormat(hiveFileFormat: HiveFileFormat): Option[String] = {
+      val fileSinkConfField = format.getClass.getDeclaredField("fileSinkConf")
+      fileSinkConfField.setAccessible(true)
+      val fileSinkConf = fileSinkConfField.get(hiveFileFormat)
+      val tableInfoField = fileSinkConf.getClass.getDeclaredField("tableInfo")
+      tableInfoField.setAccessible(true)
+      val tableInfo = tableInfoField.get(fileSinkConf)
+      val getOutputFileFormatClassNameMethod = tableInfo.getClass
+        .getDeclaredMethod("getOutputFileFormatClassName")
+      val outputFileFormatClassName = getOutputFileFormatClassNameMethod.invoke(tableInfo)
+
+      outputFileFormatClassName match {
+        case "org.apache.hadoop.hive.ql.io.orc.OrcOutputFormat" =>
+          None
+        case _ =>
+          Some(
+            "HiveFileFormat is supported only with orc as the output file type"
+          ) // Unsupported format
+      }
+    }
+
+    // Validate if all types are supported.
+    def validateDataTypes(): Option[String] = {
+      val unsupportedTypes: Seq[String] = format match {
+        case _: OrcFileFormat =>
+          fields.flatMap {
+            case StructField(_, _: YearMonthIntervalType, _, _) =>
+              Some("YearMonthIntervalType")
+            case StructField(_, _: StructType, _, _) =>
+              Some("StructType")
+            case _ => None
+          }
+        case _ => Seq.empty
+      }
+      if (unsupportedTypes.nonEmpty) {
+        Some(unsupportedTypes.mkString("Found unsupported type:", ",", ""))
+      } else {
+        None
+      }
+    }
+
+    def validateFileFormat(): Option[String] = {
+      format match {
+        case _: OrcFileFormat => None // Orc is directly supported
+        case h: HiveFileFormat if GlutenConfig.get.enableHiveFileFormatWriter =>
+          validateHiveFileFormat(h) // Orc via Hive SerDe
+        case _ =>
+          Some(
+            "Only OrcFileFormat and HiveFileFormat are supported."
+          ) // Unsupported format
+      }
+    }
+    validateFileFormat().orElse(validateDataTypes()) match {
+      case Some(reason) => ValidationResult.failed(reason)
+      case _ => ValidationResult.succeeded
     }
   }
 

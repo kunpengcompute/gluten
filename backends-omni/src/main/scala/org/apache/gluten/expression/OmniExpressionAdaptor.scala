@@ -1194,7 +1194,7 @@ object OmniExpressionAdaptor extends Logging {
       case StringType =>
         new VarcharDataType(getStringLength(metadata))
       case BinaryType =>
-        VarBinaryDataType.VARCHAR
+        new VarBinaryDataType(getStringLength(metadata))
       case DateType =>
         Date32DataType.DATE32
       case dt: DecimalType =>
@@ -1233,7 +1233,7 @@ object OmniExpressionAdaptor extends Logging {
       case StringType =>
         new VarcharDataType(getStringLength(metadata))
       case BinaryType =>
-        VarBinaryDataType.VARCHAR
+        new VarBinaryDataType(getStringLength(metadata))
       case DateType =>
         Date32DataType.DATE32
       case dt: DecimalType =>

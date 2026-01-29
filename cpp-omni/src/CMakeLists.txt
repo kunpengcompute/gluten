@@ -91,6 +91,7 @@ target_link_libraries (${PROJ_TARGET} PUBLIC
         boostkit-omniop-vector-2.0.0-aarch64
         boostkit-omniop-operator-2.0.0-aarch64
         boostkit-omniop-codegen-2.0.0-aarch64
+        boostkit-omniop-reader-2.0.0-aarch64
         )
 
 set_target_properties(${PROJ_TARGET} PROPERTIES
