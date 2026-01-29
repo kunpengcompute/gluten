@@ -371,6 +371,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"lower", {FUNCTION_OMNI_EXPR_TYPE, "lower"}},
     {"upper", {FUNCTION_OMNI_EXPR_TYPE, "upper"}},
     {"char_length", {FUNCTION_OMNI_EXPR_TYPE, "length"}},
+    {"character_length", {FUNCTION_OMNI_EXPR_TYPE, "length"}},
     {"replace", {FUNCTION_OMNI_EXPR_TYPE, "replace"}},
     {"substring", {FUNCTION_OMNI_EXPR_TYPE, "substr"}},
     {"cast", {FUNCTION_OMNI_EXPR_TYPE, "CAST"}},
