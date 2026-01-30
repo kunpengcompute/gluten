@@ -122,6 +122,7 @@ case class OmniHashAggregateExecTransformer(
     val alwaysSupported = Set(
      classOf[Sum], classOf[Min], classOf[Max], classOf[Count], classOf[MinBy], classOf[MaxBy],
      classOf[Average], classOf[First], classOf[StddevSamp], classOf[BloomFilterAggregate],
+     classOf[BitAndAgg], classOf[BitOrAgg], classOf[BitXorAgg],
     )
 
     var completeOnlySupported = Set(

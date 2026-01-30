@@ -55,6 +55,12 @@ object AggregateFunctionsBuilder {
         ExpressionNames.LAST_IGNORE_NULL
       case BloomFilterAggregate(_, _, _, _, _) =>
         ExpressionNames.BLOOM_FILTER_AGG
+      case BitAndAgg(_) =>
+        ExpressionNames.BIT_AND_AGG
+      case BitOrAgg(_) =>
+        ExpressionNames.BIT_OR_AGG
+      case BitXorAgg(_) =>
+        ExpressionNames.BIT_XOR_AGG
       case MaxBy(_, _) =>
         ExpressionNames.MAX_BY
       case MinBy(_, _) =>
