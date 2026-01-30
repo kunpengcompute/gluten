@@ -1041,6 +1041,9 @@ object OmniExpressionAdaptor extends Logging {
         checkFirstParamType(agg)
         OMNI_AGGREGATION_TYPE_FIRST_INCLUDENULL
       case _: BloomFilterAggregate => OMNI_AGGREGATION_TYPE_BLOOM_FILTER
+      case _: BitAndAgg => OMNI_AGGREGATION_TYPE_BIT_AND
+      case _: BitOrAgg => OMNI_AGGREGATION_TYPE_BIT_OR
+      case _: BitXorAgg => OMNI_AGGREGATION_TYPE_BIT_XOR
       case _: MinBy => OMNI_AGGREGATION_TYPE_MIN_BY
       case _: MaxBy => OMNI_AGGREGATION_TYPE_MAX_BY
       case _ => throw new UnsupportedOperationException(s"Unsupported aggregate function: $agg")

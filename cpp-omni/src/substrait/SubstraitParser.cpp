@@ -381,6 +381,12 @@ op::FunctionType SubstraitParser::ParseFunctionType(
         return op::OMNI_WINDOW_TYPE_ROW_NUMBER;
     } else if (funcName == "bloom_filter_agg") {
         return op::OMNI_AGGREGATION_TYPE_BLOOM_FILTER;
+    } else if (funcName == "bit_and") {
+        return op::OMNI_AGGREGATION_TYPE_BIT_AND;
+    } else if (funcName == "bit_or") {
+        return op::OMNI_AGGREGATION_TYPE_BIT_OR;
+    } else if (funcName == "bit_xor") {
+        return op::OMNI_AGGREGATION_TYPE_BIT_XOR;
     } else if (funcName == "min_by") {
         return op::OMNI_AGGREGATION_TYPE_MIN_BY;
     } else if (funcName == "max_by") {
@@ -498,6 +504,9 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"atan2", {FUNCTION_OMNI_EXPR_TYPE, "atan2"}},
     {"cos", {FUNCTION_OMNI_EXPR_TYPE, "cos"}},
     {"cosh", {FUNCTION_OMNI_EXPR_TYPE, "cosh"}},
+    {"bit_and", {FUNCTION_OMNI_EXPR_TYPE, "bit_and"}},
+    {"bit_or", {FUNCTION_OMNI_EXPR_TYPE, "bit_or"}},
+    {"bit_xor", {FUNCTION_OMNI_EXPR_TYPE, "bit_xor"}},
     {"cbrt", {FUNCTION_OMNI_EXPR_TYPE, "cbrt"}},
     {"ceil", {FUNCTION_OMNI_EXPR_TYPE, "ceil"}},
     {"log1p", {FUNCTION_OMNI_EXPR_TYPE, "log1p"}},

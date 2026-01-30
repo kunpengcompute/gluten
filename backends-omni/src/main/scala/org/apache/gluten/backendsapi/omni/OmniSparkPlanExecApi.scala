@@ -28,7 +28,7 @@ import org.apache.spark.shuffle.{GenShuffleWriterParameters, GlutenShuffleWriter
 import org.apache.spark.sql.catalyst.catalog.BucketSpec
 import org.apache.spark.sql.catalyst.catalog.CatalogTypes.TablePartitionSpec
 import org.apache.spark.sql.catalyst.expressions.{ArrayTransform, Attribute, AttributeReference, BloomFilterMightContain, Cast, DateDiff, ElementAt, Expression, FromUnixTime, Generator, GetMapValue, GetStructField, HashExpression, LambdaFunction, Like, Md5, NamedExpression, PosExplode, PythonUDF, SortOrder, UnixTimestamp}
-import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, BloomFilterAggregate, MaxBy, MinBy}
+import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, BloomFilterAggregate, MaxBy, MinBy, BitAndAgg, BitOrAgg, BitXorAgg}
 import org.apache.spark.sql.catalyst.optimizer.BuildSide
 import org.apache.spark.sql.catalyst.plans.JoinType
 import org.apache.spark.sql.catalyst.plans.physical.{AllTuples, BroadcastMode, Partitioning}
@@ -57,6 +57,9 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
     Seq(
       Sig[BloomFilterMightContain](ExpressionNames.MIGHT_CONTAIN),
       Sig[BloomFilterAggregate](ExpressionNames.BLOOM_FILTER_AGG),
+      Sig[BitAndAgg](ExpressionNames.BIT_AND_AGG),
+      Sig[BitOrAgg](ExpressionNames.BIT_OR_AGG),
+      Sig[BitXorAgg](ExpressionNames.BIT_XOR_AGG),
       Sig[MinBy](ExpressionNames.MIN_BY),
       Sig[MaxBy](ExpressionNames.MAX_BY),
     )
