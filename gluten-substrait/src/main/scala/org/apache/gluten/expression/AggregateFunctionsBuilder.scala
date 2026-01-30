@@ -55,6 +55,10 @@ object AggregateFunctionsBuilder {
         ExpressionNames.LAST_IGNORE_NULL
       case BloomFilterAggregate(_, _, _, _, _) =>
         ExpressionNames.BLOOM_FILTER_AGG
+      case MaxBy(_, _) =>
+        ExpressionNames.MAX_BY
+      case MinBy(_, _) =>
+        ExpressionNames.MIN_BY
       case _ =>
         val nameOpt = ExpressionMappings.expressionsMap.get(aggregateFunc.getClass)
         if (nameOpt.isEmpty) {

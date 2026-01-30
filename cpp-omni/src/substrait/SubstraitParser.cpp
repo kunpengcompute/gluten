@@ -379,6 +379,10 @@ op::FunctionType SubstraitParser::ParseFunctionType(
         return op::OMNI_WINDOW_TYPE_ROW_NUMBER;
     } else if (funcName == "bloom_filter_agg") {
         return op::OMNI_AGGREGATION_TYPE_BLOOM_FILTER;
+    } else if (funcName == "min_by") {
+        return op::OMNI_AGGREGATION_TYPE_MIN_BY;
+    } else if (funcName == "max_by") {
+        return op::OMNI_AGGREGATION_TYPE_MAX_BY;
     } else {
         OMNI_THROW("Substrait Error:", "Unsupported aggregate or window function: {}", funcName);
     }
@@ -472,6 +476,8 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"shiftleft", {FUNCTION_OMNI_EXPR_TYPE, "shiftleft"}},
     {"shiftright", {FUNCTION_OMNI_EXPR_TYPE, "shiftright"}},
     {"negative", {FUNCTION_OMNI_EXPR_TYPE, "negative"}},
+    {"min_by", {FUNCTION_OMNI_EXPR_TYPE, "min_by"}},
+    {"max_by", {FUNCTION_OMNI_EXPR_TYPE, "max_by"}},
     {"transform", {FUNCTION_OMNI_EXPR_TYPE, "transform"}},
     {"lambdafunction", {FUNCTION_OMNI_EXPR_TYPE, "lambdafunction"}},
     {"namedlambdavariable", {FUNCTION_OMNI_EXPR_TYPE, "namedlambdavariable"}},
