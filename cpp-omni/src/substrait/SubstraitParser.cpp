@@ -375,6 +375,8 @@ op::FunctionType SubstraitParser::ParseFunctionType(
         return op::OMNI_AGGREGATION_TYPE_FIRST_INCLUDENULL;
     } else if (funcName == "rank") {
         return op::OMNI_WINDOW_TYPE_RANK;
+    } else if (funcName == "percent_rank") {
+        return op::OMNI_WINDOW_TYPE_PERCENT_RANK;
     } else if (funcName == "row_number") {
         return op::OMNI_WINDOW_TYPE_ROW_NUMBER;
     } else if (funcName == "bloom_filter_agg") {
@@ -436,6 +438,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"contains", {FUNCTION_OMNI_EXPR_TYPE, "Contains"}},
     {"murmur3hash", {FUNCTION_OMNI_EXPR_TYPE, "mm3hash"}},
     {"rank", {FUNCTION_OMNI_EXPR_TYPE, "rank"}},
+    {"percent_rank", {FUNCTION_OMNI_EXPR_TYPE, "percent_rank"}},
     {"row_number", {FUNCTION_OMNI_EXPR_TYPE, "row_number"}},
     {"count", {FUNCTION_OMNI_EXPR_TYPE, "count"}},
     {"sum", {FUNCTION_OMNI_EXPR_TYPE, "sum"}},
