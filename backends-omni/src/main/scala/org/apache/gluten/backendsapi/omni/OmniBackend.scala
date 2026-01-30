@@ -32,7 +32,7 @@ import org.apache.gluten.vectorized.OmniNativePlanEvaluator
 import org.apache.spark.shuffle.OmniShuffleUtil
 import org.apache.spark.sql.catalyst.catalog.BucketSpec
 import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, Average, Count, First, Max, Min, StddevSamp, Sum}
-import org.apache.spark.sql.catalyst.expressions.{Alias, Attribute, CurrentRow, Literal, NamedExpression, Rank, RowNumber, SpecifiedWindowFrame, UnboundedFollowing, UnboundedPreceding, WindowExpression}
+import org.apache.spark.sql.catalyst.expressions.{Alias, Attribute, CurrentRow, Literal, NamedExpression, Rank, PercentRank, RowNumber, SpecifiedWindowFrame, UnboundedFollowing, UnboundedPreceding, WindowExpression}
 import org.apache.spark.sql.catalyst.plans.physical.Partitioning
 import org.apache.spark.sql.connector.read.Scan
 import org.apache.spark.sql.execution.SparkPlan
@@ -233,7 +233,7 @@ object OmniBackendSettings extends BackendSettingsApi {
         aliasExpr.child match {
           case wExpression: WindowExpression =>
             wExpression.windowFunction match {
-              case RowNumber() | Rank(_) =>
+              case RowNumber() | Rank(_) | PercentRank(_) =>
               case AggregateExpression(aggFunction, _, false, _, _) =>
                 aggFunction match {
                   case _: Sum =>

@@ -1049,6 +1049,7 @@ object OmniExpressionAdaptor extends Logging {
     window match {
       case Rank(_) => OMNI_WINDOW_TYPE_RANK
       case RowNumber() => OMNI_WINDOW_TYPE_ROW_NUMBER
+      case PercentRank(_) => OMNI_WINDOW_TYPE_PERCENT_RANK
       case _ => throw new UnsupportedOperationException(s"Unsupported window function: $window")
     }
   }
