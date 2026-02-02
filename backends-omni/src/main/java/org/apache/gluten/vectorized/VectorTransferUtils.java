@@ -112,6 +112,8 @@ public class VectorTransferUtils {
                 return new I32TypeNode(isNullable(type.getI32().getNullability()));
             case I64:
                 return new I64TypeNode(isNullable(type.getI64().getNullability()));
+            case FP32:
+                return new FP32TypeNode(isNullable(type.getFp32().getNullability()));
             case FP64:
                 return new FP64TypeNode(isNullable(type.getFp64().getNullability()));
             case DATE:
@@ -123,8 +125,21 @@ public class VectorTransferUtils {
                         type.getDecimal().getScale());
             case STRING:
                 return new StringTypeNode(isNullable(type.getString().getNullability()));
+            case BINARY:
+                return new BinaryTypeNode(isNullable(type.getBinary().getNullability()));
             case TIMESTAMP:
                 return new TimestampTypeNode(isNullable(type.getTimestamp().getNullability()));
+            case LIST:
+                return new ListNode(
+                        isNullable(type.getList().getNullability()),
+                        getTypeNode(type.getList().getType()));
+            case MAP:
+                return new MapNode(
+                        isNullable(type.getMap().getNullability()),
+                        getTypeNode(type.getMap().getKey()),
+                        getTypeNode(type.getMap().getValue()));
+            case STRUCT:
+                return getStructNodeFromProto(type.getStruct());
             default:
                 throw new RuntimeException("Unsupported TypeNode: " + type);
         }
