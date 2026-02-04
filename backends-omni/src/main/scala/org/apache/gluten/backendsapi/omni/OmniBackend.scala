@@ -29,12 +29,16 @@ import org.apache.gluten.substrait.rel.LocalFilesNode
 import org.apache.gluten.substrait.rel.LocalFilesNode.ReadFileFormat
 import org.apache.gluten.validate.NativePlanValidationInfo
 import org.apache.gluten.vectorized.OmniNativePlanEvaluator
+import org.apache.spark.shuffle.OmniShuffleUtil
+import org.apache.spark.sql.catalyst.catalog.BucketSpec
 import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, Average, Count, First, Max, Min, StddevSamp, Sum}
 import org.apache.spark.sql.catalyst.expressions.{Alias, Attribute, CurrentRow, Literal, NamedExpression, Rank, RowNumber, SpecifiedWindowFrame, UnboundedFollowing, UnboundedPreceding, WindowExpression}
 import org.apache.spark.sql.catalyst.plans.physical.Partitioning
 import org.apache.spark.sql.connector.read.Scan
 import org.apache.spark.sql.execution.SparkPlan
 import org.apache.spark.sql.execution.datasources.FileFormat
+import org.apache.spark.sql.execution.datasources.orc.OrcFileFormat
+import org.apache.spark.sql.hive.execution.HiveFileFormat
 import org.apache.spark.sql.types._
 import org.apache.spark.task.TaskResources
 import org.apache.spark.util.SerializableConfiguration
@@ -64,6 +68,17 @@ object OmniBackend {
   val CONF_PREFIX: String = GlutenConfig.prefixOf(BACKEND_NAME)
 }
 
+object DataTypeUtils {
+  def isPrimitiveType(dataType: DataType): Boolean = {
+    dataType match {
+      case BooleanType | ShortType | IntegerType | LongType | DoubleType | StringType |
+           _: DecimalType | DateType | TimestampType | NullType =>
+        true
+      case _ => false
+    }
+  }
+}
+
 object OmniBackendSettings extends BackendSettingsApi {
   val SHUFFLE_SUPPORTED_CODEC = Set("lz4", "zstd")
 
@@ -79,13 +94,16 @@ object OmniBackendSettings extends BackendSettingsApi {
     def checkUnsupportedDataTypes: ValidationResult = {
       //Collect unsupported types
       val unsupportedDataTypes = fields.map(_.dataType).collect {
-        case _: MapType => "MapType"
-        case _: StructType => "StructType"
-        case _: ArrayType => "ArrayType"
+        case b: ByteType => "ByteType"
+        case f: FloatType => "FloatType"
+        case s: StructType => "StructType"
+        case m: MapType => "MapType"
+        case a: ArrayType
+          if (!DataTypeUtils.isPrimitiveType(a.elementType)) => "nested ArrayType"
       }
       for (unsupportedDataType <- unsupportedDataTypes) {
         return ValidationResult.failed(s"Validation failed for ${this.getClass.toString}"
-          + s"deu to: data type $unsupportedDataType in file schema.")
+          + s"due to: data type $unsupportedDataType in file schema.")
       }
       ValidationResult.succeeded
     }
@@ -95,7 +113,6 @@ object OmniBackendSettings extends BackendSettingsApi {
       case _ => ValidationResult.failed(s"Unsupported file format $format")
     }
   }
-
 
   override def needOutputSchemaForPlan(): Boolean = true
 
@@ -116,6 +133,92 @@ object OmniBackendSettings extends BackendSettingsApi {
       case "ParquetScan" => ReadFileFormat.ParquetReadFormat
       case "DwrfScan" => ReadFileFormat.DwrfReadFormat
       case _ => ReadFileFormat.UnknownFormat
+    }
+  }
+
+  override def supportNativeWrite(fields: Array[StructField]): Boolean = {
+    fields.map {
+      field =>
+        field.dataType match {
+          case _: StructType | _: YearMonthIntervalType | _: MapType | _: BinaryType | _: FloatType | _: ByteType => return false
+          case a: ArrayType if (!DataTypeUtils.isPrimitiveType(a.elementType)) => return false
+          case _ =>
+        }
+    }
+    true
+  }
+
+  override def supportWriteFilesExec(
+                                      format: FileFormat,
+                                      fields: Array[StructField],
+                                      bucketSpec: Option[BucketSpec],
+                                      options: Map[String, String]): ValidationResult = {
+
+    def validateHiveFileFormat(hiveFileFormat: HiveFileFormat): Option[String] = {
+      val fileSinkConfField = format.getClass.getDeclaredField("fileSinkConf")
+      fileSinkConfField.setAccessible(true)
+      val fileSinkConf = fileSinkConfField.get(hiveFileFormat)
+      val tableInfoField = fileSinkConf.getClass.getDeclaredField("tableInfo")
+      tableInfoField.setAccessible(true)
+      val tableInfo = tableInfoField.get(fileSinkConf)
+      val getOutputFileFormatClassNameMethod = tableInfo.getClass
+        .getDeclaredMethod("getOutputFileFormatClassName")
+      val outputFileFormatClassName = getOutputFileFormatClassNameMethod.invoke(tableInfo)
+
+      outputFileFormatClassName match {
+        case "org.apache.hadoop.hive.ql.io.orc.OrcOutputFormat" =>
+          None
+        case _ =>
+          Some(
+            "HiveFileFormat is supported only with orc as the output file type"
+          ) // Unsupported format
+      }
+    }
+
+    // Validate if all types are supported.
+    def validateDataTypes(): Option[String] = {
+      val unsupportedTypes: Seq[String] = format match {
+        case _: OrcFileFormat =>
+          fields.flatMap {
+            case StructField(_, _: YearMonthIntervalType, _, _) =>
+              Some("YearMonthIntervalType")
+            case StructField(_, _: StructType, _, _) =>
+              Some("StructType")
+            case StructField(_, _: MapType, _, _) =>
+              Some("MapType")
+            case StructField(_, _: BinaryType, _, _) =>
+              Some("BinaryType")
+            case StructField(_, _: ByteType, _, _) =>
+              Some("ByteType")
+            case StructField(_, _: FloatType, _, _) =>
+              Some("FloatType")
+            case StructField(_, a: ArrayType, _, _) if (!DataTypeUtils.isPrimitiveType(a.elementType)) =>
+              Some("nested ArrayType")
+            case _ => None
+          }
+        case _ => Seq.empty
+      }
+      if (unsupportedTypes.nonEmpty) {
+        Some(unsupportedTypes.mkString("Found unsupported type:", ",", ""))
+      } else {
+        None
+      }
+    }
+
+    def validateFileFormat(): Option[String] = {
+      format match {
+        case _: OrcFileFormat => None // Orc is directly supported
+        case h: HiveFileFormat if GlutenConfig.get.enableHiveFileFormatWriter =>
+          validateHiveFileFormat(h) // Orc via Hive SerDe
+        case _ =>
+          Some(
+            "Only OrcFileFormat and HiveFileFormat are supported."
+          ) // Unsupported format
+      }
+    }
+    validateFileFormat().orElse(validateDataTypes()) match {
+      case Some(reason) => ValidationResult.failed(reason)
+      case _ => ValidationResult.succeeded
     }
   }
 
@@ -212,29 +315,43 @@ class OmniValidatorApi extends ValidatorApi {
       // See: https://github.com/apache/incubator-gluten/issues/7600.
       return Some("Shuffle with empty input schema is not supported")
     }
-    doSchemaValidate(child.schema)
-  }
-
-  private def isPrimitiveType(dataType: DataType): Boolean = {
-    dataType match {
-      case BooleanType | ShortType | IntegerType | LongType | DoubleType | StringType |
-          _: DecimalType | DateType | TimestampType =>
-        true
-      case _ => false
+    val res = doSchemaValidateForShuffle(child.schema)
+    if (res.isDefined){
+      return res
     }
+    OmniShuffleUtil.doShuffleValidate(outputAttributes, outputPartitioning, child)
   }
 
-  override def doSchemaValidate(schema: DataType): Option[String] = {
-    if (isPrimitiveType(schema)) {
+  def doSchemaValidateForShuffle(schema: DataType): Option[String] = {
+    if (DataTypeUtils.isPrimitiveType(schema)) {
       return None
     }
-    // unsupported any complex type
     schema match {
       case struct: StructType =>
         struct.fields.foreach {
           f =>
-            if (!isPrimitiveType(f.dataType)) {
-              return Some(s"Schema / data type not supported: $schema")
+            val reason = doSchemaValidateForShuffle(f.dataType)
+            if (reason.isDefined) {
+              return reason
+            }
+        }
+        None
+      case _ =>
+        Some(s"Schema / data type not supported: $schema")
+    }
+  }
+
+  override def doSchemaValidate(schema: DataType): Option[String] = {
+    if (DataTypeUtils.isPrimitiveType(schema)) {
+      return None
+    }
+    schema match {
+      case struct: StructType =>
+        struct.fields.foreach {
+          f =>
+            val reason = doSchemaValidate(f.dataType)
+            if (reason.isDefined) {
+              return reason
             }
         }
         None

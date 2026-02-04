@@ -14,82 +14,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.apache.spark.sql.execution.datasources
-
 import org.apache.gluten.backendsapi.BackendsApiManager
-import org.apache.gluten.execution.{ColumnarToRowExecBase, GlutenPlan}
+import org.apache.gluten.execution.ColumnarToRowExecBase
 import org.apache.gluten.execution.datasource.GlutenFormatFactory
-import org.apache.gluten.extension.columnar.transition.{Convention, Transitions}
 
-import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.sql.catalyst.InternalRow
-import org.apache.spark.sql.catalyst.expressions.{Attribute, SortOrder}
-import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, OrderPreservingUnaryNode}
 import org.apache.spark.sql.catalyst.rules.Rule
 import org.apache.spark.sql.execution._
 import org.apache.spark.sql.execution.adaptive.AdaptiveSparkPlanExec
-import org.apache.spark.sql.execution.command.{CreateDataSourceTableAsSelectCommand, DataWritingCommand, DataWritingCommandExec}
+import org.apache.spark.sql.execution.command.{DataWritingCommand, DataWritingCommandExec}
 import org.apache.spark.sql.execution.datasources.v2.{AppendDataExec, OverwriteByExpressionExec}
-import org.apache.spark.sql.hive.execution.{CreateHiveTableAsSelectCommand, InsertIntoHiveDirCommand, InsertIntoHiveTable}
+import org.apache.spark.sql.hive.execution.OmniInsertIntoHiveTable
 import org.apache.spark.sql.sources.DataSourceRegister
-import org.apache.spark.sql.vectorized.ColumnarBatch
 
-private case class FakeRowLogicAdaptor(child: LogicalPlan) extends OrderPreservingUnaryNode {
-  override def output: Seq[Attribute] = child.output
-
-  // For spark 3.2.
-  protected def withNewChildInternal(newChild: LogicalPlan): FakeRowLogicAdaptor =
-    copy(child = newChild)
-}
-
-/**
- * Whether the child is columnar or not, this operator will convert the columnar output to FakeRow,
- * which is consumable by native parquet/orc writer
- *
- * This is usually used in data writing since Spark doesn't expose APIs to write columnar data as of
- * now.
- */
-case class FakeRowAdaptor(child: SparkPlan)
-  extends UnaryExecNode
-  with IFakeRowAdaptor
-  with GlutenPlan {
-  if (child.logicalLink.isDefined) {
-    setLogicalLink(FakeRowLogicAdaptor(child.logicalLink.get))
-  }
-
-  override def output: Seq[Attribute] = child.output
-
-  override def batchType(): Convention.BatchType = BackendsApiManager.getSettings.primaryBatchType
-
-  override def rowType0(): Convention.RowType = Convention.RowType.VanillaRow
-
-  override protected def doExecute(): RDD[InternalRow] = {
-    doExecuteColumnar().map(cb => new FakeRow(cb))
-  }
-
-  override def outputOrdering: Seq[SortOrder] = child match {
-    case aqe: AdaptiveSparkPlanExec => aqe.executedPlan.outputOrdering
-    case _ => child.outputOrdering
-  }
-
-  override protected def doExecuteColumnar(): RDD[ColumnarBatch] = {
-    if (child.supportsColumnar) {
-      child.executeColumnar()
-    } else {
-      val r2c = Transitions.toBatchPlan(child, BackendsApiManager.getSettings.primaryBatchType)
-      r2c.executeColumnar()
-    }
-  }
-
-  // For spark 3.2.
-  protected def withNewChildInternal(newChild: SparkPlan): FakeRowAdaptor =
-    copy(child = newChild)
-}
-
-case class MATERIALIZE_TAG()
-
-object GlutenWriterColumnarRules {
+object OmniGlutenWriterColumnarRules {
   // TODO: support ctas in Spark3.4, see https://github.com/apache/spark/pull/39220
   // TODO: support dynamic partition and bucket write
   //  1. pull out `Empty2Null` and required ordering to `WriteFilesExec`, see Spark3.4 `V1Writes`
@@ -105,27 +45,15 @@ object GlutenWriterColumnarRules {
     }
 
     cmd match {
-      case command: CreateDataSourceTableAsSelectCommand
-          if !BackendsApiManager.getSettings.skipNativeCtas(command) =>
-        command.table.provider.filter(GlutenFormatFactory.isRegistered)
-      case command: InsertIntoHadoopFsRelationCommand
-          if !BackendsApiManager.getSettings.skipNativeInsertInto(command) =>
+      case command: OmniInsertIntoHadoopFsRelationCommand =>
         command.fileFormat match {
           case register: DataSourceRegister
-              if GlutenFormatFactory.isRegistered(register.shortName()) =>
+            if GlutenFormatFactory.isRegistered(register.shortName()) =>
             Some(register.shortName())
           case _ => None
         }
-      case command: InsertIntoHiveDirCommand =>
-        command.storage.outputFormat
-          .flatMap(formatMapping.get)
-          .filter(GlutenFormatFactory.isRegistered)
-      case command: InsertIntoHiveTable =>
+      case command: OmniInsertIntoHiveTable =>
         command.table.storage.outputFormat
-          .flatMap(formatMapping.get)
-          .filter(GlutenFormatFactory.isRegistered)
-      case command: CreateHiveTableAsSelectCommand =>
-        command.tableDesc.storage.outputFormat
           .flatMap(formatMapping.get)
           .filter(GlutenFormatFactory.isRegistered)
       case _ =>
@@ -139,12 +67,12 @@ object GlutenWriterColumnarRules {
 
     override def apply(p: SparkPlan): SparkPlan = p match {
       case rc @ AppendDataExec(_, _, write)
-          if write.getClass.getName == NOOP_WRITE &&
-            BackendsApiManager.getSettings.enableNativeWriteFiles() =>
+        if write.getClass.getName == NOOP_WRITE &&
+          BackendsApiManager.getSettings.enableNativeWriteFiles() =>
         injectFakeRowAdaptor(rc, rc.child)
       case rc @ OverwriteByExpressionExec(_, _, write)
-          if write.getClass.getName == NOOP_WRITE &&
-            BackendsApiManager.getSettings.enableNativeWriteFiles() =>
+        if write.getClass.getName == NOOP_WRITE &&
+          BackendsApiManager.getSettings.enableNativeWriteFiles() =>
         injectFakeRowAdaptor(rc, rc.child)
       case rc @ DataWritingCommandExec(cmd, child) =>
         // The same thread can set these properties in the last query submission.

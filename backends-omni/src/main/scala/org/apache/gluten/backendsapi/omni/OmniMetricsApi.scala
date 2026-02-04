@@ -70,7 +70,7 @@ class OmniMetricsApiImpl extends MetricsApi with Logging {
       "rawInputBytes" -> SQLMetrics.createSizeMetric(sparkContext, "number of raw input bytes"),
       "outputVectors" -> SQLMetrics.createMetric(sparkContext, "number of output vecBatches"),
       "outputBytes" -> SQLMetrics.createSizeMetric(sparkContext, "number of output bytes"),
-      "scanTime" -> SQLMetrics.createNanoTimingMetric(sparkContext, "time of scan"),
+      "scanTime" -> SQLMetrics.createTimingMetric(sparkContext, "time of scan"),
       "wallNanos" -> SQLMetrics.createNanoTimingMetric(sparkContext, "time of scan and filter"),
       "cpuCount" -> SQLMetrics.createMetric(sparkContext, "cpu wall time count"),
       "peakMemoryBytes" -> SQLMetrics.createSizeMetric(sparkContext, "peak memory bytes"),

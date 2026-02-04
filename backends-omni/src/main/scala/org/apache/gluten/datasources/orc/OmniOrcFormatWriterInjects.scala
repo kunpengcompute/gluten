@@ -14,41 +14,63 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.spark.sql.execution.datasources
+package org.apache.gluten.datasources
 
-import org.apache.gluten.execution.{ProjectExecTransformer, SortExecTransformer, TransformSupport, WholeStageTransformer}
-import org.apache.gluten.execution.datasource.GlutenFormatWriterInjects
-import org.apache.gluten.extension.columnar.heuristic.HeuristicTransform
-
-import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.catalyst.InternalRow
+import org.apache.gluten.datasources.orc.OmniOrcOutputWriter
+import org.apache.gluten.execution.RowToColumnarExecBase
+import org.apache.gluten.execution.{ProjectExecTransformer, SortExecTransformer, WholeStageTransformer}
+import org.apache.hadoop.fs.FileStatus
+import org.apache.hadoop.mapreduce.TaskAttemptContext
+import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.execution.{ColumnarCollapseTransformStages, SparkPlan}
 import org.apache.spark.sql.execution.ColumnarCollapseTransformStages.transformStageCounter
+import org.apache.spark.sql.execution.datasources._
+import org.apache.spark.sql.execution.datasources.orc.OrcUtils
+import org.apache.spark.sql.types.StructType
 
-trait GlutenFormatWriterInjectsBase extends GlutenFormatWriterInjects {
-  protected lazy val transform = HeuristicTransform.static()
+import java.{util => ju}
 
-  /**
-   * FileFormatWriter wraps some Project & Sort on the top of the original output spark plan, we
-   * need to replace them with Columnar version
-   * @param plan
-   *   must be a FakeRowAdaptor
-   * @return
-   */
-  override def executeWriterWrappedSparkPlan(plan: SparkPlan): RDD[InternalRow] = {
+class OmniOrcFormatWriterInjects extends GlutenFormatWriterInjectsBase {
+
+
+  override def nativeConf(
+                           options: Map[String, String],
+                           compressionCodec: String): java.util.Map[String, String] = ju.Collections.emptyMap()
+
+  override def formatName: String = "orc"
+
+  override def createOutputWriter(
+                                   outputPath: String,
+                                   dataSchema: StructType,
+                                   context: TaskAttemptContext,
+                                   nativeConf: ju.Map[String, String]): OutputWriter = {
+    new OmniOrcOutputWriter(outputPath, dataSchema, context)
+  }
+
+  override def inferSchema(
+                            sparkSession: SparkSession,
+                            options: Map[String, String],
+                            files: Seq[FileStatus]): Option[StructType] = {
+    OrcUtils.inferSchema(sparkSession, files, options)
+  }
+
+  def execWriterWrappedSparkPlan(plan: SparkPlan): SparkPlan = {
     if (plan.isInstanceOf[FakeRowAdaptor]) {
       // here, the FakeRowAdaptor is simply a R2C converter
-      return plan.execute()
+      return plan
     }
 
     // FIXME: HeuristicTransform is costly. Re-applying it may cause performance issues.
-    val transformed = transform(plan)
-
-    if (!transformed.isInstanceOf[TransformSupport]) {
-      throw new IllegalStateException(
-        "Cannot transform the SparkPlans wrapped by FileFormatWriter, " +
-          "consider disabling native writer to workaround this issue.")
+    val transformed = plan match {
+      case rowToColumnarExecBase: RowToColumnarExecBase => plan
+      case _ => transform(plan)
     }
+    //
+    //    if (!transformed.isInstanceOf[TransformSupport]) {
+    //      throw new IllegalStateException(
+    //        "Cannot transform the SparkPlans wrapped by FileFormatWriter, " +
+    //          "consider disabling native writer to workaround this issue.")
+    //    }
 
     def injectAdapter(p: SparkPlan): SparkPlan = p match {
       case p: ProjectExecTransformer => p.mapChildren(injectAdapter)
@@ -66,6 +88,6 @@ trait GlutenFormatWriterInjectsBase extends GlutenFormatWriterInjects {
     val transformedWithAdapter = injectAdapter(transformed)
     val wst = WholeStageTransformer(transformedWithAdapter, materializeInput = true)(
       transformStageCounter.incrementAndGet())
-    FakeRowAdaptor(wst).execute()
+    FakeRowAdaptor(wst)
   }
 }

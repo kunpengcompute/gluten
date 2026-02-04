@@ -38,6 +38,7 @@ std::vector<type::DataTypePtr> SubstraitParser::ParseNamedStruct(
 type::DataTypePtr SubstraitParser::ParseType(const ::substrait::Type &substraitType, bool asLowerCase, bool isNest)
 {
     switch (substraitType.kind_case()) {
+        case ::substrait::Type::KindCase::kNothing:
         case ::substrait::Type::KindCase::kBool:
             return type::BooleanType();
         case ::substrait::Type::KindCase::kI16:
@@ -73,6 +74,10 @@ type::DataTypePtr SubstraitParser::ParseType(const ::substrait::Type &substraitT
                 types.emplace_back(ParseType(structType, asLowerCase, true));
             }
             return std::make_shared<type::RowType>(types);
+        }
+        case ::substrait::Type::KindCase::kList: {
+            const auto& fieldType = substraitType.list().type();
+            return std::make_shared<type::ArrayType>(ParseType(fieldType, asLowerCase));
         }
         default:
             OMNI_THROW("Substrait Error:", "Parsing for Substrait type not supported: {}", substraitType.DebugString());
