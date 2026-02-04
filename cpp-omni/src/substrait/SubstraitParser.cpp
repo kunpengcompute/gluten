@@ -494,6 +494,8 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"min_by", {FUNCTION_OMNI_EXPR_TYPE, "min_by"}},
     {"max_by", {FUNCTION_OMNI_EXPR_TYPE, "max_by"}},
     {"transform", {FUNCTION_OMNI_EXPR_TYPE, "transform"}},
+    {"transform_keys", {FUNCTION_OMNI_EXPR_TYPE, "transform_keys"}},
+    {"transform_values", {FUNCTION_OMNI_EXPR_TYPE, "transform_values"}},
     {"lambdafunction", {FUNCTION_OMNI_EXPR_TYPE, "lambdafunction"}},
     {"namedlambdavariable", {FUNCTION_OMNI_EXPR_TYPE, "namedlambdavariable"}},
     {"map_from_arrays", {FUNCTION_OMNI_EXPR_TYPE, "map_from_arrays"}},
