@@ -536,5 +536,6 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"power", {FUNCTION_OMNI_EXPR_TYPE, "power"}},
     {"rint", {FUNCTION_OMNI_EXPR_TYPE, "rint"}},
     {"round", {FUNCTION_OMNI_EXPR_TYPE, "round"}},
+    {"flatten", {FUNCTION_OMNI_EXPR_TYPE, "flatten"}}
 };
 } // namespace omniruntime
