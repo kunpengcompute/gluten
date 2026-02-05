@@ -454,6 +454,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"modulus", {BINARY_OMNI_EXPR_TYPE, "MODULUS"}},
     {"strpos", {FUNCTION_OMNI_EXPR_TYPE, "instr"}},
     {"greatest", {FUNCTION_OMNI_EXPR_TYPE, "Greatest"}},
+    {"least", {FUNCTION_OMNI_EXPR_TYPE, "Least"}},
     {"contains", {FUNCTION_OMNI_EXPR_TYPE, "Contains"}},
     {"locate", {FUNCTION_OMNI_EXPR_TYPE, "locate"}},
     {"position", {FUNCTION_OMNI_EXPR_TYPE, "position"}},
@@ -546,6 +547,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"power", {FUNCTION_OMNI_EXPR_TYPE, "power"}},
     {"rint", {FUNCTION_OMNI_EXPR_TYPE, "rint"}},
     {"round", {FUNCTION_OMNI_EXPR_TYPE, "round"}},
-    {"flatten", {FUNCTION_OMNI_EXPR_TYPE, "flatten"}}
+    {"flatten", {FUNCTION_OMNI_EXPR_TYPE, "flatten"}},
+     {"hex", {FUNCTION_OMNI_EXPR_TYPE, "hex"}},
 };
 } // namespace omniruntime
