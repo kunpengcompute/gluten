@@ -376,6 +376,12 @@ op::FunctionType SubstraitParser::ParseFunctionType(
         return op::OMNI_AGGREGATION_TYPE_FIRST_IGNORENULL;
     } else if (funcName == "stddev_samp") {
         return op::OMNI_AGGREGATION_TYPE_SAMP;
+    } else if (funcName == "stddev_pop") {
+        return op::OMNI_AGGREGATION_TYPE_STD_POP;
+    } else if (funcName == "var_samp") {
+        return op::OMNI_AGGREGATION_TYPE_VAR_SAMP;
+    } else if (funcName == "var_pop") {
+        return op::OMNI_AGGREGATION_TYPE_VAR_POP;
     } else if (funcName == "first") {
         return op::OMNI_AGGREGATION_TYPE_FIRST_INCLUDENULL;
     } else if (funcName == "rank") {
@@ -448,6 +454,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"modulus", {BINARY_OMNI_EXPR_TYPE, "MODULUS"}},
     {"strpos", {FUNCTION_OMNI_EXPR_TYPE, "instr"}},
     {"greatest", {FUNCTION_OMNI_EXPR_TYPE, "Greatest"}},
+    {"least", {FUNCTION_OMNI_EXPR_TYPE, "Least"}},
     {"contains", {FUNCTION_OMNI_EXPR_TYPE, "Contains"}},
     {"locate", {FUNCTION_OMNI_EXPR_TYPE, "locate"}},
     {"position", {FUNCTION_OMNI_EXPR_TYPE, "position"}},
@@ -475,6 +482,9 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"from_unixtime", {FUNCTION_OMNI_EXPR_TYPE, "from_unixtime"}},
     {"first_ignore_null", {FUNCTION_OMNI_EXPR_TYPE, "first_ignore_null"}},
     {"stddev_samp", {FUNCTION_OMNI_EXPR_TYPE, "stddev_samp"}},
+    {"stddev_pop", {FUNCTION_OMNI_EXPR_TYPE, "stddev_samp"}},
+    {"var_samp", {FUNCTION_OMNI_EXPR_TYPE, "var_samp"}},
+    {"var_pop", {FUNCTION_OMNI_EXPR_TYPE, "var_pop"}},
     {"date_add", {FUNCTION_OMNI_EXPR_TYPE, "date_add"}},
     {"datediff", {FUNCTION_OMNI_EXPR_TYPE, "date_diff"}},
     {"date_format", {FUNCTION_OMNI_EXPR_TYPE, "DateFormat"}},
@@ -540,5 +550,6 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"flatten", {FUNCTION_OMNI_EXPR_TYPE, "flatten"}},
     {"rand", {FUNCTION_OMNI_EXPR_TYPE, "rand"}},
     {"random", {FUNCTION_OMNI_EXPR_TYPE, "random"}},
+    {"hex", {FUNCTION_OMNI_EXPR_TYPE, "hex"}},
 };
 } // namespace omniruntime

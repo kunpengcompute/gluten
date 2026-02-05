@@ -33,6 +33,30 @@ struct StddevSampNameStruct
     static constexpr auto spark_name = "stddev_samp";
     static constexpr auto ch_name = "stddev_samp";
 };
+
+struct StddevPopNameStruct
+{
+    static constexpr auto spark_name = "stddev_pop";
+    static constexpr auto ch_name = "stddev_pop";
+};
+
+struct VarianceSampNameStruct
+{
+    static constexpr auto spark_name = "var_samp";
+    static constexpr auto ch_name = "var_samp";
+};
+
+struct VarianceNameStruct
+{
+    static constexpr auto spark_name = "var";
+    static constexpr auto ch_name = "var";
+};
+
+struct VariancePopNameStruct
+{
+    static constexpr auto spark_name = "var_pop";
+    static constexpr auto ch_name = "var_pop";
+};
 template <typename NameStruct>
 class AggregateFunctionParserStddev final : public AggregateFunctionParser
 {
@@ -67,4 +91,8 @@ public:
 
 static const AggregateFunctionParserRegister<AggregateFunctionParserStddev<StddevNameStruct>> registerer_stddev;
 static const AggregateFunctionParserRegister<AggregateFunctionParserStddev<StddevSampNameStruct>> registerer_stddev_samp;
+static const AggregateFunctionParserRegister<AggregateFunctionParserStddev<StddevPopNameStruct>> registerer_stddev_pop;
+static const AggregateFunctionParserRegister<AggregateFunctionParserStddev<VarianceSampNameStruct>> registerer_var_samp;
+static const AggregateFunctionParserRegister<AggregateFunctionParserStddev<VarianceNameStruct>> registerer_var;
+static const AggregateFunctionParserRegister<AggregateFunctionParserStddev<VariancePopNameStruct>> registerer_var_pop;
 }
