@@ -194,6 +194,10 @@ bool SubstraitToOmniPlanValidator::ValidateScalarFunction(
         return false;
     }
     if (kRegexFunctions.find(funcName) != kRegexFunctions.end()) {
+        // LIKE:  OmniOperator supports both literal and non-literal pattern (column/expr); skip strict literal check
+        if (funcName == "like") {
+            return true;
+        }
         return ValidateRegexExpr(funcName, scalarFunction);
     }
     return true;

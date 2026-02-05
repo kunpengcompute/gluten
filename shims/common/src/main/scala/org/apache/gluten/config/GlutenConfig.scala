@@ -2624,7 +2624,7 @@ object GlutenConfig {
     .internal()
     .doc("exclude scan exec from collapsed stage")
     .booleanConf
-    .createWithDefault(true)
+    .createWithDefault(false)
 
   val COLUMNAR_OMNI_ENABLE_DELAY_CARTESIAN_PRODUCT = buildConf("spark.gluten.sql.columnar.backend.omni.enableDelayCartesianProduct.enabled")
     .internal()

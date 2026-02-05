@@ -1041,6 +1041,11 @@ object OmniExpressionAdaptor extends Logging {
         checkFirstParamType(agg)
         OMNI_AGGREGATION_TYPE_FIRST_INCLUDENULL
       case _: BloomFilterAggregate => OMNI_AGGREGATION_TYPE_BLOOM_FILTER
+      case _: BitAndAgg => OMNI_AGGREGATION_TYPE_BIT_AND
+      case _: BitOrAgg => OMNI_AGGREGATION_TYPE_BIT_OR
+      case _: BitXorAgg => OMNI_AGGREGATION_TYPE_BIT_XOR
+      case _: MinBy => OMNI_AGGREGATION_TYPE_MIN_BY
+      case _: MaxBy => OMNI_AGGREGATION_TYPE_MAX_BY
       case _ => throw new UnsupportedOperationException(s"Unsupported aggregate function: $agg")
     }
   }
@@ -1049,6 +1054,7 @@ object OmniExpressionAdaptor extends Logging {
     window match {
       case Rank(_) => OMNI_WINDOW_TYPE_RANK
       case RowNumber() => OMNI_WINDOW_TYPE_ROW_NUMBER
+      case PercentRank(_) => OMNI_WINDOW_TYPE_PERCENT_RANK
       case _ => throw new UnsupportedOperationException(s"Unsupported window function: $window")
     }
   }
@@ -1194,7 +1200,7 @@ object OmniExpressionAdaptor extends Logging {
       case StringType =>
         new VarcharDataType(getStringLength(metadata))
       case BinaryType =>
-        VarBinaryDataType.VARCHAR
+        new VarBinaryDataType(getStringLength(metadata))
       case DateType =>
         Date32DataType.DATE32
       case dt: DecimalType =>
@@ -1233,7 +1239,7 @@ object OmniExpressionAdaptor extends Logging {
       case StringType =>
         new VarcharDataType(getStringLength(metadata))
       case BinaryType =>
-        VarBinaryDataType.VARCHAR
+        new VarBinaryDataType(getStringLength(metadata))
       case DateType =>
         Date32DataType.DATE32
       case dt: DecimalType =>
@@ -1248,7 +1254,8 @@ object OmniExpressionAdaptor extends Logging {
         new MapDataType(sparkTypeToOmniTypeWithComplex(m.keyType), sparkTypeToOmniTypeWithComplex(m.valueType))
       case s: StructType =>
         val children = s.fields.map(f => sparkTypeToOmniTypeWithComplex(f.dataType, f.metadata))
-        new StructDataType(children)
+        val names = s.fields.map(_.name)
+        new StructDataType(children, names)
       case _ =>
         throw new UnsupportedOperationException(s"Unsupported datatype: $dataType")
     }

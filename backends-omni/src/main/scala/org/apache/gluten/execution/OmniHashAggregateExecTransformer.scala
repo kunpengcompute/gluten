@@ -120,8 +120,9 @@ case class OmniHashAggregateExecTransformer(
   protected def checkAggFuncSupport(agg: AggregateExpression,
                                              mode: AggregateMode): Boolean = {
     val alwaysSupported = Set(
-     classOf[Sum], classOf[Min], classOf[Max], classOf[Count],
+     classOf[Sum], classOf[Min], classOf[Max], classOf[Count], classOf[MinBy], classOf[MaxBy],
      classOf[Average], classOf[First], classOf[StddevSamp], classOf[BloomFilterAggregate],
+     classOf[BitAndAgg], classOf[BitOrAgg], classOf[BitXorAgg],
     )
 
     var completeOnlySupported = Set(

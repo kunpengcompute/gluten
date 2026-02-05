@@ -43,10 +43,15 @@ type::DataTypePtr SubstraitParser::ParseKStructType(const ::substrait::Type &sub
     const auto& substraitStruct = substraitType.struct_();
     const auto& structTypes = substraitStruct.types();
     std::vector<type::DataTypePtr> types;
+    std::vector<std::string> names;
+    names.reserve(structTypes.size());
     for (int i = 0; i < structTypes.size(); i++) {
         types.emplace_back(ParseType(structTypes[i], asLowerCase));
+        // Substrait Type::Struct doesn't carry field names. Generate stable
+        // ordinal-based names to avoid crashing when building ScanSpec.
+        names.emplace_back("field" + std::to_string(i));
     }
-    return std::make_shared<type::RowType>(types);
+    return std::make_shared<type::RowType>(std::move(types), std::move(names));
 }
 
 type::DataTypePtr SubstraitParser::ParseType(const ::substrait::Type &substraitType, bool asLowerCase, bool isNest)
@@ -375,10 +380,22 @@ op::FunctionType SubstraitParser::ParseFunctionType(
         return op::OMNI_AGGREGATION_TYPE_FIRST_INCLUDENULL;
     } else if (funcName == "rank") {
         return op::OMNI_WINDOW_TYPE_RANK;
+    } else if (funcName == "percent_rank") {
+        return op::OMNI_WINDOW_TYPE_PERCENT_RANK;
     } else if (funcName == "row_number") {
         return op::OMNI_WINDOW_TYPE_ROW_NUMBER;
     } else if (funcName == "bloom_filter_agg") {
         return op::OMNI_AGGREGATION_TYPE_BLOOM_FILTER;
+    } else if (funcName == "bit_and") {
+        return op::OMNI_AGGREGATION_TYPE_BIT_AND;
+    } else if (funcName == "bit_or") {
+        return op::OMNI_AGGREGATION_TYPE_BIT_OR;
+    } else if (funcName == "bit_xor") {
+        return op::OMNI_AGGREGATION_TYPE_BIT_XOR;
+    } else if (funcName == "min_by") {
+        return op::OMNI_AGGREGATION_TYPE_MIN_BY;
+    } else if (funcName == "max_by") {
+        return op::OMNI_AGGREGATION_TYPE_MAX_BY;
     } else {
         OMNI_THROW("Substrait Error:", "Unsupported aggregate or window function: {}", funcName);
     }
@@ -404,6 +421,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"lower", {FUNCTION_OMNI_EXPR_TYPE, "lower"}},
     {"upper", {FUNCTION_OMNI_EXPR_TYPE, "upper"}},
     {"char_length", {FUNCTION_OMNI_EXPR_TYPE, "length"}},
+    {"character_length", {FUNCTION_OMNI_EXPR_TYPE, "length"}},
     {"replace", {FUNCTION_OMNI_EXPR_TYPE, "replace"}},
     {"substring", {FUNCTION_OMNI_EXPR_TYPE, "substr"}},
     {"cast", {FUNCTION_OMNI_EXPR_TYPE, "CAST"}},
@@ -415,6 +433,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"size", {FUNCTION_OMNI_EXPR_TYPE, "size"}},
     {"element_at", {FUNCTION_OMNI_EXPR_TYPE, "element_at"}},
     {"split", {FUNCTION_OMNI_EXPR_TYPE, "split"}},
+    {"slice", {FUNCTION_OMNI_EXPR_TYPE, "slice"}},
 {"hive_string_string", {FUNCTION_OMNI_EXPR_TYPE, "hive_string_string"}},
     {"exp", {FUNCTION_OMNI_EXPR_TYPE, "exp"}},
     {"md5", {FUNCTION_OMNI_EXPR_TYPE, "Md5"}},
@@ -429,8 +448,15 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"strpos", {FUNCTION_OMNI_EXPR_TYPE, "instr"}},
     {"greatest", {FUNCTION_OMNI_EXPR_TYPE, "Greatest"}},
     {"contains", {FUNCTION_OMNI_EXPR_TYPE, "Contains"}},
+    {"locate", {FUNCTION_OMNI_EXPR_TYPE, "locate"}},
+    {"position", {FUNCTION_OMNI_EXPR_TYPE, "position"}},
+    {"ascii", {FUNCTION_OMNI_EXPR_TYPE, "ascii"}},
+    {"chr", {FUNCTION_OMNI_EXPR_TYPE, "chr"}},
+    {"char", {FUNCTION_OMNI_EXPR_TYPE, "char"}},
+    {"unbase64", {FUNCTION_OMNI_EXPR_TYPE, "unbase64"}},
     {"murmur3hash", {FUNCTION_OMNI_EXPR_TYPE, "mm3hash"}},
     {"rank", {FUNCTION_OMNI_EXPR_TYPE, "rank"}},
+    {"percent_rank", {FUNCTION_OMNI_EXPR_TYPE, "percent_rank"}},
     {"row_number", {FUNCTION_OMNI_EXPR_TYPE, "row_number"}},
     {"count", {FUNCTION_OMNI_EXPR_TYPE, "count"}},
     {"sum", {FUNCTION_OMNI_EXPR_TYPE, "sum"}},
@@ -451,8 +477,14 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"date_add", {FUNCTION_OMNI_EXPR_TYPE, "date_add"}},
     {"datediff", {FUNCTION_OMNI_EXPR_TYPE, "date_diff"}},
     {"date_format", {FUNCTION_OMNI_EXPR_TYPE, "DateFormat"}},
+    {"add_months", {FUNCTION_OMNI_EXPR_TYPE, "add_months"}},
     {"trunc", {FUNCTION_OMNI_EXPR_TYPE, "trunc_date"}},
     {"extract", {FUNCTION_OMNI_EXPR_TYPE, "extract"}},
+    {"minute", {FUNCTION_OMNI_EXPR_TYPE, "minute"}},
+    {"second", {FUNCTION_OMNI_EXPR_TYPE, "second"}},
+    {"month", {FUNCTION_OMNI_EXPR_TYPE, "month"}},
+    {"quarter", {FUNCTION_OMNI_EXPR_TYPE, "quarter"}},
+    {"year", {FUNCTION_OMNI_EXPR_TYPE, "year"}},
     {"trim", {FUNCTION_OMNI_EXPR_TYPE, "Trim"}},
     {"ltrim", {FUNCTION_OMNI_EXPR_TYPE, "LTrim"}},
     {"rtrim", {FUNCTION_OMNI_EXPR_TYPE, "RTrim"}},
@@ -462,10 +494,17 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"might_contain", {FUNCTION_OMNI_EXPR_TYPE, "might_contain"}},
     {"bitwise_and", {FUNCTION_OMNI_EXPR_TYPE, "bitwise_and"}},
     {"bitwise_or", {FUNCTION_OMNI_EXPR_TYPE, "bitwise_or"}},
+    {"bitwise_xor", {FUNCTION_OMNI_EXPR_TYPE, "bitwise_xor"}},
+    {"bitwise_not", {FUNCTION_OMNI_EXPR_TYPE, "bitwise_not"}},
+    {"bit_get", {FUNCTION_OMNI_EXPR_TYPE, "bit_get"}},
     {"shiftleft", {FUNCTION_OMNI_EXPR_TYPE, "shiftleft"}},
     {"shiftright", {FUNCTION_OMNI_EXPR_TYPE, "shiftright"}},
     {"negative", {FUNCTION_OMNI_EXPR_TYPE, "negative"}},
+    {"min_by", {FUNCTION_OMNI_EXPR_TYPE, "min_by"}},
+    {"max_by", {FUNCTION_OMNI_EXPR_TYPE, "max_by"}},
     {"transform", {FUNCTION_OMNI_EXPR_TYPE, "transform"}},
+    {"transform_keys", {FUNCTION_OMNI_EXPR_TYPE, "transform_keys"}},
+    {"transform_values", {FUNCTION_OMNI_EXPR_TYPE, "transform_values"}},
     {"lambdafunction", {FUNCTION_OMNI_EXPR_TYPE, "lambdafunction"}},
     {"namedlambdavariable", {FUNCTION_OMNI_EXPR_TYPE, "namedlambdavariable"}},
     {"map_from_arrays", {FUNCTION_OMNI_EXPR_TYPE, "map_from_arrays"}},
@@ -479,9 +518,26 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"atan2", {FUNCTION_OMNI_EXPR_TYPE, "atan2"}},
     {"cos", {FUNCTION_OMNI_EXPR_TYPE, "cos"}},
     {"cosh", {FUNCTION_OMNI_EXPR_TYPE, "cosh"}},
+    {"bit_and", {FUNCTION_OMNI_EXPR_TYPE, "bit_and"}},
+    {"bit_or", {FUNCTION_OMNI_EXPR_TYPE, "bit_or"}},
+    {"bit_xor", {FUNCTION_OMNI_EXPR_TYPE, "bit_xor"}},
     {"cbrt", {FUNCTION_OMNI_EXPR_TYPE, "cbrt"}},
     {"ceil", {FUNCTION_OMNI_EXPR_TYPE, "ceil"}},
+    {"log1p", {FUNCTION_OMNI_EXPR_TYPE, "log1p"}},
+    {"log2", {FUNCTION_OMNI_EXPR_TYPE, "log2"}},
+    {"log10", {FUNCTION_OMNI_EXPR_TYPE, "log10"}},
+    {"log", {FUNCTION_OMNI_EXPR_TYPE, "log"}},
+    {"sign", {FUNCTION_OMNI_EXPR_TYPE, "sign"}},
+    {"sinh", {FUNCTION_OMNI_EXPR_TYPE, "sinh"}},
+    {"sqrt", {FUNCTION_OMNI_EXPR_TYPE, "sqrt"}},
+    {"sec", {FUNCTION_OMNI_EXPR_TYPE, "sec"}},
+    {"pmod", {FUNCTION_OMNI_EXPR_TYPE, "pmod"}},
+    {"positive", {FUNCTION_OMNI_EXPR_TYPE, "positive"}},
+    {"power", {FUNCTION_OMNI_EXPR_TYPE, "power"}},
+    {"rint", {FUNCTION_OMNI_EXPR_TYPE, "rint"}},
+    {"round", {FUNCTION_OMNI_EXPR_TYPE, "round"}},
     {"timestamp_micros", {FUNCTION_OMNI_EXPR_TYPE, "timestamp_micros"}},
     {"timestamp_millis", {FUNCTION_OMNI_EXPR_TYPE, "timestamp_millis"}},
     {"timestamp_seconds", {FUNCTION_OMNI_EXPR_TYPE, "timestamp_seconds"}}};
+};
 } // namespace omniruntime

@@ -22,7 +22,7 @@ import org.apache.gluten.config.GlutenConfig
 import org.apache.gluten.extension.columnar._
 import org.apache.gluten.extension.columnar.MiscColumnarRules.{RemoveGlutenTableCacheColumnarToRow, RemoveTopmostColumnarToRow}
 import org.apache.gluten.extension.columnar.heuristic.{ExpandFallbackPolicy, HeuristicTransform}
-import org.apache.gluten.extension.columnar.offload.{OffloadExchange, OffloadJoin, OffloadOthers}
+import org.apache.gluten.extension.columnar.offload.{OffloadExchange, OffloadJoin, OffloadOthers, OffloadWrite}
 import org.apache.gluten.extension.columnar.rewrite._
 import org.apache.gluten.extension.columnar.transition.{InsertTransitions, RemoveTransitions}
 import org.apache.gluten.extension.columnar.validator.{Validator, Validators}
@@ -31,6 +31,7 @@ import org.apache.gluten.extension.injector.GlutenInjector.{LegacyInjector, RasI
 import org.apache.gluten.extension.RewriteAQEShuffleRead
 import org.apache.spark.sql.catalyst.optimizer.{CombineJoinedAggregates, DedupLeftSemiJoin, MergeSubqueryFilters, PushOrderedLimitThroughAgg, ReorderJoinEnhances, RewriteSelfJoinInInPredicate, RollupOptimization, ShuffleJoinStrategy, RewriteTopNSort, CombineWindowSort, OmniRewriteSubqueryBroadcast, CombineProject}
 import org.apache.gluten.extension.{FallbackBroadcastHashJoin, FallbackBroadcastHashJoinPrepQueryStage, PushDownFilterToOmniScan, RewriteAQEShuffleRead, OmniRewriteJoin}
+import org.apache.gluten.sql.shims.SparkShimLoader
 import org.apache.spark.sql.execution.{ColumnarCollapseTransformStages, GlutenAutoAdjustStageResourceProfile, GlutenFallbackReporter}
 
 class OmniRuleApi extends RuleApi {
@@ -77,7 +78,7 @@ object OmniRuleApi {
 //    injector.injectPreTransform(c => ArrowScanReplaceRule.apply(c.session))
 
     // Legacy: The legacy transform rule.
-    val offloads = Seq(OffloadOthers(), OffloadExchange(), OffloadJoin())
+    val offloads = Seq(OffloadOthers(), OffloadExchange(), OffloadJoin(), OffloadWrite())
     val validatorBuilder: GlutenConfig => Validator = conf =>
       Validators.newValidator(conf, offloads)
     val rewrites =
@@ -110,9 +111,9 @@ object OmniRuleApi {
 
     // Gluten columnar: Post rules.
     injector.injectPost(c => RemoveTopmostColumnarToRow(c.session, c.ac.isAdaptiveContext()))
-//    SparkShimLoader.getSparkShims
-//      .getExtendedColumnarPostRules()
-//      .foreach(each => injector.injectPost(c => each(c.session)))
+    SparkShimLoader.getSparkShims
+      .getExtendedColumnarPostRules()
+      .foreach(each => injector.injectPost(c => each(c.session)))
     injector.injectPost(c => ColumnarCollapseTransformStages(c.glutenConf))
 
     // Gluten columnar: Final rules.
