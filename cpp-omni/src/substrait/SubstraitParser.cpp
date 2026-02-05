@@ -548,6 +548,8 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"rint", {FUNCTION_OMNI_EXPR_TYPE, "rint"}},
     {"round", {FUNCTION_OMNI_EXPR_TYPE, "round"}},
     {"flatten", {FUNCTION_OMNI_EXPR_TYPE, "flatten"}},
-     {"hex", {FUNCTION_OMNI_EXPR_TYPE, "hex"}},
+    {"rand", {FUNCTION_OMNI_EXPR_TYPE, "rand"}},
+    {"random", {FUNCTION_OMNI_EXPR_TYPE, "random"}},
+    {"hex", {FUNCTION_OMNI_EXPR_TYPE, "hex"}},
 };
 } // namespace omniruntime
