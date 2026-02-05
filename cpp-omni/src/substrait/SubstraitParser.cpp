@@ -538,6 +538,6 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"round", {FUNCTION_OMNI_EXPR_TYPE, "round"}},
     {"timestamp_micros", {FUNCTION_OMNI_EXPR_TYPE, "timestamp_micros"}},
     {"timestamp_millis", {FUNCTION_OMNI_EXPR_TYPE, "timestamp_millis"}},
-    {"timestamp_seconds", {FUNCTION_OMNI_EXPR_TYPE, "timestamp_seconds"}}};
+    {"timestamp_seconds", {FUNCTION_OMNI_EXPR_TYPE, "timestamp_seconds"}}
 };
 } // namespace omniruntime
