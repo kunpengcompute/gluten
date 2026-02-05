@@ -1026,6 +1026,9 @@ object OmniExpressionAdaptor extends Logging {
         OMNI_AGGREGATION_TYPE_AVG
       case Min(_) => OMNI_AGGREGATION_TYPE_MIN
       case StddevSamp(_, _) => OMNI_AGGREGATION_TYPE_SAMP
+      case StddevPop(_, _) => OMNI_AGGREGATION_TYPE_STD_POP
+      case VarianceSamp(_, _) => OMNI_AGGREGATION_TYPE_VAR_POP
+      case VariancePop(_, _) => OMNI_AGGREGATION_TYPE_VAR_SAMP
       case Count(Literal(1, IntegerType) :: Nil) | Count(ArrayBuffer(Literal(1, IntegerType))) =>
         if (isMergeCount) {
           OMNI_AGGREGATION_TYPE_COUNT_COLUMN

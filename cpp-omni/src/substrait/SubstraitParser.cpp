@@ -376,6 +376,12 @@ op::FunctionType SubstraitParser::ParseFunctionType(
         return op::OMNI_AGGREGATION_TYPE_FIRST_IGNORENULL;
     } else if (funcName == "stddev_samp") {
         return op::OMNI_AGGREGATION_TYPE_SAMP;
+    } else if (funcName == "stddev_pop") {
+        return op::OMNI_AGGREGATION_TYPE_STD_POP;
+    } else if (funcName == "var_samp") {
+        return op::OMNI_AGGREGATION_TYPE_VAR_SAMP;
+    } else if (funcName == "var_pop") {
+        return op::OMNI_AGGREGATION_TYPE_VAR_POP;
     } else if (funcName == "first") {
         return op::OMNI_AGGREGATION_TYPE_FIRST_INCLUDENULL;
     } else if (funcName == "rank") {
@@ -474,6 +480,9 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"from_unixtime", {FUNCTION_OMNI_EXPR_TYPE, "from_unixtime"}},
     {"first_ignore_null", {FUNCTION_OMNI_EXPR_TYPE, "first_ignore_null"}},
     {"stddev_samp", {FUNCTION_OMNI_EXPR_TYPE, "stddev_samp"}},
+    {"stddev_pop", {FUNCTION_OMNI_EXPR_TYPE, "stddev_samp"}},
+    {"var_samp", {FUNCTION_OMNI_EXPR_TYPE, "var_samp"}},
+    {"var_pop", {FUNCTION_OMNI_EXPR_TYPE, "var_pop"}},
     {"date_add", {FUNCTION_OMNI_EXPR_TYPE, "date_add"}},
     {"datediff", {FUNCTION_OMNI_EXPR_TYPE, "date_diff"}},
     {"date_format", {FUNCTION_OMNI_EXPR_TYPE, "DateFormat"}},
