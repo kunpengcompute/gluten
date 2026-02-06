@@ -552,6 +552,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"log", {FUNCTION_OMNI_EXPR_TYPE, "log"}},
     {"sign", {FUNCTION_OMNI_EXPR_TYPE, "sign"}},
     {"sinh", {FUNCTION_OMNI_EXPR_TYPE, "sinh"}},
+    {"hypot", {FUNCTION_OMNI_EXPR_TYPE, "hypot"}},
     {"sqrt", {FUNCTION_OMNI_EXPR_TYPE, "sqrt"}},
     {"sec", {FUNCTION_OMNI_EXPR_TYPE, "sec"}},
     {"pmod", {FUNCTION_OMNI_EXPR_TYPE, "pmod"}},
@@ -577,5 +578,13 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"array_min", {FUNCTION_OMNI_EXPR_TYPE, "array_min"}},
     {"coalesce", {FUNCTION_OMNI_EXPR_TYPE, "coalesce"}},
     {"if", {FUNCTION_OMNI_EXPR_TYPE, "if"}},
+    {"flatten", {FUNCTION_OMNI_EXPR_TYPE, "flatten"}},
+    {"div", {FUNCTION_OMNI_EXPR_TYPE, "div"}},
+    {"checked_div", {FUNCTION_OMNI_EXPR_TYPE, "div"}},
+    {"expm1", {FUNCTION_OMNI_EXPR_TYPE, "expm1"}},
+    {"unhex", {FUNCTION_OMNI_EXPR_TYPE, "unhex"}},
+    {"width_bucket", {FUNCTION_OMNI_EXPR_TYPE, "width_bucket"}},
+    {"spark_partition_id", {FUNCTION_OMNI_EXPR_TYPE, "spark_partition_id"}},
+    {"uuid", {FUNCTION_OMNI_EXPR_TYPE, "uuid"}}
 };
 } // namespace omniruntime

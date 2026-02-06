@@ -603,6 +603,14 @@ object ExpressionConverter extends SQLConfHelper with Logging {
           tryEval,
           ExpressionNames.CHECKED_DIVIDE
         )
+      case i: IntegralDivide =>
+        BackendsApiManager.getSparkPlanExecApiInstance.genArithmeticTransformer(
+          substraitExprName,
+          replaceWithExpressionTransformer0(i.left, attributeSeq, expressionsMap),
+          replaceWithExpressionTransformer0(i.right, attributeSeq, expressionsMap),
+          i,
+          ExpressionNames.CHECKED_DIV
+        )
       case tryEval @ TryEval(a: Multiply) =>
         BackendsApiManager.getSparkPlanExecApiInstance.genTryArithmeticTransformer(
           substraitExprName,

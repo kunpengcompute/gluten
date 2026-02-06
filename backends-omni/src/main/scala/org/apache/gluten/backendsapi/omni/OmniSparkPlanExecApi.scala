@@ -19,7 +19,7 @@ package org.apache.gluten.backendsapi.omni
 import org.apache.gluten.backendsapi.SparkPlanExecApi
 import org.apache.gluten.config.GlutenConfig
 import org.apache.gluten.execution._
-import org.apache.gluten.expression.{ExpressionConverter, ExpressionMappings, ExpressionNames, ExpressionTransformer, GenericExpressionTransformer, OmniAliasTransformer, OmniFromUnixTimeTransformer, OmniGetStructFieldTransformer, OmniHashExpressionTransformer, OmniUnixTimestampTransformer, Sig}
+import org.apache.gluten.expression.{ExpressionConverter, ExpressionMappings, ExpressionNames, ExpressionTransformer, GenericExpressionTransformer, LiteralTransformer, OmniAliasTransformer, OmniFromUnixTimeTransformer, OmniGetStructFieldTransformer, OmniHashExpressionTransformer, OmniUnixTimestampTransformer, Sig}
 import org.apache.gluten.extension.columnar.FallbackTags
 import org.apache.spark.{ShuffleDependency, SparkException}
 import org.apache.spark.rdd.RDD
@@ -27,7 +27,7 @@ import org.apache.spark.serializer.Serializer
 import org.apache.spark.shuffle.{GenShuffleWriterParameters, GlutenShuffleWriterWrapper, OmniColumnarBatchSerializer, OmniColumnarShuffleWriter, OmniShuffleUtil}
 import org.apache.spark.sql.catalyst.catalog.BucketSpec
 import org.apache.spark.sql.catalyst.catalog.CatalogTypes.TablePartitionSpec
-import org.apache.spark.sql.catalyst.expressions.{ArrayTransform, Attribute, AttributeReference, BloomFilterMightContain, Cast, DateDiff, ElementAt, Expression, FromUnixTime, Generator, GetMapValue, GetStructField, HashExpression, LambdaFunction, Like, Md5, NamedExpression, PosExplode, PythonUDF, SortOrder, UnixTimestamp}
+import org.apache.spark.sql.catalyst.expressions.{ArrayTransform, Attribute, AttributeReference, BloomFilterMightContain, Cast, DateDiff, ElementAt, Expression, FromUnixTime, Generator, GetMapValue, GetStructField, HashExpression, LambdaFunction, Like, Md5, NamedExpression, PosExplode, PythonUDF, SortOrder, UnixTimestamp, Uuid}
 import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, BloomFilterAggregate, MaxBy, MinBy, BitAndAgg, BitOrAgg, BitXorAgg}
 import org.apache.spark.sql.catalyst.optimizer.BuildSide
 import org.apache.spark.sql.catalyst.plans.JoinType
@@ -488,6 +488,16 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
     GenericExpressionTransformer(
       substraitExprName,
       Seq(left, right),
+      original)
+  }
+
+  /** Transform Uuid to Substrait. Pass the random seed as an argument. */
+  override def genUuidTransformer(
+      substraitExprName: String,
+      original: Uuid): ExpressionTransformer = {
+    GenericExpressionTransformer(
+      substraitExprName,
+      Seq(LiteralTransformer(original.randomSeed.get)),
       original)
   }
 
