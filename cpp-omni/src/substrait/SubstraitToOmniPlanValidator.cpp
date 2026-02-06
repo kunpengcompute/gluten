@@ -224,13 +224,73 @@ bool SubstraitToOmniPlanValidator::ValidateLiteral(
     return true;
 }
 
+bool SubstraitToOmniPlanValidator::IsAllowedCast(const DataTypePtr &fromType, const DataTypePtr &toType)
+{
+    // Currently cast is not allowed for various categories, code has a bunch of rules
+    // which define the cast categories and if we should offload to velox. Currently,
+    // the following categories are denied.
+    //
+    // 1. from/to isIntervalYearMonth is not allowed.
+    // 2. Date to most categories except few supported types is not allowed.
+    // 3. Timestamp to most categories except few supported types is not allowed.
+    // 4. Certain complex types are not allowed.
+
+    // Limited support for DATE to X.
+    if (fromType->GetId() == OMNI_DATE32 && !toType->GetId() == OMNI_TIMESTAMP && !toType->GetId() == OMNI_VARCHAR) {
+        return false;
+    }
+
+    // Limited support for Timestamp to X.
+    if (fromType->GetId() == OMNI_TIMESTAMP && !(toType->GetId() == OMNI_DATE32 || toType->GetId() == OMNI_VARCHAR)) {
+        return false;
+    }
+
+    // Limited support for X to Timestamp.
+    if (toType->GetId() == OMNI_TIMESTAMP) {
+        if (fromType->isDecimal()) {
+            return false;
+        }
+        if (fromType->GetId() == OMNI_DATE32) {
+            return true;
+        }
+        if (fromType->GetId() == OMNI_VARCHAR) {
+            return true;
+        }
+        if (fromType->GetId() == OMNI_BYTE || fromType->GetId() == OMNI_SHORT || fromType->GetId() == OMNI_INT ||
+            fromType->GetId() == OMNI_LONG || fromType->GetId() == OMNI_DOUBLE || fromType->GetId() == OMNI_FLOAT) {
+            return true;
+        }
+        return false;
+    }
+
+    // Limited support for Complex types.
+    if (fromType->GetId() == OMNI_ARRAY || fromType->GetId() == OMNI_MAP || fromType->GetId() == OMNI_ROW) {
+        return false;
+    }
+
+    if (fromType->GetId() == OMNI_VARBINARY && !toType->GetId() == OMNI_VARCHAR) {
+        return false;
+    }
+
+    return true;
+}
+
 bool SubstraitToOmniPlanValidator::ValidateCast(
     const ::substrait::Expression::Cast &castExpr, const DataTypesPtr &inputType)
 {
     if (!ValidateExpression(castExpr.input(), inputType)) {
         return false;
     }
-    return true;
+
+    const auto &toType = SubstraitParser::ParseType(castExpr.type());
+    auto input = exprConverter_->ToOmniExpr(castExpr.input(), inputType);
+    if (IsAllowedCast(input->dataType, toType)) {
+        return true;
+    }
+
+    LOG_VALIDATION_MSG(
+        "Casting from " + input->dataType->toString() + " to " + toType->toString() + " is not supported.");
+    return false;
 }
 
 bool SubstraitToOmniPlanValidator::ValidateIfThen(
