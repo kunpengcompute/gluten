@@ -51,7 +51,6 @@ case class OmniColumnarToRowExec(child: SparkPlan) extends ColumnarToRowExecBase
         case _: BinaryType =>
         case _: DecimalType =>
         case _: ArrayType =>
-        case _: MapType =>
         case _: StructType =>
         case YearMonthIntervalType.DEFAULT =>
         case _: NullType =>

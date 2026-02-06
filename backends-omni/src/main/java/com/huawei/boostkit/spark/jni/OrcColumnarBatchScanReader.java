@@ -24,11 +24,13 @@ import com.huawei.boostkit.spark.timestamp.JulianGregorianRebase;
 import com.huawei.boostkit.spark.timestamp.TimestampUtil;
 
 import nova.hetu.omniruntime.type.DataType;
+import nova.hetu.omniruntime.type.ArrayDataType;
 import nova.hetu.omniruntime.vector.BooleanVec;
 import nova.hetu.omniruntime.vector.Decimal128Vec;
 import nova.hetu.omniruntime.vector.DoubleVec;
 import nova.hetu.omniruntime.vector.IntVec;
 import nova.hetu.omniruntime.vector.LongVec;
+import nova.hetu.omniruntime.vector.ArrayVec;
 import nova.hetu.omniruntime.vector.ShortVec;
 import nova.hetu.omniruntime.vector.VarcharVec;
 import nova.hetu.omniruntime.vector.Vec;
@@ -71,6 +73,7 @@ import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.TimeZone;
 import java.util.regex.Matcher;
@@ -266,7 +269,7 @@ public class OrcColumnarBatchScanReader {
         }
     }
 
-    public int next(Vec[] vecList, int[] typeIds) {
+    public int next(Vec[] vecList, int[] typeIds, List<DataType> dataTypes) {
         long[] vecNativeIds = new long[typeIds.length];
         long rtn = jniReader.recordReaderNext(recordReader, batchReader, typeIds, vecNativeIds);
         if (rtn == 0) {
@@ -277,7 +280,7 @@ public class OrcColumnarBatchScanReader {
             if (colsToGet[i] != 0) {
                 continue;
             }
-            switch (DataType.DataTypeId.values()[typeIds[nativeGetId]]) {
+            switch (DataType.DataTypeId.fromValue(typeIds[nativeGetId])) {
                 case OMNI_BOOLEAN: {
                     vecList[i] = new BooleanVec(vecNativeIds[nativeGetId]);
                     break;
@@ -317,6 +320,10 @@ public class OrcColumnarBatchScanReader {
                 }
                 case OMNI_DECIMAL128: {
                     vecList[i] = new Decimal128Vec(vecNativeIds[nativeGetId]);
+                    break;
+                }
+                case OMNI_ARRAY: {
+                    vecList[i] = new ArrayVec(vecNativeIds[nativeGetId], (ArrayDataType) dataTypes.get(i), (int) rtn);
                     break;
                 }
                 default: {

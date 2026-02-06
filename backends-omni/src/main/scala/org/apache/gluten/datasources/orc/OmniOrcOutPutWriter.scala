@@ -19,11 +19,10 @@
 package org.apache.gluten.datasources.orc
 
 import com.huawei.boostkit.spark.jni.OrcColumnarBatchWriter
-import org.apache.gluten.datasources.OmniInternalRow
-import org.apache.gluten.expression.OmniExpressionAdaptor.sparkTypeToOmniType
+import org.apache.gluten.expression.OmniExpressionAdaptor.sparkTypeToOmniTypeWithComplex
 import org.apache.hadoop.fs.Path
 import org.apache.spark.sql.catalyst.InternalRow
-import org.apache.spark.sql.execution.datasources. OutputWriter
+import org.apache.spark.sql.execution.datasources.{FakeRow, OutputWriter}
 import org.apache.hadoop.mapreduce.TaskAttemptContext
 import org.apache.orc.OrcFile
 import org.apache.spark.sql.catalyst.expressions.Attribute
@@ -46,24 +45,24 @@ class OmniOrcOutputWriter(path: String, dataSchema: StructType,
     writer.initializeSchemaTypeJava(dataSchema)
     writer.initializeWriterJava(filePath.toUri, dataSchema, writerOptions)
     dataSchema.foreach(field => {
-      omniTypes = omniTypes :+ sparkTypeToOmniType(field.dataType, field.metadata).getId.ordinal()
+      omniTypes = omniTypes :+ sparkTypeToOmniTypeWithComplex(field.dataType, field.metadata).getId.ordinal()
     })
     allColumns.toStructType.foreach(field => {
-      allOmniTypes = allOmniTypes :+ sparkTypeToOmniType(field.dataType, field.metadata)
+      allOmniTypes = allOmniTypes :+ sparkTypeToOmniTypeWithComplex(field.dataType, field.metadata)
         .getId.ordinal()
     })
     dataColumnsIds = allColumns.map(x => dataColumns.contains(x)).toArray
   }
 
   override def write(row: InternalRow): Unit = {
-    assert(row.isInstanceOf[OmniInternalRow])
-    writer.write(omniTypes, dataColumnsIds, row.asInstanceOf[OmniInternalRow].batch)
+    assert(row.isInstanceOf[FakeRow])
+    writer.write(omniTypes, dataColumnsIds, row.asInstanceOf[FakeRow].batch)
   }
 
   def spiltWrite(row: InternalRow, startPos: Long, endPos: Long): Unit = {
-    assert(row.isInstanceOf[OmniInternalRow])
+    assert(row.isInstanceOf[FakeRow])
     writer.splitWrite(omniTypes, allOmniTypes, dataColumnsIds,
-      row.asInstanceOf[OmniInternalRow].batch, startPos, endPos)
+      row.asInstanceOf[FakeRow].batch, startPos, endPos)
   }
 
   override def close(): Unit = {

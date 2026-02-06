@@ -18,7 +18,6 @@ package org.apache.gluten.expression
 
 import org.apache.gluten.config.GlutenConfig
 import org.apache.gluten.utils.Constant._
-
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.{Expression, _}
@@ -28,7 +27,6 @@ import org.apache.spark.sql.catalyst.plans._
 import org.apache.spark.sql.catalyst.util.CharVarcharUtils.getRawTypeString
 import org.apache.spark.sql.execution
 import org.apache.spark.sql.types.{DataType, _}
-
 import com.google.gson.{JsonArray, JsonElement, JsonObject, JsonParser}
 import nova.hetu.omniruntime.`type`._
 import nova.hetu.omniruntime.constants.BuildSide._
@@ -1063,6 +1061,7 @@ object OmniExpressionAdaptor extends Logging {
         } else {
           OMNI_DECIMAL128_TYPE
         }
+      case a: ArrayType => OMNI_ARRAY_TYPE
       case NullType => OMNI_BOOLEAN_TYPE
       case _ =>
         throw new UnsupportedOperationException(s"Unsupported datatype: $datatype")
@@ -1147,6 +1146,8 @@ object OmniExpressionAdaptor extends Logging {
       dataType: DataType,
       metadata: Metadata = Metadata.empty): nova.hetu.omniruntime.`type`.DataType = {
     dataType match {
+      case ByteType =>
+        ByteDataType.BYTE
       case ShortType =>
         ShortDataType.SHORT
       case IntegerType =>
@@ -1169,6 +1170,40 @@ object OmniExpressionAdaptor extends Logging {
         } else {
           new Decimal128DataType(dt.precision, dt.scale)
         }
+      case NullType => BooleanDataType.BOOLEAN
+      case _ =>
+        throw new UnsupportedOperationException(s"Unsupported datatype: $dataType")
+    }
+  }
+
+  def sparkTypeToOmniTypeWithComplex(dataType: DataType, metadata: Metadata = Metadata.empty):
+  nova.hetu.omniruntime.`type`.DataType = {
+    dataType match {
+      case ShortType =>
+        ShortDataType.SHORT
+      case IntegerType =>
+        IntDataType.INTEGER
+      case LongType =>
+        LongDataType.LONG
+      case TimestampType =>
+        TimestampDataType.TIMESTAMP
+      case DoubleType =>
+        DoubleDataType.DOUBLE
+      case BooleanType =>
+        BooleanDataType.BOOLEAN
+      case StringType =>
+        new VarcharDataType(getStringLength(metadata))
+      case DateType =>
+        Date32DataType.DATE32
+      case dt: DecimalType =>
+        if (DecimalType.is64BitDecimalType(dt)) {
+          new Decimal64DataType(dt.precision, dt.scale)
+        } else {
+          new Decimal128DataType(dt.precision, dt.scale)
+        }
+      case a: ArrayType =>
+        new ArrayDataType(sparkTypeToOmniTypeWithComplex(a.elementType))
+      case NullType => BooleanDataType.BOOLEAN
       case _ =>
         throw new UnsupportedOperationException(s"Unsupported datatype: $dataType")
     }
@@ -1180,7 +1215,7 @@ object OmniExpressionAdaptor extends Logging {
     val omniDataType: String = sparkTypeToOmniExpType(dataType)
     dataType match {
       case ShortType | IntegerType | LongType | DoubleType | BooleanType | DateType |
-          TimestampType =>
+          TimestampType | ArrayType(_, _) =>
         new JsonObject()
           .put("exprType", "FIELD_REFERENCE")
           .put("dataType", omniDataType.toInt)

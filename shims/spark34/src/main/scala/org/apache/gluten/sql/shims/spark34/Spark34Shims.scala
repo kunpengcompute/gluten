@@ -16,6 +16,7 @@
  */
 package org.apache.gluten.sql.shims.spark34
 
+import org.apache.gluten.execution.datasource.GlutenFormatFactory
 import org.apache.gluten.expression.{ExpressionNames, Sig}
 import org.apache.gluten.expression.ExpressionNames.KNOWN_NULLABLE
 import org.apache.gluten.sql.shims.{ShimDescriptor, SparkShims}
@@ -53,7 +54,6 @@ import org.apache.spark.sql.internal.SQLConf.LegacyBehaviorPolicy
 import org.apache.spark.sql.types.{IntegerType, LongType, StructField, StructType}
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import org.apache.spark.storage.{BlockId, BlockManagerId}
-
 import org.apache.hadoop.fs.{FileStatus, Path}
 import org.apache.parquet.schema.MessageType
 
@@ -277,7 +277,7 @@ class Spark34Shims extends SparkShims {
     (getLimit(plan.limit, plan.offset), plan.offset)
   }
 
-  override def getExtendedColumnarPostRules(): List[SparkSession => Rule[SparkPlan]] = List()
+  override def getExtendedColumnarPostRules(): List[SparkSession => Rule[SparkPlan]] = List(session => GlutenFormatFactory.getExtendedColumnarPostRule(session))
 
   override def writeFilesExecuteTask(
       description: WriteJobDescription,

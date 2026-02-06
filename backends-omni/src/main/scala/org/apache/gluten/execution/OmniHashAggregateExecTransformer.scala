@@ -212,7 +212,7 @@ case class OmniHashAggregateExecTransformer(
   protected override def checkType(dataType: DataType): Boolean = {
     dataType match {
       case ShortType | IntegerType | LongType | TimestampType | DoubleType | BooleanType |
-           StringType | DateType => true
+           StringType | DateType | NullType=> true
       case _: DecimalType => true
       case _ => false
     }

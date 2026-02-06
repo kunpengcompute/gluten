@@ -212,7 +212,7 @@ case class OmniRollUpOptimizeTransformer(
   override protected def checkType(dataType: DataType): Boolean = {
     dataType match {
       case ShortType | IntegerType | LongType | TimestampType | DoubleType | BooleanType |
-          StringType | DateType =>
+          StringType | DateType | NullType=>
         true
       case _: DecimalType => true
       case _ => false
