@@ -18,7 +18,7 @@ package org.apache.gluten.execution
 
 import org.apache.gluten.backendsapi.BackendsApiManager
 import org.apache.gluten.sql.shims.SparkShimLoader
-import org.apache.spark.sql.execution.FileSourceScanExec
+import org.apache.spark.sql.execution.{FileSourceScanExec, SparkPlan}
 import org.apache.spark.sql.execution.datasources.v2.BatchScanExec
 
 object ScanTransformerFactory {
@@ -26,6 +26,11 @@ object ScanTransformerFactory {
   def createFileSourceScanTransformer(
       scanExec: FileSourceScanExec): FileSourceScanExecTransformerBase = {
     BackendsApiManager.getSparkPlanExecApiInstance.genFileSourceScanExecTransformer(scanExec)
+  }
+
+  def createHiveTableScanTransformer(
+                                       scanExec: SparkPlan): BasicScanExecTransformer = {
+    BackendsApiManager.getSparkPlanExecApiInstance.genHiveTableScanExecTransformer(scanExec)
   }
 
   def createBatchScanTransformer(batchScanExec: BatchScanExec): BatchScanExecTransformerBase = {

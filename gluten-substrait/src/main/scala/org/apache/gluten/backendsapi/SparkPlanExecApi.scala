@@ -42,7 +42,7 @@ import org.apache.spark.sql.execution.joins.BuildSideRelation
 import org.apache.spark.sql.execution.metric.SQLMetric
 import org.apache.spark.sql.execution.python.ArrowEvalPythonExec
 import org.apache.spark.sql.execution.window._
-import org.apache.spark.sql.hive.HiveUDFTransformer
+import org.apache.spark.sql.hive.{HiveTableScanExecTransformer, HiveUDFTransformer}
 import org.apache.spark.sql.types.{DecimalType, LongType, NullType, StructType}
 import org.apache.spark.sql.vectorized.ColumnarBatch
 
@@ -729,5 +729,10 @@ trait SparkPlanExecApi {
       scanExec.tableIdentifier,
       scanExec.disableBucketedScan
     )
+  }
+
+  def genHiveTableScanExecTransformer(
+                                        scanExec: SparkPlan): BasicScanExecTransformer = {
+    HiveTableScanExecTransformer(scanExec)
   }
 }
