@@ -7,6 +7,7 @@
 #include <google/protobuf/wrappers.pb.h>
 #include <re2/re2.h>
 #include <string>
+#include <algorithm>
 #include "expression/expr_verifier.h"
 #include "expression/expr_printer.h"
 #include "expression/expressions.h"
@@ -94,7 +95,24 @@ bool SubstraitToOmniPlanValidator::ParseOmniType(
     return true;
 }
 
-bool SubstraitToOmniPlanValidator::FlattenSingleLevel(const DataTypePtr &type, std::vector<DataTypePtr> &out)
+bool SubstraitToOmniPlanValidator::ParseOmniType(
+    const ::substrait::extensions::AdvancedExtension &extension,
+    DataTypePtr &out, std::vector<DataTypeId> &excludes)
+{
+    if (ParseOmniType(extension, out)) {
+        DataTypeId curTypeId = out->GetId();
+        for (auto dataTypeId : excludes) {
+            if (dataTypeId == curTypeId) {
+                return false;
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+bool SubstraitToOmniPlanValidator::FlattenSingleLevel(const DataTypePtr &type,
+    std::vector<DataTypePtr> &out, std::vector<DataTypeId> *excludes)
 {
     if (type->GetId() != OMNI_ROW) {
         LOG_VALIDATION_MSG("Type is not a RowType.");
@@ -105,7 +123,15 @@ bool SubstraitToOmniPlanValidator::FlattenSingleLevel(const DataTypePtr &type, s
         LOG_VALIDATION_MSG("Failed to cast to RowType.");
         return false;
     }
-    for (auto &field : rowType->Children()) {
+    const auto& children = rowType->Children();
+    if (excludes == nullptr || excludes->empty()) {
+        out.insert(out.end(), children.begin(), children.end());
+        return true;
+    }
+    for(const auto& field : children) {
+        if(std::find(excludes->begin(), excludes->end(), field->GetId()) != excludes->end()) {
+            return false;
+        }
         out.emplace_back(field);
     }
     return true;
@@ -329,7 +355,8 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::TopNRel &topNRel)
         const auto &extension = topNRel.advanced_extension();
         DataTypePtr inputRowType;
         std::vector<DataTypePtr> types;
-        if (!ParseOmniType(extension, inputRowType) || !FlattenSingleLevel(inputRowType, types)) {
+        std::vector<DataTypeId> excludes{DataTypeId::OMNI_ARRAY};
+        if (!ParseOmniType(extension, inputRowType, excludes) || !FlattenSingleLevel(inputRowType, types, &excludes)) {
             LOG_VALIDATION_MSG("Unsupported input types in TopNRel.");
             return false;
         }
@@ -363,7 +390,8 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::ExpandRel &expand
         const auto &extension = expandRel.advanced_extension();
         DataTypePtr inputRowType;
         std::vector<DataTypePtr> types;
-        if (!ParseOmniType(extension, inputRowType) || !FlattenSingleLevel(inputRowType, types)) {
+        std::vector<DataTypeId> excludes{DataTypeId::OMNI_ARRAY};
+        if (!ParseOmniType(extension, inputRowType, excludes) || !FlattenSingleLevel(inputRowType, types, &excludes)) {
             LOG_VALIDATION_MSG("Unsupported input types in ExpandRel.");
             return false;
         }
@@ -456,7 +484,8 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::WindowRel &window
     const auto &extension = windowRel.advanced_extension();
     DataTypePtr inputRowType;
     std::vector<DataTypePtr> types;
-    if (!ParseOmniType(extension, inputRowType) || !FlattenSingleLevel(inputRowType, types)) {
+    std::vector<DataTypeId> excludes{DataTypeId::OMNI_ARRAY};
+    if (!ParseOmniType(extension, inputRowType, excludes) || !FlattenSingleLevel(inputRowType, types, &excludes)) {
         LOG_VALIDATION_MSG("Validation failed for input types in WindowRel.");
         return false;
     }
@@ -569,6 +598,7 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::WindowRel &window
 
 bool SubstraitToOmniPlanValidator::Validate(const ::substrait::SetRel &setRel)
 {
+    std::vector<DataTypeId> excludes{DataTypeId::OMNI_ARRAY};
     switch (setRel.op()) {
         case ::substrait::SetRel_SetOp::SetRel_SetOp_SET_OP_UNION_ALL: {
             for (int32_t i = 0; i < setRel.inputs_size(); ++i) {
@@ -585,7 +615,7 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::SetRel &setRel)
             const auto &extension = setRel.advanced_extension();
             DataTypePtr inputRowType;
             std::vector<std::vector<DataTypePtr>> childrenTypes;
-            if (!ParseOmniType(extension, inputRowType)) {
+            if (!ParseOmniType(extension, inputRowType, excludes)) {
                 LOG_VALIDATION_MSG("Validation failed for input types in SetRel.");
                 return false;
             }
@@ -630,7 +660,8 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::SortRel &sortRel)
     const auto &extension = sortRel.advanced_extension();
     DataTypePtr inputRowType;
     std::vector<DataTypePtr> types;
-    if (!ParseOmniType(extension, inputRowType) || !FlattenSingleLevel(inputRowType, types)) {
+    std::vector<DataTypeId> excludes{DataTypeId::OMNI_ARRAY};
+    if (!ParseOmniType(extension, inputRowType, excludes) || !FlattenSingleLevel(inputRowType, types, &excludes)) {
         LOG_VALIDATION_MSG("Validation failed for input types in SortRel.");
         return false;
     }
@@ -698,7 +729,8 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::ProjectRel &proje
     const auto &extension = projectRel.advanced_extension();
     DataTypePtr inputRowType;
     std::vector<DataTypePtr> types;
-    if (!ParseOmniType(extension, inputRowType) || !FlattenSingleLevel(inputRowType, types)) {
+    std::vector<DataTypeId> excludes{DataTypeId::OMNI_ARRAY};
+    if (!ParseOmniType(extension, inputRowType, excludes) || !FlattenSingleLevel(inputRowType, types, &excludes)) {
         LOG_VALIDATION_MSG("Validation failed for input types in ProjectRel.");
         return false;
     }
@@ -750,7 +782,8 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::FilterRel &filter
     const auto &extension = filterRel.advanced_extension();
     DataTypePtr inputRowType;
     std::vector<DataTypePtr> types;
-    if (!ParseOmniType(extension, inputRowType) || !FlattenSingleLevel(inputRowType, types)) {
+    std::vector<DataTypeId> excludes{DataTypeId::OMNI_ARRAY};
+    if (!ParseOmniType(extension, inputRowType, excludes) || !FlattenSingleLevel(inputRowType, types, &excludes)) {
         LOG_VALIDATION_MSG("Validation failed for input types in FilterRel.");
         return false;
     }
@@ -837,7 +870,8 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::JoinRel &joinRel)
     const auto &extension = joinRel.advanced_extension();
     DataTypePtr inputRowType;
     std::vector<DataTypePtr> types;
-    if (!ParseOmniType(extension, inputRowType) || !FlattenSingleLevel(inputRowType, types)) {
+    std::vector<DataTypeId> excludes{DataTypeId::OMNI_ARRAY};
+    if (!ParseOmniType(extension, inputRowType, excludes) || !FlattenSingleLevel(inputRowType, types, &excludes)) {
         LOG_VALIDATION_MSG("Validation failed for input types in JoinRel.");
         return false;
     }
@@ -894,7 +928,8 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::CrossRel &crossRe
     const auto &extension = crossRel.advanced_extension();
     DataTypePtr inputRowType;
     std::vector<DataTypePtr> types;
-    if (!ParseOmniType(extension, inputRowType) || !FlattenSingleLevel(inputRowType, types)) {
+    std::vector<DataTypeId> excludes{DataTypeId::OMNI_ARRAY};
+    if (!ParseOmniType(extension, inputRowType, excludes) || !FlattenSingleLevel(inputRowType, types, &excludes)) {
         LogValidateMsg("Native validation failed due to: Validation failed for "
                        "input types in CrossRel");
         return false;
@@ -928,7 +963,8 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::AggregateRel &agg
     const auto &extension = aggRel.advanced_extension();
     DataTypePtr inputRowType;
     std::vector<DataTypePtr> types;
-    if (!ParseOmniType(extension, inputRowType) || !FlattenSingleLevel(inputRowType, types)) {
+    std::vector<DataTypeId> excludes{DataTypeId::OMNI_ARRAY};
+    if (!ParseOmniType(extension, inputRowType, excludes) || !FlattenSingleLevel(inputRowType, types, &excludes)) {
         LOG_VALIDATION_MSG("Validation failed for input types in AggregateRel.");
         return false;
     }
