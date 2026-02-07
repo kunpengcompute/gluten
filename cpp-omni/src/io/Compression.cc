@@ -190,9 +190,8 @@ namespace spark {
       char * header = outputBuffer + outputPosition - totalCompressedSize - 3;
       if (totalCompressedSize >= static_cast<unsigned long>(bufferSize)) {
         writeHeader(header, static_cast<size_t>(bufferSize), true);
-        memcpy_s(
+        memcpy(
           header + 3,
-          static_cast<size_t>(bufferSize),
           rawInputBuffer.data(),
           static_cast<size_t>(bufferSize));
 
@@ -398,7 +397,7 @@ namespace spark {
         }
 
         int sizeToWrite = std::min(totalSizeToWrite, outputSize - outputPosition);
-        memcpy_s(dst, static_cast<size_t>(sizeToWrite), dataToWrite, static_cast<size_t>(sizeToWrite));
+        memcpy(dst, dataToWrite, static_cast<size_t>(sizeToWrite));
 
         outputPosition += sizeToWrite;
         dataToWrite += sizeToWrite;
