@@ -101,8 +101,10 @@ private:
     /// levels of nesting.
     bool ParseOmniType(const ::substrait::extensions::AdvancedExtension &extension, DataTypePtr &out);
 
+    bool ParseOmniType(const ::substrait::extensions::AdvancedExtension &extension, DataTypePtr &out, std::vector<DataTypeId> &excludes);
+
     /// Flattens a Omni type with single level of nesting into a std::vector of child types.
-    bool FlattenSingleLevel(const DataTypePtr &type, std::vector<DataTypePtr> &out);
+    bool FlattenSingleLevel(const DataTypePtr &type, std::vector<DataTypePtr> &out, std::vector<DataTypeId> *excludes = nullptr);
 
     /// Validate the round scalar function.
     bool ValidateRound(const ::substrait::Expression::ScalarFunction &scalarFunction, const DataTypesPtr &inputType);
