@@ -47,11 +47,14 @@ import org.apache.gluten.exception.GlutenNotSupportException
 import org.apache.gluten.expression.ExpressionConverter.replaceWithExpressionTransformer
 import org.apache.gluten.expression.aggregate.{OmniCollectList, OmniCollectSet}
 import org.apache.gluten.extension.PushDownFilterToOmniScan
-import org.apache.spark.sql.hive.{OmniHiveTableScanExecTransformer, OmniHiveUDFTransformer}
+import org.apache.spark.sql.hive.OmniHiveTableScanExecTransformer
+import org.apache.gluten.sql.shims.SparkShimLoader
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.execution.datasources.orc.OrcFileFormat
 import org.apache.spark.sql.execution.datasources.parquet.ParquetFileFormat
 import org.apache.spark.sql.hive.OmniHiveUDFTransformer
+import org.apache.spark.sql.types._
+import org.apache.spark.sql.catalyst.expressions._
 
 class OmniSparkPlanExecApi extends SparkPlanExecApi {
 
@@ -133,6 +136,27 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
       children: Seq[ExpressionTransformer],
       original: UnixTimestamp): ExpressionTransformer =
     OmniUnixTimestampTransformer(substraitExprName, children, original)
+
+  override def genTryArithmeticTransformer(
+      substraitExprName: String,
+      left: ExpressionTransformer,
+      right: ExpressionTransformer,
+      original: TryEval,
+      checkArithmeticExprName: String): ExpressionTransformer = {
+    if (SparkShimLoader.getSparkShims.withAnsiEvalMode(original.child)) {
+      throw new GlutenNotSupportException(
+        s"${original.child.prettyName} with ansi mode is not supported")
+    }
+    original.child.dataType match {
+      case LongType | IntegerType | ShortType | ByteType =>
+      case _ => throw new GlutenNotSupportException(s"$substraitExprName is not supported")
+    }
+    // Offload to omni for only IntegralTypes.
+    GenericExpressionTransformer(
+      substraitExprName,
+      Seq(GenericExpressionTransformer(checkArithmeticExprName, Seq(left, right), original)),
+      original)
+  }
 
   /** Generate HashAggregateExecTransformer. */
   override def genHashAggregateExecTransformer(

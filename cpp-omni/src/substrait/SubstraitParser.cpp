@@ -486,6 +486,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"eq", {BINARY_OMNI_EXPR_TYPE, "EQUAL"}},
     {"equal_null_safe", {FUNCTION_OMNI_EXPR_TYPE, "equal_null_safe"}},
     {"or", {BINARY_OMNI_EXPR_TYPE, "OR"}},
+    {"checked_substract", {BINARY_OMNI_EXPR_TYPE, "TRY_SUBTRACT"}},
     {"lower", {FUNCTION_OMNI_EXPR_TYPE, "lower"}},
     {"upper", {FUNCTION_OMNI_EXPR_TYPE, "upper"}},
     {"char_length", {FUNCTION_OMNI_EXPR_TYPE, "length"}},
