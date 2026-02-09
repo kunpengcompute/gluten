@@ -121,14 +121,14 @@ case class OmniHashAggregateExecTransformer(
                                              mode: AggregateMode): Boolean = {
     val alwaysSupported = Set(
      classOf[Sum], classOf[Min], classOf[Max], classOf[Count], classOf[MinBy], classOf[MaxBy],
-     classOf[Average], classOf[First], classOf[StddevSamp], classOf[StddevPop],
+     classOf[Average], classOf[First], classOf[Last], classOf[StddevSamp], classOf[StddevPop],
      classOf[VarianceSamp], classOf[VariancePop], classOf[BloomFilterAggregate],
      classOf[BitAndAgg], classOf[BitOrAgg], classOf[BitXorAgg],
     )
 
     var completeOnlySupported = Set(
      classOf[Sum], classOf[Min], classOf[Max], classOf[Count],
-     classOf[Average], classOf[First]
+     classOf[Average], classOf[First], classOf[Last],
     )
 
     val supported = mode match {
