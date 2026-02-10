@@ -19,13 +19,12 @@
 package org.apache.gluten.datasources.parquet
 
 import com.huawei.boostkit.spark.jni.ParquetColumnarBatchWriter
-import org.apache.gluten.datasources.OmniInternalRow
 import org.apache.gluten.expression.OmniExpressionAdaptor.sparkTypeToOmniType
 import org.apache.hadoop.fs.Path
 import org.apache.hadoop.mapreduce._
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.Attribute
-import org.apache.spark.sql.execution.datasources.OutputWriter
+import org.apache.spark.sql.execution.datasources.{FakeRow, OutputWriter}
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types.StructType
 
@@ -56,14 +55,14 @@ class OmniParquetOutputWriter(path: String, dataSchema: StructType,
   }
 
   override def write(row: InternalRow): Unit = {
-    assert(row.isInstanceOf[OmniInternalRow])
-    writer.write(omniTypes, dataColumnsIds, row.asInstanceOf[OmniInternalRow].batch)
+    assert(row.isInstanceOf[FakeRow])
+    writer.write(omniTypes, dataColumnsIds, row.asInstanceOf[FakeRow].batch)
   }
 
   def spiltWrite(row: InternalRow, startPos: Long, endPos: Long): Unit = {
-    assert(row.isInstanceOf[OmniInternalRow])
+    assert(row.isInstanceOf[FakeRow])
     writer.splitWrite(omniTypes, allOmniTypes, dataColumnsIds,
-      row.asInstanceOf[OmniInternalRow].batch, startPos, endPos)
+      row.asInstanceOf[FakeRow].batch, startPos, endPos)
   }
 
   override def close(): Unit = {
