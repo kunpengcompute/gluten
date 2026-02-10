@@ -553,5 +553,10 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"rand", {FUNCTION_OMNI_EXPR_TYPE, "rand"}},
     {"random", {FUNCTION_OMNI_EXPR_TYPE, "random"}},
     {"hex", {FUNCTION_OMNI_EXPR_TYPE, "hex"}},
+    {"bit_count", {FUNCTION_OMNI_EXPR_TYPE, "bit_count"}},
+    {"bit_length", {FUNCTION_OMNI_EXPR_TYPE, "bit_length"}},
+    {"factorial", {FUNCTION_OMNI_EXPR_TYPE, "factorial"}},
+    {"floor", {FUNCTION_OMNI_EXPR_TYPE, "floor"}},
+    {"nanvl", {FUNCTION_OMNI_EXPR_TYPE, "nanvl"}},
 };
 } // namespace omniruntime
