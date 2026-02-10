@@ -21,6 +21,8 @@ package com.huawei.boostkit.spark.serialize;
 import nova.hetu.omniruntime.type.DataType.DataTypeId;
 import nova.hetu.omniruntime.utils.OmniRuntimeException;
 import nova.hetu.omniruntime.type.ArrayDataType;
+import nova.hetu.omniruntime.type.MapDataType;
+import nova.hetu.omniruntime.type.StructDataType;
 import nova.hetu.omniruntime.vector.BooleanVec;
 import nova.hetu.omniruntime.vector.Decimal128Vec;
 import nova.hetu.omniruntime.vector.DoubleVec;
@@ -32,10 +34,13 @@ import nova.hetu.omniruntime.vector.FloatVec;
 import nova.hetu.omniruntime.vector.ByteVec;
 import nova.hetu.omniruntime.vector.Vec;
 import nova.hetu.omniruntime.vector.ArrayVec;
-import nova.hetu.omniruntime.vector.ComplexVec;
+import nova.hetu.omniruntime.vector.ArrayVec;
+import nova.hetu.omniruntime.vector.MapVec;
+import nova.hetu.omniruntime.vector.StructVec;
 import org.apache.gluten.vectorized.OmniColumnVector;
 import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DataTypes;
+import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.vectorized.ColumnVector;
 import org.apache.spark.sql.vectorized.ColumnarBatch;
 import org.slf4j.Logger;
@@ -146,7 +151,7 @@ public class ShuffleDataSerializer {
             case OMNI_FLOAT:
                 type = DataTypes.FloatType;
                 vec = new FloatVec(vecNativeId);
-                break;    
+                break;
             case OMNI_VARBINARY:
             case OMNI_VARCHAR:
             case OMNI_CHAR:
@@ -163,10 +168,37 @@ public class ShuffleDataSerializer {
                 break;
             case OMNI_ARRAY:
                 ArrayDataType arrayDataType = (ArrayDataType) ComplexVec.getComplexDataType(vecNativeId);
-                DataTypeId dataTypeId = arrayDataType.getElementType().getId();
-                type = DataTypes.createArrayType(createDataTypeFromOmniType(dataTypeId, precision, scale));
+                nova.hetu.omniruntime.type.DataType dataType = arrayDataType.getElementType();
+                type = DataTypes.createArrayType(createDataTypeFromOmniType(dataType, precision, scale));
                 vec = new ArrayVec(vecNativeId, arrayDataType);
                 ArrayVec arrayVec = (ArrayVec) vec;
+                break;
+            case OMNI_MAP:
+                MapDataType mapDataType = (MapDataType) ComplexVec.getComplexDataType(vecNativeId);
+                nova.hetu.omniruntime.type.DataType keyDataType = mapDataType.getKeyType();
+                nova.hetu.omniruntime.type.DataType valueDataType = mapDataType.getValueType();
+                DataType keyType = createDataTypeFromOmniType(keyDataType, precision, scale);
+                DataType valueType = createDataTypeFromOmniType(valueDataType, precision, scale);
+                type = DataTypes.createMapType(keyType, valueType);
+                vec = new MapVec(vecNativeId, mapDataType);
+                MapVec mapVec = (MapVec) vec;
+                break;
+            case OMNI_ROW:
+                StructDataType structDataType = (StructDataType) ComplexVec.getComplexDataType(vecNativeId);
+                nova.hetu.omniruntime.type.DataType[] fieldTypes = structDataType.getFieldTypes();
+                String[] fieldNames = structDataType.getFieldNames();
+
+                // construct the list of StructField for Spark
+                StructField[] fields = new StructField[fieldTypes.length];
+                for (int i = 0; i < fieldTypes.length; i++) {
+                    DataType fieldType = createDataTypeFromOmniType(fieldTypes[i], precision, scale);
+                    String fieldName = (fieldNames != null && i < fieldNames.length) ? fieldNames[i] : "col" + i;
+                    boolean nullable = true;
+                    fields[i] = DataTypes.createStructField(fieldName, fieldType, nullable);
+                }
+
+                type = DataTypes.createStructType(fields);
+                vec = new StructVec(vecNativeId, structDataType);
                 break;
             case OMNI_TIME32:
             case OMNI_TIME64:
@@ -180,7 +212,12 @@ public class ShuffleDataSerializer {
         return vecTmp;
     }
 
-    private static DataType createDataTypeFromOmniType(DataTypeId dataTypeId, int precision, int scale) {
+    private static DataType createDataTypeFromOmniType(nova.hetu.omniruntime.type.DataType omniDataType, int precision, int scale) {
+        if (omniDataType == null) {
+            throw new IllegalArgumentException("omniDataType is null");
+        }
+
+        DataTypeId dataTypeId = omniDataType.getId();
         switch (dataTypeId) {
             case OMNI_INT:
                 return DataTypes.IntegerType;
@@ -202,6 +239,7 @@ public class ShuffleDataSerializer {
                 return DataTypes.DoubleType;
             case OMNI_FLOAT:
                 return DataTypes.FloatType;
+            case OMNI_VARBINARY:
             case OMNI_VARCHAR:
             case OMNI_CHAR:
                 return DataTypes.StringType;
@@ -210,10 +248,29 @@ public class ShuffleDataSerializer {
             case OMNI_BYTE:
                 return DataTypes.ByteType;
             case OMNI_ARRAY:
-            case OMNI_TIME32:
-            case OMNI_TIME64:
-            case OMNI_INTERVAL_DAY_TIME:
-            case OMNI_INTERVAL_MONTHS:
+                ArrayDataType arrayType = (ArrayDataType) omniDataType;
+                nova.hetu.omniruntime.type.DataType elementType = arrayType.getElementType();
+                DataType sparkElementType = createDataTypeFromOmniType(elementType, precision, scale);
+                return DataTypes.createArrayType(sparkElementType);
+            case OMNI_MAP:
+                MapDataType mapType = (MapDataType) omniDataType;
+                nova.hetu.omniruntime.type.DataType keyType = mapType.getKeyType();
+                nova.hetu.omniruntime.type.DataType valueType = mapType.getValueType();
+                DataType sparkKeyType = createDataTypeFromOmniType(keyType, precision, scale);
+                DataType sparkValueType = createDataTypeFromOmniType(valueType, precision, scale);
+                return DataTypes.createMapType(sparkKeyType, sparkValueType);
+            case OMNI_ROW:
+                StructDataType structType = (StructDataType) omniDataType;
+                nova.hetu.omniruntime.type.DataType[] fieldTypes = structType.getFieldTypes();
+                String[] fieldNames = structType.getFieldNames();
+
+                StructField[] fields = new StructField[fieldTypes.length];
+                for (int i = 0; i < fieldTypes.length; i++) {
+                    DataType sparkFieldType = createDataTypeFromOmniType(fieldTypes[i], precision, scale);
+                    String fieldName = (fieldNames != null && i < fieldNames.length) ? fieldNames[i] : "col" + i;
+                    fields[i] = DataTypes.createStructField(fieldName, sparkFieldType, true);
+                }
+                return DataTypes.createStructType(fields);
             default:
                 throw new IllegalStateException("Unexpected value: " + dataTypeId);
         }
