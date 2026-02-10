@@ -62,18 +62,34 @@ JNIEXPORT jlong JNICALL Java_com_huawei_boostkit_spark_jni_SparkJniWrapper_nativ
         int32_t size = inputDataTypes.size();
         uint32_t *inputDataPrecisions = new uint32_t[size];
         uint32_t *inputDataScales = new uint32_t[size];
+        int32_t *elementTypIds = new int32_t[size];
+        uint32_t *elementPrecisions = new uint32_t[size];
+        uint32_t *elementScales = new uint32_t[size];
+        InputDataTypes *elementTypes = new InputDataTypes();
         for (int i = 0; i < size; ++i) {
             if (inputDataTypes[i]->GetId() == OMNI_DECIMAL64 || inputDataTypes[i]->GetId() == OMNI_DECIMAL128) {
                 inputDataScales[i] = std::dynamic_pointer_cast<DecimalDataType>(inputDataTypes[i])->GetScale();
                 inputDataPrecisions[i] = std::dynamic_pointer_cast<DecimalDataType>(inputDataTypes[i])->GetPrecision();
             }
+            if (inputDataTypes[i]->GetId() == OMNI_ARRAY) {
+                auto elementType = std::dynamic_pointer_cast<type::ArrayType>(inputDataTypes[i])->ElementType();
+                elementTypIds[i] = elementType->GetId();
+                if (elementType->GetId() == OMNI_DECIMAL64 || elementType->GetId() == OMNI_DECIMAL128) {
+                    elementPrecisions[i] = std::dynamic_pointer_cast<DecimalDataType>(inputDataTypes[i])->GetPrecision();
+                    elementScales[i] = std::dynamic_pointer_cast<DecimalDataType>(inputDataTypes[i])->GetScale();
+                }
+            }
         }
+        elementTypes->inputDataPrecisions = elementPrecisions;
+        elementTypes->inputDataScales = elementScales;
+        elementTypes->inputVecTypeIds = elementTypIds;
         inputDataTypes.clear();
 
         InputDataTypes inputDataTypesTmp;
         inputDataTypesTmp.inputVecTypeIds = (int32_t*)inputVecTypeIds;
         inputDataTypesTmp.inputDataPrecisions = inputDataPrecisions;
         inputDataTypesTmp.inputDataScales = inputDataScales;
+        inputDataTypesTmp.elementTypes = elementTypes;
 
         if (data_file_jstr == nullptr) {
             env->ThrowNew(runtimeExceptionClass, std::string("Shuffle DataFile can't be null").c_str());

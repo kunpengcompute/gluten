@@ -47,8 +47,6 @@ type::DataTypePtr SubstraitParser::ParseKStructType(const ::substrait::Type &sub
     names.reserve(structTypes.size());
     for (int i = 0; i < structTypes.size(); i++) {
         types.emplace_back(ParseType(structTypes[i], asLowerCase));
-        // Substrait Type::Struct doesn't carry field names. Generate stable
-        // ordinal-based names to avoid crashing when building ScanSpec.
         names.emplace_back("field" + std::to_string(i));
     }
     return std::make_shared<type::RowType>(std::move(types), std::move(names));
@@ -553,6 +551,11 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"rand", {FUNCTION_OMNI_EXPR_TYPE, "rand"}},
     {"random", {FUNCTION_OMNI_EXPR_TYPE, "random"}},
     {"hex", {FUNCTION_OMNI_EXPR_TYPE, "hex"}},
+    {"atanh", {FUNCTION_OMNI_EXPR_TYPE, "atanh"}},
+    {"cot", {FUNCTION_OMNI_EXPR_TYPE, "cot"}},
+ 	{"csc", {FUNCTION_OMNI_EXPR_TYPE, "csc"}},
+ 	{"conv", {FUNCTION_OMNI_EXPR_TYPE, "conv"}},
+    {"degrees", {FUNCTION_OMNI_EXPR_TYPE, "degrees"}},
     {"bit_count", {FUNCTION_OMNI_EXPR_TYPE, "bit_count"}},
     {"bit_length", {FUNCTION_OMNI_EXPR_TYPE, "bit_length"}},
     {"factorial", {FUNCTION_OMNI_EXPR_TYPE, "factorial"}},

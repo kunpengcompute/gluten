@@ -206,7 +206,7 @@ object OffloadOthers {
         case plan if HiveTableScanExecTransformer.isHiveTableScan(plan) =>
           // TODO: Add DynamicPartitionPruningHiveScanSuite.scala
           logDebug(s"Columnar Processing for ${plan.getClass} is currently supported.")
-          HiveTableScanExecTransformer(plan)
+          ScanTransformerFactory.createHiveTableScanTransformer(plan)
         case plan: CoalesceExec =>
           logDebug(s"Columnar Processing for ${plan.getClass} is currently supported.")
           ColumnarCoalesceExec(plan.numPartitions, plan.child)
