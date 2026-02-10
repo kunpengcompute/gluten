@@ -589,6 +589,7 @@ SubstraitParser::substraitOmniFunctionMap = {
  	{"csc", {FUNCTION_OMNI_EXPR_TYPE, "csc"}},
  	{"conv", {FUNCTION_OMNI_EXPR_TYPE, "conv"}},
     {"degrees", {FUNCTION_OMNI_EXPR_TYPE, "degrees"}},
+    {"split_part", {FUNCTION_OMNI_EXPR_TYPE, "split_part"}},
     {"bit_count", {FUNCTION_OMNI_EXPR_TYPE, "bit_count"}},
     {"bit_length", {FUNCTION_OMNI_EXPR_TYPE, "bit_length"}},
     {"factorial", {FUNCTION_OMNI_EXPR_TYPE, "factorial"}},
