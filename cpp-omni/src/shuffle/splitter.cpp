@@ -1337,7 +1337,7 @@ void Splitter::SerializingBinaryColumns(int32_t partitionId, spark::Vec& vec, in
     *protoValue = std::move(valuesStr);
     auto *protoNulls = vec.mutable_nulls();
     *protoNulls = std::move(nullsStr);
-    auto *protoOffset = vec.mutable_offset();
+    auto *protoOffset = vec.mutable_offsets();
     *protoOffset = std::move(offsetsStr);
 }
 
