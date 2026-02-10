@@ -18,6 +18,8 @@
 package org.apache.spark.sql.execution.datasources
 
 import org.apache.gluten.datasources.OmniOrcFormatWriterInjects
+import org.apache.gluten.datasources.orc.OmniOrcFileFormat
+import org.apache.gluten.datasources.parquet.{OmniParquetFileFormat, OmniParquetFormatWriterInjects}
 import org.apache.gluten.execution.TransformSupport
 import org.apache.gluten.execution.datasource.GlutenFormatFactory
 import org.apache.hadoop.conf.Configuration
@@ -41,6 +43,8 @@ import org.apache.spark.sql.errors.QueryExecutionErrors
 import org.apache.spark.sql.execution.adaptive.AdaptiveSparkPlanExec
 import org.apache.spark.sql.execution._
 import org.apache.spark.sql.execution.datasources.FileFormatWriter.ConcurrentOutputWriterSpec
+import org.apache.spark.sql.execution.datasources.orc.OrcFileFormat
+import org.apache.spark.sql.execution.datasources.parquet.ParquetFileFormat
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.util.{SerializableConfiguration, Utils}
 
@@ -132,11 +136,21 @@ object OmniFileFormatWriter extends Logging {
     val caseInsensitiveOptions = CaseInsensitiveMap(options)
 
     val dataSchema = dataColumns.toStructType
-    DataSourceUtils.verifySchema(fileFormat, dataSchema)
-    DataSourceUtils.checkFieldNames(fileFormat, dataSchema)
+    val nativeFormat = sparkSession.sparkContext.getLocalProperty("nativeFormat")
+    val effectiveFileFormat = if (nativeEnabled) {
+      (nativeFormat, fileFormat) match {
+        case ("orc", _: OrcFileFormat) => new OmniOrcFileFormat()
+        case ("parquet", _: ParquetFileFormat) => new OmniParquetFileFormat()
+        case _ => fileFormat
+      }
+    } else {
+      fileFormat
+    }
+    DataSourceUtils.verifySchema(effectiveFileFormat, dataSchema)
+    DataSourceUtils.checkFieldNames(effectiveFileFormat, dataSchema)
     // Note: prepareWrite has side effect. It sets "job".
     val outputWriterFactory =
-      fileFormat.prepareWrite(sparkSession, job, caseInsensitiveOptions, dataSchema)
+      effectiveFileFormat.prepareWrite(sparkSession, job, caseInsensitiveOptions, dataSchema)
 
     val description = new WriteJobDescription(
       uuid = UUID.randomUUID.toString,
@@ -213,7 +227,14 @@ object OmniFileFormatWriter extends Logging {
   def nativeWrap(plan: SparkPlan, session: SparkSession): SparkPlan = {
     var wrapped: SparkPlan = plan
     val nativeFormat = session.sparkContext.getLocalProperty("nativeFormat")
-    GlutenFormatFactory(nativeFormat).asInstanceOf[OmniOrcFormatWriterInjects].execWriterWrappedSparkPlan(wrapped)
+    GlutenFormatFactory(nativeFormat) match {
+      case orcInjects: OmniOrcFormatWriterInjects =>
+        orcInjects.execWriterWrappedSparkPlan(wrapped)
+      case parquetInjects: OmniParquetFormatWriterInjects =>
+        parquetInjects.execWriterWrappedSparkPlan(wrapped)
+      case other =>
+        throw new IllegalStateException(s"Unexpected GlutenFormatWriterInjects: ${other.getClass.getName}")
+    }
   }
 
   private def executeWrite(
