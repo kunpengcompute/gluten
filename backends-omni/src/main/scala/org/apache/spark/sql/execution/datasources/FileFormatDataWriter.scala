@@ -17,6 +17,7 @@
 package org.apache.spark.sql.execution.datasources
 
 import org.apache.gluten.datasources.orc.OmniOrcOutputWriter
+import org.apache.gluten.datasources.parquet.OmniParquetOutputWriter
 import org.apache.hadoop.fs.Path
 import org.apache.hadoop.mapreduce.TaskAttemptContext
 import org.apache.spark.internal.Logging
@@ -161,8 +162,12 @@ class SingleDirectoryDataWriter(
       context = taskAttemptContext)
 
     currentWriter match {
+      case _: OmniParquetOutputWriter =>
+        currentWriter.asInstanceOf[OmniParquetOutputWriter]
+          .initialize(description.allColumns, description.dataColumns)
       case _: OmniOrcOutputWriter =>
-        currentWriter.asInstanceOf[OmniOrcOutputWriter].initialize(description.allColumns, description.dataColumns)
+        currentWriter.asInstanceOf[OmniOrcOutputWriter]
+          .initialize(description.allColumns, description.dataColumns)
       case _ =>
     }
 
@@ -315,6 +320,9 @@ abstract class BaseDynamicPartitionDataWriter(
       context = taskAttemptContext)
 
     currentWriter match {
+      case _: OmniParquetOutputWriter =>
+        currentWriter.asInstanceOf[OmniParquetOutputWriter]
+          .initialize(description.allColumns, description.dataColumns)
       case _: OmniOrcOutputWriter =>
         currentWriter.asInstanceOf[OmniOrcOutputWriter]
           .initialize(description.allColumns, description.dataColumns)
@@ -360,10 +368,14 @@ abstract class BaseDynamicPartitionDataWriter(
    * @param record The record to write
    */
   protected def writeRecord(record: InternalRow, startPos: Long, endPos: Long): Unit = {
-    // TODO After add OmniParquetOutPutWriter need extract
-    //  a abstract interface named OmniOutPutWriter
-    assert(currentWriter.isInstanceOf[OmniOrcOutputWriter])
-    currentWriter.asInstanceOf[OmniOrcOutputWriter].spiltWrite(record, startPos, endPos)
+    currentWriter match {
+      case _: OmniParquetOutputWriter =>
+        currentWriter.asInstanceOf[OmniParquetOutputWriter].spiltWrite(record, startPos, endPos)
+      case _: OmniOrcOutputWriter =>
+        currentWriter.asInstanceOf[OmniOrcOutputWriter].spiltWrite(record, startPos, endPos)
+      case _ =>
+        assert(assertion = false, s"Unsupported output writer: ${currentWriter.getClass.getName}")
+    }
 
     statsTrackers.foreach(_.newRow(currentWriter.path, record))
     recordsInFile += record.asInstanceOf[FakeRow].batch.numRows()
