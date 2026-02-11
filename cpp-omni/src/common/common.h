@@ -70,8 +70,8 @@ int32_t BytesGen(uint64_t offsetsAddr, std::string &nullStr, uint64_t valuesAddr
         }
 
         if (len != 0) {
-            memcpy_s((char *) (values + offsets[i]), len, addr, len); // values 存值进去
-            valueTotalLen += len; // 字符串总长度更新一下
+            memcpy((char *) (values + offsets[i]), addr, len);
+            valueTotalLen += len;
         }
     }
     offsets[itemsTotalLen] = offsets[itemsTotalLen -1] + lst[itemsTotalLen - 1].get_vc_len();
@@ -104,7 +104,7 @@ int32_t BytesGenStringArray(int32_t* nums, char *nulls, char* values, int32_t* o
         }
 
         if (len != 0) {
-            memcpy_s((char *) (values + elementTotalLen), len, src, len); // TODO: value 赋值
+            memcpy((char *) (values + elementTotalLen), src, len); // TODO: value 赋值
             elementTotalLen += len;
         }
 
@@ -143,7 +143,7 @@ int32_t BytesGenFixedArray(int32_t* nums, char *nulls, char* values, uint64_t va
         }
 
         if (len != 0) {
-            memcpy_s(values + elementTotalLen, len, src, len);
+            memcpy(values + elementTotalLen, src, len);
             elementTotalLen += len;
         }
     }
