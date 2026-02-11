@@ -65,6 +65,8 @@ object AggregateFunctionsBuilder {
         ExpressionNames.MAX_BY
       case MinBy(_, _) =>
         ExpressionNames.MIN_BY
+      case HyperLogLogPlusPlus(_, _, _, _) =>
+        ExpressionNames.APPROX_DISTINCT
       case _ =>
         val nameOpt = ExpressionMappings.expressionsMap.get(aggregateFunc.getClass)
         if (nameOpt.isEmpty) {

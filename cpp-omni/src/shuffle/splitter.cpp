@@ -51,7 +51,7 @@ void Splitter::BuildPartition2Row(int32_t num_rows)
 // 计算分区id,每个batch初始化
 int Splitter::ComputeAndCountPartitionId(VectorBatch& vb) {
     auto num_rows = vb.GetRowCount();
-    memset_s(partition_id_cnt_cur_, num_partitions_ * sizeof(int32_t), 0, num_partitions_ * sizeof(int32_t));
+    memset(partition_id_cnt_cur_, 0, num_partitions_ * sizeof(int32_t));
     partition_id_.resize(num_rows);
 
     if (singlePartitionFlag) {
@@ -149,7 +149,7 @@ int Splitter::AllocatePartitionBuffers(int32_t partition_id, int32_t new_size) {
 int Splitter::SplitFixedWidthValueBuffer(VectorBatch& vb) {
     const auto num_rows = vb.GetRowCount();
     for (uint col = 0; col < fixed_width_array_idx_.size(); ++col) {
-        memset_s(partition_buffer_idx_offset_, num_partitions_ * sizeof(int32_t), 0, num_partitions_ * sizeof(int32_t));
+        memset(partition_buffer_idx_offset_, 0, num_partitions_ * sizeof(int32_t));
         auto col_idx_vb = fixed_width_array_idx_[col];
         auto col_idx_schema = singlePartitionFlag ? col_idx_vb : (col_idx_vb - 1);
         const auto& dst_addrs =  partition_fixed_width_value_addrs_[col];
@@ -555,7 +555,7 @@ int Splitter::SplitFixedWidthValidityBuffer(VectorBatch& vb){
                     std::shared_ptr<Buffer> validity_buffer (
                         new Buffer((uint8_t *)ptr_tmp, partition_id_cnt_cur_[pid], new_size));
                     dst_addrs[pid] = const_cast<uint8_t*>(validity_buffer->data_);
-                    memset_s(validity_buffer->data_, new_size, 0, new_size);
+                    memset(validity_buffer->data_, 0, new_size);
                     partition_fixed_width_buffers_[col][pid][0] = std::move(validity_buffer);
                     fixed_nullBuffer_size_[pid] += new_size;
                 }
@@ -738,6 +738,10 @@ void Splitter::ToSplitterTypeId(int num_cols)
                 CastOmniToShuffleType(OMNI_VARCHAR, SHUFFLE_BINARY);
                 break;
             }
+            case OMNI_VARBINARY: {
+                CastOmniToShuffleType(OMNI_VARBINARY, SHUFFLE_BINARY);
+                break;
+            }
             case OMNI_ARRAY: {
                 CastOmniToShuffleType(OMNI_ARRAY, SHUFFLE_ARRAY);
                 break;
@@ -861,7 +865,7 @@ int Splitter::SplitByRow(VectorBatch *vecBatch) {
         auto pidVec = reinterpret_cast<Vector<int32_t> *>(vecBatch->Get(0));
         auto tmpVectorBatch = new VectorBatch(rowCount);
         partition_id_.resize(rowCount);
-        memset_s(partition_id_cnt_cur_, num_partitions_ * sizeof(int32_t), 0, num_partitions_ * sizeof(int32_t));
+        memset(partition_id_cnt_cur_, 0, num_partitions_ * sizeof(int32_t));
         for (int i = 0; i < rowCount; ++i) {
             auto pid = pidVec->GetValue(i);
             if (pid >= num_partitions_) {
@@ -958,6 +962,7 @@ std::unordered_map<int32_t, spark::VecType::VecTypeId> omniTypeToVecTypeMap = {
     {OMNI_CHAR, spark::VecType::VEC_TYPE_CHAR},
     {OMNI_CONTAINER, spark::VecType::VEC_TYPE_CONTAINER},
     {OMNI_BYTE, spark::VecType::VEC_TYPE_BYTE},
+    {OMNI_VARBINARY, spark::VecType::VEC_TYPE_VARBINARY},
     {OMNI_INVALID, spark::VecType::VEC_TYPE_INVALID},
     {OMNI_ARRAY, spark::VecType::VEC_TYPE_ARRAY},
 };
@@ -1013,14 +1018,12 @@ void Splitter::SerializingFixedColumns(int32_t partitionId,
             }
             if ((onceCopyLen - destCopyedLength) >= (cacheBatchSize - splitRowInfoTmp->cacheBatchCopyedLen[fixColIndexTmp])) {
                 memCopyLen = cacheBatchSize - splitRowInfoTmp->cacheBatchCopyedLen[fixColIndexTmp];
-                memcpy_s((uint8_t*)(ptr_value->data_) + destCopyedLength,
-                       memCopyLen,
+                memcpy((uint8_t*)(ptr_value->data_) + destCopyedLength,
                        partition_cached_vectorbatch_[partitionId][splitRowInfoTmp->cacheBatchIndex[fixColIndexTmp]][fixColIndexTmp][1]->data_ + splitRowInfoTmp->cacheBatchCopyedLen[fixColIndexTmp],
                        memCopyLen);
 
                 if (partition_cached_vectorbatch_[partitionId][splitRowInfoTmp->cacheBatchIndex[fixColIndexTmp]][fixColIndexTmp][0] != nullptr) {
-                    memcpy_s((uint8_t*)(ptr_validity->data_) + (destCopyedLength / (1 << column_type_id_[colIndexTmpSchema])),
-                           memCopyLen / (1 << column_type_id_[colIndexTmpSchema]),
+                    memcpy((uint8_t*)(ptr_validity->data_) + (destCopyedLength / (1 << column_type_id_[colIndexTmpSchema])),
                            partition_cached_vectorbatch_[partitionId][splitRowInfoTmp->cacheBatchIndex[fixColIndexTmp]][fixColIndexTmp][0]->data_ + (splitRowInfoTmp->cacheBatchCopyedLen[fixColIndexTmp] / (1 << column_type_id_[colIndexTmpSchema])),
                            memCopyLen / (1 << column_type_id_[colIndexTmpSchema]));
 
@@ -1036,15 +1039,13 @@ void Splitter::SerializingFixedColumns(int32_t partitionId,
                 splitRowInfoTmp->cacheBatchCopyedLen[fixColIndexTmp] = 0; // 初始化下一个cacheBatch的起始偏移
             } else {
                 memCopyLen = onceCopyLen - destCopyedLength;
-                memcpy_s((uint8_t*)(ptr_value->data_) + destCopyedLength,
-                    memCopyLen,
+                memcpy((uint8_t*)(ptr_value->data_) + destCopyedLength,
                     partition_cached_vectorbatch_[partitionId][splitRowInfoTmp->cacheBatchIndex[fixColIndexTmp]][fixColIndexTmp][1]->data_ + splitRowInfoTmp->cacheBatchCopyedLen[fixColIndexTmp],
                     memCopyLen);
                 // (destCopyedLength / (1 << column_type_id_[colIndexTmpSchema])) 等比例计算null数组偏移
 
                 if(partition_cached_vectorbatch_[partitionId][splitRowInfoTmp->cacheBatchIndex[fixColIndexTmp]][fixColIndexTmp][0] != nullptr) {
-                    memcpy_s((uint8_t*)(ptr_validity->data_) + (destCopyedLength / (1 << column_type_id_[colIndexTmpSchema])),
-                                        memCopyLen / (1 << column_type_id_[colIndexTmpSchema]),
+                    memcpy((uint8_t*)(ptr_validity->data_) + (destCopyedLength / (1 << column_type_id_[colIndexTmpSchema])),
                                         partition_cached_vectorbatch_[partitionId][splitRowInfoTmp->cacheBatchIndex[fixColIndexTmp]][fixColIndexTmp][0]->data_ + (splitRowInfoTmp->cacheBatchCopyedLen[fixColIndexTmp] / (1 << column_type_id_[colIndexTmpSchema])),
                                         memCopyLen / (1 << column_type_id_[colIndexTmpSchema]));
                 }
@@ -1215,7 +1216,7 @@ int32_t Splitter::ProtoWritePartition(int32_t partition_id, std::unique_ptr<Buff
         }
         uint32_t vecBatchProtoSize = reversebytes_uint32t(static_cast<uint32_t>(vecBatchProto->ByteSizeLong()));
         if (bufferStream->Next(&bufferOut, &sizeOut)) {
-            memcpy_s(bufferOut, sizeof(vecBatchProtoSize), &vecBatchProtoSize, sizeof(vecBatchProtoSize));
+            memcpy(bufferOut, &vecBatchProtoSize, sizeof(vecBatchProtoSize));
             if (sizeof(vecBatchProtoSize) < static_cast<uint32_t>(sizeOut)) {
                 bufferStream->BackUp(sizeOut - sizeof(vecBatchProtoSize));
             }
@@ -1298,7 +1299,7 @@ int32_t Splitter::ProtoWritePartitionByRow(int32_t partition_id, std::unique_ptr
         }
         uint32_t protoRowBatchSize = reversebytes_uint32t(static_cast<uint32_t>(byteSizeLong));
         if (bufferStream->Next(&bufferOut, &sizeOut)) {
-            memcpy_s(bufferOut, sizeof(protoRowBatchSize), &protoRowBatchSize, sizeof(protoRowBatchSize));
+            memcpy(bufferOut, &protoRowBatchSize, sizeof(protoRowBatchSize));
             if (sizeof(protoRowBatchSize) < static_cast<uint32_t>(sizeOut)) {
                 bufferStream->BackUp(sizeOut - sizeof(protoRowBatchSize));
             }
@@ -1386,7 +1387,7 @@ int Splitter::protoSpillPartition(int32_t partition_id, std::unique_ptr<Buffered
             throw std::runtime_error("Allocate Memory Failed: Flush Spilled Data, Next failed.");
         }
         // set serizalized bytes to stream
-        memcpy_s(buffer, sizeof(vecBatchProtoSize), &vecBatchProtoSize, sizeof(vecBatchProtoSize));
+        memcpy(buffer, &vecBatchProtoSize, sizeof(vecBatchProtoSize));
         LogsDebug(" A Slice Of vecBatchProtoSize: %d ", reversebytes_uint32t(vecBatchProtoSize));
 
         vecBatchProto->SerializeToZeroCopyStream(bufferStream.get());
@@ -1474,7 +1475,7 @@ int Splitter::protoSpillPartitionByRow(int32_t partition_id, std::unique_ptr<Buf
             throw std::runtime_error("Allocate Memory Failed: Flush Spilled Data, Next failed.");
         }
         // set serizalized bytes to stream
-        memcpy_s(buffer, sizeof(protoRowBatchSize), &protoRowBatchSize, sizeof(protoRowBatchSize));
+        memcpy(buffer, &protoRowBatchSize, sizeof(protoRowBatchSize));
         LogsDebug(" A Slice Of vecBatchProtoSize: %d ", reversebytes_uint32t(protoRowBatchSize));
 
         protoRowBatch->SerializeToZeroCopyStream(bufferStream.get());
@@ -1504,7 +1505,7 @@ int Splitter::WriteDataFileProto() {
     for (auto pid = 0; pid < num_partitions_; ++pid) {
         protoSpillPartition(pid, bufferStream);
     }
-    memset_s(partition_id_cnt_cache_, num_partitions_ * sizeof(uint64_t), 0, num_partitions_ * sizeof(uint64_t));
+    memset(partition_id_cnt_cache_, 0, num_partitions_ * sizeof(uint64_t));
     outStream->close();
     return 0;
 }
@@ -1574,7 +1575,7 @@ void Splitter::MergeSpilled() {
         }
     }
 
-    memset_s(partition_id_cnt_cache_, num_partitions_ * sizeof(uint64_t), 0, num_partitions_ * sizeof(uint64_t));
+    memset(partition_id_cnt_cache_, 0, num_partitions_ * sizeof(uint64_t));
     ReleaseVarcharVector();
     ReleaseArrayVector();
     num_row_splited_ = 0;
@@ -1648,7 +1649,7 @@ void Splitter::WriteSplit() {
         ProtoWritePartition(pid, bufferOutPutStream, bufferOut, sizeOut);
     }
 
-    memset_s(partition_id_cnt_cache_, num_partitions_ * sizeof(uint64_t), 0, num_partitions_ * sizeof(uint64_t));
+    memset(partition_id_cnt_cache_, 0, num_partitions_ * sizeof(uint64_t));
     ReleaseVarcharVector();
     ReleaseArrayVector();
     num_row_splited_ = 0;

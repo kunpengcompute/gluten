@@ -92,7 +92,7 @@ namespace spark {
       if (buf) {
         T* buf_old = buf;
         buf = reinterpret_cast<T*>(memoryPool.malloc(sizeof(T) * newCapacity));
-        memcpy_s(buf, sizeof(T) * currentSize, buf_old, sizeof(T) * currentSize);
+        memcpy(buf, buf_old, sizeof(T) * currentSize);
         memoryPool.free(reinterpret_cast<char*>(buf_old));
       } else {
         buf = reinterpret_cast<T*>(memoryPool.malloc(sizeof(T) * newCapacity));
@@ -114,7 +114,7 @@ namespace spark {
   void DataBuffer<char>::resize(uint64_t newSize) {
     reserve(newSize);
     if (newSize > currentSize) {
-      memset_s(buf + currentSize, newSize - currentSize, 0, newSize - currentSize);
+      memset(buf + currentSize, 0, newSize - currentSize);
     }
     currentSize = newSize;
   }
@@ -132,7 +132,7 @@ namespace spark {
   void DataBuffer<unsigned char>::resize(uint64_t newSize) {
     reserve(newSize);
     if (newSize > currentSize) {
-      memset_s(buf + currentSize, newSize - currentSize, 0, newSize - currentSize);
+      memset(buf + currentSize, 0, newSize - currentSize);
     }
     currentSize = newSize;
   }

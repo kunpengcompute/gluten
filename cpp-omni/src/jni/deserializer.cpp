@@ -111,13 +111,13 @@ Java_com_huawei_boostkit_spark_serialize_ShuffleDataSerializerUtils_columnarShuf
         auto offsets = protoVec.offset().data();
         auto nulls = protoVec.nulls().data();
 
-        if (vectorDataTypeId == OMNI_CHAR || vectorDataTypeId == OMNI_VARCHAR) {
+        if (vectorDataTypeId == OMNI_CHAR || vectorDataTypeId == OMNI_VARCHAR || vectorDataTypeId == OMNI_VARBINARY) {
             auto charVec = reinterpret_cast<Vector<LargeStringContainer<std::string_view>> *>(vecs[i]);
             char *valuesAddress =
                 omniruntime::vec::unsafe::UnsafeStringVector::ExpandStringBuffer(charVec, protoVec.values().size());
             auto offsetsAddress = (uint8_t *)VectorHelper::UnsafeGetOffsetsAddr(vecs[i]);
-            memcpy_s(valuesAddress, protoVec.values().size(), values, protoVec.values().size());
-            memcpy_s(offsetsAddress, protoVec.offset().size(), offsets, protoVec.offset().size());
+            memcpy(valuesAddress, values, protoVec.values().size());
+            memcpy(offsetsAddress, offsets, protoVec.offset().size());
         } else if (vectorDataTypeId == OMNI_ARRAY) {
             auto arrayVec =  reinterpret_cast<ArrayVector *>(vecs[i]);
             const int32_t* nums = reinterpret_cast<const int32_t*>(protoVec.nums().data());
@@ -139,15 +139,15 @@ Java_com_huawei_boostkit_spark_serialize_ShuffleDataSerializerUtils_columnarShuf
                 char *valuesAddress = omniruntime::vec::unsafe::UnsafeStringVector::ExpandStringBuffer(
                     charVec, protoVec.values().size());
                 auto offsetsAddress = (uint8_t *)VectorHelper::UnsafeGetOffsetsAddr(elementVector);
-                memcpy_s(valuesAddress, protoVec.values().size(), values, protoVec.values().size());
-                memcpy_s(offsetsAddress, protoVec.offset().size(), offsets, protoVec.offset().size());
+                memcpy(valuesAddress, values, protoVec.values().size());
+                memcpy(offsetsAddress, offsets, protoVec.offset().size());
             } else {
                 auto *valuesAddress = (uint8_t *)VectorHelper::UnsafeGetValues(elementVector);
-                memcpy_s(valuesAddress, protoVec.values().size(), values, protoVec.values().size());
+                memcpy(valuesAddress, values, protoVec.values().size());
             }
         } else {
             auto *valuesAddress = (uint8_t *)VectorHelper::UnsafeGetValues(vecs[i]);
-            memcpy_s(valuesAddress, protoVec.values().size(), values, protoVec.values().size());
+            memcpy(valuesAddress, values, protoVec.values().size());
         }
         for (auto j = 0; j < protoVec.nulls().size(); ++j) {
             if (int(nulls[j])) {
