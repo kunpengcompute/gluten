@@ -568,5 +568,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"nanvl", {FUNCTION_OMNI_EXPR_TYPE, "nanvl"}},
     {"array_max", {FUNCTION_OMNI_EXPR_TYPE, "array_max"}},
     {"array_min", {FUNCTION_OMNI_EXPR_TYPE, "array_min"}},
+    {"coalesce", {FUNCTION_OMNI_EXPR_TYPE, "coalesce"}},
+    {"if", {FUNCTION_OMNI_EXPR_TYPE, "if"}},
 };
 } // namespace omniruntime
