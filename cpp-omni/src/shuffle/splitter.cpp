@@ -1968,8 +1968,8 @@ void Splitter::DeserializeProtoVecToOmniVector(const spark::Vec& protoVec, omnir
         char *valuesAddress =
             omniruntime::vec::unsafe::UnsafeStringVector::ExpandStringBuffer(charVec, protoVec.values().size());
         auto offsetsAddress = (uint8_t *)VectorHelper::UnsafeGetOffsetsAddr(omniVec);
-        memcpy_s(valuesAddress, protoVec.values().size(), values, protoVec.values().size());
-        memcpy_s(offsetsAddress, protoVec.offsets().size(), offsets, protoVec.offsets().size());
+        memcpy(valuesAddress, values, protoVec.values().size());
+        memcpy(offsetsAddress, offsets, protoVec.offsets().size());
     } else if (dataTypeId == OMNI_ARRAY) {
         auto arrayVec =  reinterpret_cast<ArrayVector *>(omniVec);
         // for vectors with nested complex types,
@@ -2026,7 +2026,7 @@ void Splitter::DeserializeProtoVecToOmniVector(const spark::Vec& protoVec, omnir
     } else {
         omniVec->Expand(rowCount);
         auto *valuesAddress = (uint8_t *)VectorHelper::UnsafeGetValues(omniVec);
-        memcpy_s(valuesAddress, protoVec.values().size(), values, protoVec.values().size());
+        memcpy(valuesAddress, values, protoVec.values().size());
     }
 
     // set nulls
