@@ -386,6 +386,10 @@ op::FunctionType SubstraitParser::ParseFunctionType(
         return op::OMNI_AGGREGATION_TYPE_VAR_POP;
     } else if (funcName == "first") {
         return op::OMNI_AGGREGATION_TYPE_FIRST_INCLUDENULL;
+    } else if (funcName == "last_ignore_null") {
+        return op::OMNI_AGGREGATION_TYPE_LAST_IGNORENULL;
+    } else if (funcName == "last") {
+        return op::OMNI_AGGREGATION_TYPE_LAST_INCLUDENULL;
     } else if (funcName == "rank") {
         return op::OMNI_WINDOW_TYPE_RANK;
     } else if (funcName == "percent_rank") {
@@ -478,6 +482,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"avg", {FUNCTION_OMNI_EXPR_TYPE, "avg"}},
     {"power", {FUNCTION_OMNI_EXPR_TYPE, "power"}},
     {"first", {FUNCTION_OMNI_EXPR_TYPE, "first"}},
+    {"last", {FUNCTION_OMNI_EXPR_TYPE, "last"}},
     {"bloom_filter_agg", {FUNCTION_OMNI_EXPR_TYPE, "bloom_filter_agg"}},
     {"substring_index", {FUNCTION_OMNI_EXPR_TYPE, "substring_index"}},
     {"regexp_extract", {FUNCTION_OMNI_EXPR_TYPE, "regexp_extract"}},
@@ -486,6 +491,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"unix_timestamp", {FUNCTION_OMNI_EXPR_TYPE, "unix_timestamp"}},
     {"from_unixtime", {FUNCTION_OMNI_EXPR_TYPE, "from_unixtime"}},
     {"first_ignore_null", {FUNCTION_OMNI_EXPR_TYPE, "first_ignore_null"}},
+    {"last_ignore_null", {FUNCTION_OMNI_EXPR_TYPE, "last_ignore_null"}},
     {"stddev_samp", {FUNCTION_OMNI_EXPR_TYPE, "stddev_samp"}},
     {"stddev_pop", {FUNCTION_OMNI_EXPR_TYPE, "stddev_samp"}},
     {"var_samp", {FUNCTION_OMNI_EXPR_TYPE, "var_samp"}},
