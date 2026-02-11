@@ -404,7 +404,13 @@ op::FunctionType SubstraitParser::ParseFunctionType(
         return op::OMNI_AGGREGATION_TYPE_BIT_OR;
     } else if (funcName == "bit_xor") {
         return op::OMNI_AGGREGATION_TYPE_BIT_XOR;
-    } else if (funcName == "min_by") {
+    } else if (funcName == "corr") {
+ 	    return op::OMNI_AGGREGATION_TYPE_CORR;
+ 	} else if (funcName == "covar_pop") {
+ 	    return op::OMNI_AGGREGATION_TYPE_COVAR_POP;
+ 	} else if (funcName == "covar_samp") {
+ 	   return op::OMNI_AGGREGATION_TYPE_COVAR_SAMP;
+ 	} else if (funcName == "min_by") {
         return op::OMNI_AGGREGATION_TYPE_MIN_BY;
     } else if (funcName == "max_by") {
         return op::OMNI_AGGREGATION_TYPE_MAX_BY;
@@ -547,6 +553,9 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"bit_and", {FUNCTION_OMNI_EXPR_TYPE, "bit_and"}},
     {"bit_or", {FUNCTION_OMNI_EXPR_TYPE, "bit_or"}},
     {"bit_xor", {FUNCTION_OMNI_EXPR_TYPE, "bit_xor"}},
+    {"corr", {FUNCTION_OMNI_EXPR_TYPE, "corr"}},
+    {"covar_pop", {FUNCTION_OMNI_EXPR_TYPE, "covar_pop"}},
+    {"covar_samp", {FUNCTION_OMNI_EXPR_TYPE, "covar_samp"}},
     {"cbrt", {FUNCTION_OMNI_EXPR_TYPE, "cbrt"}},
     {"ceil", {FUNCTION_OMNI_EXPR_TYPE, "ceil"}},
     {"log1p", {FUNCTION_OMNI_EXPR_TYPE, "log1p"}},

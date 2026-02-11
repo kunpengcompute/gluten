@@ -1077,6 +1077,9 @@ object OmniExpressionAdaptor extends Logging {
       case _: BitAndAgg => OMNI_AGGREGATION_TYPE_BIT_AND
       case _: BitOrAgg => OMNI_AGGREGATION_TYPE_BIT_OR
       case _: BitXorAgg => OMNI_AGGREGATION_TYPE_BIT_XOR
+      case _: Corr => OMNI_AGGREGATION_TYPE_CORR
+      case _: CovPopulation => OMNI_AGGREGATION_TYPE_COVAR_POP
+      case _: CovSample => OMNI_AGGREGATION_TYPE_COVAR_SAMP
       case _: MinBy => OMNI_AGGREGATION_TYPE_MIN_BY
       case _: MaxBy => OMNI_AGGREGATION_TYPE_MAX_BY
       case _: OmniHLLAdapter => OMNI_AGGREGATION_TYPE_APPROX_COUNT_DISTINCT
