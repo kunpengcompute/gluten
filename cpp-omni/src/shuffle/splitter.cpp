@@ -538,14 +538,12 @@ void Splitter::SerializeArrayVector(BaseVector *vector, std::vector<uint32_t> ro
     vec.set_nulls(std::move(nullsStr));
 
     // serialize elementVector
-    if (!elementPositions.empty()) {
-        auto* subVec = vec.add_subvectors();
-        auto* elementsVec = arrayVec->GetElementVector().get();
-        SerializeColumn(elementsVec, elementPositions, *subVec);
+    auto* subVec = vec.add_subvectors();
+    auto* elementsVec = arrayVec->GetElementVector().get();
+    SerializeColumn(elementsVec, elementPositions, *subVec);
 
-        spark::VecType* childType = vt->add_children();
-        childType->CopyFrom(subVec->vectype());
-    }
+    spark::VecType* childType = vt->add_children();
+    childType->CopyFrom(subVec->vectype());
 }
 
 void Splitter::SerializeMapVector(BaseVector *vector, std::vector<uint32_t> row_ids, spark::Vec &vec)
@@ -586,24 +584,24 @@ void Splitter::SerializeMapVector(BaseVector *vector, std::vector<uint32_t> row_
     vec.set_offsets(std::move(offsetsStr));
     vec.set_nulls(std::move(nullsStr));
 
-    if (!keyValuePositions.empty()) {
-        // serialize keys
-        auto* keysChildVec = vec.add_subvectors();
-        auto* keysVec = mapVec->GetKeyVector().get();
-        SerializeColumn(keysVec, keyValuePositions, *keysChildVec);
 
-        // serialize values
-        auto* valuesChildVec = vec.add_subvectors();
-        auto* valuesVec = mapVec->GetValueVector().get();
-        SerializeColumn(valuesVec, keyValuePositions, *valuesChildVec);
+    // serialize keys
+    auto* keysChildVec = vec.add_subvectors();
+    auto* keysVec = mapVec->GetKeyVector().get();
+    SerializeColumn(keysVec, keyValuePositions, *keysChildVec);
 
-        // set the children of VecType
-        spark::VecType* keyType = vt->add_children();
-        keyType->CopyFrom(keysChildVec->vectype());
+    // serialize values
+    auto* valuesChildVec = vec.add_subvectors();
+    auto* valuesVec = mapVec->GetValueVector().get();
+    SerializeColumn(valuesVec, keyValuePositions, *valuesChildVec);
 
-        spark::VecType* valueType = vt->add_children();
-        valueType->CopyFrom(valuesChildVec->vectype());
-    }
+    // set the children of VecType
+    spark::VecType* keyType = vt->add_children();
+    keyType->CopyFrom(keysChildVec->vectype());
+
+    spark::VecType* valueType = vt->add_children();
+    valueType->CopyFrom(valuesChildVec->vectype());
+
 }
 
 void Splitter::SerializeRowVector(BaseVector *vector, std::vector<uint32_t> row_ids, spark::Vec &vec)
@@ -1963,13 +1961,6 @@ void Splitter::DeserializeProtoVecToOmniVector(const spark::Vec& protoVec, omnir
 
     auto dataTypeId = omniVec->GetTypeId();
 
-    // set nulls
-    for (auto j = 0; j < protoVec.nulls().size(); ++j) {
-        if (int(nulls[j])) {
-            omniVec->SetNull(j);
-        }
-    }
-
     // set values and offsets
     if (dataTypeId == OMNI_CHAR || dataTypeId == OMNI_VARCHAR) {
         auto charVec = reinterpret_cast<Vector<LargeStringContainer<std::string_view>> *>(omniVec);
@@ -2036,5 +2027,12 @@ void Splitter::DeserializeProtoVecToOmniVector(const spark::Vec& protoVec, omnir
         omniVec->Expand(rowCount);
         auto *valuesAddress = (uint8_t *)VectorHelper::UnsafeGetValues(omniVec);
         memcpy_s(valuesAddress, protoVec.values().size(), values, protoVec.values().size());
+    }
+
+    // set nulls
+    for (auto j = 0; j < protoVec.nulls().size(); ++j) {
+        if (int(nulls[j])) {
+            omniVec->SetNull(j);
+        }
     }
 }
