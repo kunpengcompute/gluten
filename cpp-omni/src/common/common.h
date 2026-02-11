@@ -35,7 +35,6 @@
 #include "BinaryLocation.h"
 #include "debug.h"
 #include "Buffer.h"
-#include "ArrayLocation.h"
 
 using namespace omniruntime::vec;
 using namespace omniruntime::type;
