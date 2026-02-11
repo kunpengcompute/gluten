@@ -398,10 +398,16 @@ void Splitter::SplitArrayVector(BaseVector *arrayVector, int col_schema) {
         auto pos = partition_row_offset_base_[pid];
         auto end = partition_row_offset_base_[pid + 1];
         for (; pos < end; ++pos, ++index) {
+            element_addr = 0;
+            nulls_addr = 0;
+            element_num = 0;
+            element_len = 0;
+            offset_addr = 0;
             auto rowId = row_offset_row_id_[pos];
             if constexpr (hasNull) {
                 if (!ar->IsNull(rowId)) {
-                    BaseVector* curVec = ar->GetArrayAt(rowId, false).get();
+                    auto curVecPtr = ar->GetArrayAt(rowId, false);
+                    BaseVector *curVec = curVecPtr.get();
 
                     nulls_addr = reinterpret_cast<int64_t>(UnsafeBaseVector::GetNulls(curVec));
                     element_num = curVec->GetSize();
@@ -415,17 +421,12 @@ void Splitter::SplitArrayVector(BaseVector *arrayVector, int col_schema) {
 
                         element_len = 0;
                         uint32_t* offsets_varchar = new uint32_t[element_num + 1];
+                        offsets_varchar[0] = 0;
                         for (int i = 0; i < element_num; i++) {
                             std::string_view value = varCharVec->GetValue(i);
                             element_len += static_cast<uint32_t>(value.length());
-
-                            if (i == 0) {
-                                offsets_varchar[0] = 0;
-                            } else {
-                                offsets_varchar[i] = offsets_varchar[i - 1] + value.length();
-                            }
+                            offsets_varchar[i + 1] = offsets_varchar[i] + value.length();
                         }
-                        offsets_varchar[element_num] = element_len;
                         offset_addr = (uint64_t)offsets_varchar;
 
                         uint8_t* concatenated_varchar = new uint8_t[element_len];
@@ -438,7 +439,8 @@ void Splitter::SplitArrayVector(BaseVector *arrayVector, int col_schema) {
                     }
                 }
             } else {
-                BaseVector* curVec = ar->GetArrayAt(rowId, false).get();
+                auto curVecPtr = ar->GetArrayAt(rowId, false);
+                BaseVector *curVec = curVecPtr.get();
 
                 nulls_addr = reinterpret_cast<int64_t>(UnsafeBaseVector::GetNulls(curVec));
                 element_num = curVec->GetSize();
@@ -452,17 +454,12 @@ void Splitter::SplitArrayVector(BaseVector *arrayVector, int col_schema) {
 
                     element_len = 0;
                     uint32_t* offsets_varchar = new uint32_t[element_num + 1];
+                    offsets_varchar[0] = 0;
                     for (int i = 0; i < element_num; i++) {
                         std::string_view value = varCharVec->GetValue(i);
                         element_len += static_cast<uint32_t>(value.length());
-
-                        if (i == 0) {
-                            offsets_varchar[0] = 0;
-                        } else {
-                            offsets_varchar[i] = offsets_varchar[i - 1] + value.length();
-                        }
+                        offsets_varchar[i + 1] = offsets_varchar[i] + value.length();
                     }
-                    offsets_varchar[element_num] = element_len;
                     offset_addr = (uint64_t)offsets_varchar;
 
                     uint8_t* concatenated_varchar = new uint8_t[element_len];
@@ -1198,7 +1195,7 @@ int32_t Splitter::ProtoWritePartition(int32_t partition_id, std::unique_ptr<Buff
                     break;
                 }
                 default: {
-                    throw std::runtime_error("Unsupported ShuffleType.");
+                    throw std::runtime_error("Unsupported ShuffleType: " + std::to_string(column_type_id_[indexSchema]));
                 }
             }
             spark::VecType *vt = vec->mutable_vectype();
@@ -1359,8 +1356,12 @@ int Splitter::protoSpillPartition(int32_t partition_id, std::unique_ptr<Buffered
                     SerializingBinaryColumns(partition_id, *vec, indexSchema, curBatch);
                     break;
                 }
+                case ShuffleTypeId::SHUFFLE_ARRAY: {
+                    SerializingArrayColumns(partition_id, *vec, indexSchema, curBatch);
+                    break;
+                }
                 default: {
-                    throw std::runtime_error("Unsupported ShuffleType.");
+                    throw std::runtime_error("Unsupported ShuffleType: " + std::to_string(column_type_id_[indexSchema]));
                 }
             }
             spark::VecType *vt = vec->mutable_vectype();
@@ -1404,6 +1405,7 @@ int Splitter::protoSpillPartition(int32_t partition_id, std::unique_ptr<Buffered
     partition_cached_vectorbatch_[partition_id].clear();
     for (size_t col = 0; col < column_type_id_.size(); col++) {
         vc_partition_array_buffers_[partition_id][col].clear();
+        ar_partition_array_buffers_[partition_id][col].clear();
     }
 
     return 0;

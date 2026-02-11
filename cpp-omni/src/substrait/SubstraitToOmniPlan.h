@@ -190,10 +190,10 @@ public:
         std::vector<const ::substrait::Expression *> &leftExprs,
         std::vector<const ::substrait::Expression *> &rightExprs);
 
-    // /// Get aggregation step from AggregateRel.
-    // /// If returned Partial, it means the aggregate generated can leveraging flushing and abandoning like
-    // /// what streaming pre-aggregation can do in MPP databases.
-    // AggregationNode::Step toAggregationStep(const ::substrait::AggregateRel& sAgg);
+     /// Get aggregation step from AggregateRel.
+     /// If returned Partial, it means the aggregate generated can leveraging flushing and abandoning like
+     /// what streaming pre-aggregation can do in MPP databases.
+     AggregationNode::Step toAggregationStep(const ::substrait::AggregateRel& sAgg);
 
     /// Get aggregation function step for AggregateFunction.
     /// The returned step value will be used to decide which Omni aggregate function or companion function

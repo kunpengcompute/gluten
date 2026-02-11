@@ -1002,6 +1002,7 @@ object OmniExpressionAdaptor extends Logging {
           case IntegerType =>
           case LongType =>
           case TimestampType =>
+          case FloatType =>
           case DoubleType =>
           case BooleanType =>
           case DateType =>
@@ -1010,6 +1011,28 @@ object OmniExpressionAdaptor extends Logging {
           case _ =>
             throw new UnsupportedOperationException(
               s"First_value does not support datatype: $exprDataType")
+        }
+      })
+  }
+
+  def checkLastParamType(agg: AggregateExpression): Unit = {
+    agg.aggregateFunction.children.map(
+      exp => {
+        val exprDataType = exp.dataType
+        exprDataType match {
+          case ShortType =>
+          case IntegerType =>
+          case LongType =>
+          case TimestampType =>
+          case FloatType =>
+          case DoubleType =>
+          case BooleanType =>
+          case DateType =>
+          case dt: DecimalType =>
+          case StringType =>
+          case _ =>
+            throw new UnsupportedOperationException(
+              s"Last_value does not support datatype: $exprDataType")
         }
       })
   }
@@ -1043,6 +1066,12 @@ object OmniExpressionAdaptor extends Logging {
       case First(_, false) =>
         checkFirstParamType(agg)
         OMNI_AGGREGATION_TYPE_FIRST_INCLUDENULL
+      case Last(_, true) =>
+        checkLastParamType(agg)
+        OMNI_AGGREGATION_TYPE_LAST_IGNORENULL
+      case Last(_, false) =>
+        checkLastParamType(agg)
+        OMNI_AGGREGATION_TYPE_LAST_INCLUDENULL
       case _: BloomFilterAggregate => OMNI_AGGREGATION_TYPE_BLOOM_FILTER
       case _: BitAndAgg => OMNI_AGGREGATION_TYPE_BIT_AND
       case _: BitOrAgg => OMNI_AGGREGATION_TYPE_BIT_OR
@@ -1214,6 +1243,11 @@ object OmniExpressionAdaptor extends Logging {
         }
       case a: ArrayType =>
         new ArrayDataType(sparkTypeToOmniTypeWithComplex(a.elementType))
+      case map: MapType =>
+        new MapDataType(sparkTypeToOmniTypeWithComplex(map.keyType), sparkTypeToOmniTypeWithComplex(map.valueType))
+      case s: StructType =>
+        val children = s.fields.map(f => sparkTypeToOmniTypeWithComplex(f.dataType, f.metadata))
+        new StructDataType(children)
       case NullType => BooleanDataType.BOOLEAN
       case _ =>
         throw new UnsupportedOperationException(s"Unsupported datatype: $dataType")

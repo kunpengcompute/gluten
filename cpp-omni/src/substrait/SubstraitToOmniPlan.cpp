@@ -503,14 +503,18 @@ std::vector<uint32_t> getDefaultMaskChannel(const std::vector<uint32_t>& aggFunc
 PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::AggregateRel &aggRel)
 {
     auto childNode = ConvertSingleInput<::substrait::AggregateRel>(aggRel);
+    AggregationNode::Step aggStep = toAggregationStep(aggRel);
+
     PlanNodePtr expandPlanNode = nullptr;
     if (aggRel.has_advanced_extension() && std::dynamic_pointer_cast<const ExpandNode>(childNode) != nullptr) {
         const auto &advancedExtension = aggRel.advanced_extension();
         if (advancedExtension.has_optimization()) {
             const auto &optimization = advancedExtension.optimization();
-            ::substrait::Rel expandRel;
-            optimization.UnpackTo(&expandRel);
-            expandPlanNode = std::dynamic_pointer_cast<const ExpandNode>(childNode);
+            if (optimization.template Is<::substrait::Rel>()) {
+                ::substrait::Rel expandRel;
+                optimization.UnpackTo(&expandRel);
+                expandPlanNode = std::dynamic_pointer_cast<const ExpandNode>(childNode);
+            }
         }
     }
     const auto &sourceDataTypes = childNode->OutputType();
@@ -627,7 +631,7 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::Aggregat
     outputType = std::make_shared<DataTypes>(std::move(nodeOutputTypes));
     auto aggregationNode = std::make_shared<AggregationNode>(NextPlanNodeId(), groupingExprs, groupByNum, aggsKeys,
         sourceDataTypes, outPutDataTypes, aggFuncTypes, aggFilterExprs, maskColumns, inputRaws, outputPartial,
-        isStatisticalAggregate, outputType, childNode);
+        isStatisticalAggregate, outputType, childNode, aggStep);
     if (expandPlanNode) {
         if (auto expandNode = std::dynamic_pointer_cast<const ExpandNode>(expandPlanNode)) {
             return std::make_shared<GroupingNode>(NextPlanNodeId(), expandNode, aggregationNode);
@@ -933,6 +937,14 @@ PlanNodePtr SubstraitToOmniPlanConverter::ProcessEmit(
         default:
             OMNI_THROW("Substrait error:", "unrecognized emit kind");
     }
+}
+
+AggregationNode::Step SubstraitToOmniPlanConverter::toAggregationStep(const ::substrait::AggregateRel& aggRel) {
+    if (aggRel.has_advanced_extension() &&
+        SubstraitParser::ConfigSetInOptimization(aggRel.advanced_extension(), "allowFlush=")) {
+        return AggregationNode::Step::K_PARTIAL;
+    }
+    return AggregationNode::Step::K_SINGLE;
 }
 
 AggregationNode::Step SubstraitToOmniPlanConverter::ToAggregationFunctionStep(

@@ -215,6 +215,10 @@ bool SubstraitParser::ConfigSetInOptimization(
     const ::substrait::extensions::AdvancedExtension &extension, const std::string &config)
 {
     if (extension.has_optimization()) {
+        const auto& optimization = extension.optimization();
+        if (!optimization.Is<google::protobuf::StringValue>()) {
+            return false;
+        }
         google::protobuf::StringValue msg;
         extension.optimization().UnpackTo(&msg);
         std::size_t pos = msg.value().find(config);
@@ -382,6 +386,10 @@ op::FunctionType SubstraitParser::ParseFunctionType(
         return op::OMNI_AGGREGATION_TYPE_VAR_POP;
     } else if (funcName == "first") {
         return op::OMNI_AGGREGATION_TYPE_FIRST_INCLUDENULL;
+    } else if (funcName == "last_ignore_null") {
+        return op::OMNI_AGGREGATION_TYPE_LAST_IGNORENULL;
+    } else if (funcName == "last") {
+        return op::OMNI_AGGREGATION_TYPE_LAST_INCLUDENULL;
     } else if (funcName == "rank") {
         return op::OMNI_WINDOW_TYPE_RANK;
     } else if (funcName == "percent_rank") {
@@ -474,6 +482,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"avg", {FUNCTION_OMNI_EXPR_TYPE, "avg"}},
     {"power", {FUNCTION_OMNI_EXPR_TYPE, "power"}},
     {"first", {FUNCTION_OMNI_EXPR_TYPE, "first"}},
+    {"last", {FUNCTION_OMNI_EXPR_TYPE, "last"}},
     {"bloom_filter_agg", {FUNCTION_OMNI_EXPR_TYPE, "bloom_filter_agg"}},
     {"substring_index", {FUNCTION_OMNI_EXPR_TYPE, "substring_index"}},
     {"regexp_extract", {FUNCTION_OMNI_EXPR_TYPE, "regexp_extract"}},
@@ -482,11 +491,13 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"unix_timestamp", {FUNCTION_OMNI_EXPR_TYPE, "unix_timestamp"}},
     {"from_unixtime", {FUNCTION_OMNI_EXPR_TYPE, "from_unixtime"}},
     {"first_ignore_null", {FUNCTION_OMNI_EXPR_TYPE, "first_ignore_null"}},
+    {"last_ignore_null", {FUNCTION_OMNI_EXPR_TYPE, "last_ignore_null"}},
     {"stddev_samp", {FUNCTION_OMNI_EXPR_TYPE, "stddev_samp"}},
     {"stddev_pop", {FUNCTION_OMNI_EXPR_TYPE, "stddev_samp"}},
     {"var_samp", {FUNCTION_OMNI_EXPR_TYPE, "var_samp"}},
     {"var_pop", {FUNCTION_OMNI_EXPR_TYPE, "var_pop"}},
     {"date_add", {FUNCTION_OMNI_EXPR_TYPE, "date_add"}},
+    {"date_sub", {FUNCTION_OMNI_EXPR_TYPE, "date_sub"}},
     {"datediff", {FUNCTION_OMNI_EXPR_TYPE, "date_diff"}},
     {"date_format", {FUNCTION_OMNI_EXPR_TYPE, "DateFormat"}},
     {"add_months", {FUNCTION_OMNI_EXPR_TYPE, "add_months"}},
@@ -565,5 +576,9 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"timestamp_micros", {FUNCTION_OMNI_EXPR_TYPE, "timestamp_micros"}},
     {"timestamp_millis", {FUNCTION_OMNI_EXPR_TYPE, "timestamp_millis"}},
     {"timestamp_seconds", {FUNCTION_OMNI_EXPR_TYPE, "timestamp_seconds"}},
+    {"array_max", {FUNCTION_OMNI_EXPR_TYPE, "array_max"}},
+    {"array_min", {FUNCTION_OMNI_EXPR_TYPE, "array_min"}},
+    {"coalesce", {FUNCTION_OMNI_EXPR_TYPE, "coalesce"}},
+    {"if", {FUNCTION_OMNI_EXPR_TYPE, "if"}},
 };
 } // namespace omniruntime
