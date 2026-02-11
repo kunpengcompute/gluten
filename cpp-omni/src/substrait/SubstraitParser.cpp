@@ -47,8 +47,6 @@ type::DataTypePtr SubstraitParser::ParseKStructType(const ::substrait::Type &sub
     names.reserve(structTypes.size());
     for (int i = 0; i < structTypes.size(); i++) {
         types.emplace_back(ParseType(structTypes[i], asLowerCase));
-        // Substrait Type::Struct doesn't carry field names. Generate stable
-        // ordinal-based names to avoid crashing when building ScanSpec.
         names.emplace_back("field" + std::to_string(i));
     }
     return std::make_shared<type::RowType>(std::move(types), std::move(names));
@@ -217,6 +215,10 @@ bool SubstraitParser::ConfigSetInOptimization(
     const ::substrait::extensions::AdvancedExtension &extension, const std::string &config)
 {
     if (extension.has_optimization()) {
+        const auto& optimization = extension.optimization();
+        if (!optimization.Is<google::protobuf::StringValue>()) {
+            return false;
+        }
         google::protobuf::StringValue msg;
         extension.optimization().UnpackTo(&msg);
         std::size_t pos = msg.value().find(config);
@@ -427,6 +429,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"lte", {BINARY_OMNI_EXPR_TYPE, "LESS_THAN_OR_EQUAL"}},
     {"equal", {BINARY_OMNI_EXPR_TYPE, "EQUAL"}},
     {"eq", {BINARY_OMNI_EXPR_TYPE, "EQUAL"}},
+    {"equal_null_safe", {FUNCTION_OMNI_EXPR_TYPE, "equal_null_safe"}},
     {"or", {BINARY_OMNI_EXPR_TYPE, "OR"}},
     {"lower", {FUNCTION_OMNI_EXPR_TYPE, "lower"}},
     {"upper", {FUNCTION_OMNI_EXPR_TYPE, "upper"}},
@@ -556,5 +559,19 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"rand", {FUNCTION_OMNI_EXPR_TYPE, "rand"}},
     {"random", {FUNCTION_OMNI_EXPR_TYPE, "random"}},
     {"hex", {FUNCTION_OMNI_EXPR_TYPE, "hex"}},
+    {"atanh", {FUNCTION_OMNI_EXPR_TYPE, "atanh"}},
+    {"cot", {FUNCTION_OMNI_EXPR_TYPE, "cot"}},
+ 	{"csc", {FUNCTION_OMNI_EXPR_TYPE, "csc"}},
+ 	{"conv", {FUNCTION_OMNI_EXPR_TYPE, "conv"}},
+    {"degrees", {FUNCTION_OMNI_EXPR_TYPE, "degrees"}},
+    {"bit_count", {FUNCTION_OMNI_EXPR_TYPE, "bit_count"}},
+    {"bit_length", {FUNCTION_OMNI_EXPR_TYPE, "bit_length"}},
+    {"factorial", {FUNCTION_OMNI_EXPR_TYPE, "factorial"}},
+    {"floor", {FUNCTION_OMNI_EXPR_TYPE, "floor"}},
+    {"nanvl", {FUNCTION_OMNI_EXPR_TYPE, "nanvl"}},
+    {"array_max", {FUNCTION_OMNI_EXPR_TYPE, "array_max"}},
+    {"array_min", {FUNCTION_OMNI_EXPR_TYPE, "array_min"}},
+    {"coalesce", {FUNCTION_OMNI_EXPR_TYPE, "coalesce"}},
+    {"if", {FUNCTION_OMNI_EXPR_TYPE, "if"}},
 };
 } // namespace omniruntime

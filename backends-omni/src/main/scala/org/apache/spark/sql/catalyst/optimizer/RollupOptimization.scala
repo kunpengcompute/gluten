@@ -1,7 +1,7 @@
 package org.apache.spark.sql.catalyst.optimizer
 
 import org.apache.gluten.config.GlutenConfig
-import org.apache.gluten.execution.{ExpandExecTransformer, OmniHashAggregateExecTransformer, OmniRollUpOptimizeTransformer}
+import org.apache.gluten.execution.{ExpandExecTransformer, OmniHashAggregateExecTransformer, OmniRollUpOptimizeTransformer, OmniAdaptiveHashAggregateExecTransformer, HashAggregateExecTransformer}
 
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.catalyst.expressions.Literal
@@ -36,26 +36,31 @@ case class RollupOptimization(session: SparkSession) extends Rule[SparkPlan] {
 
   def replaceWithColumnarPlan(plan: SparkPlan): SparkPlan = {
     plan.transformUp {
-      case p @ OmniHashAggregateExecTransformer(_, _, _, _, _, _, ExpandExecTransformer(_, _, _)) =>
-        val expand = p.child.asInstanceOf[ExpandExecTransformer]
-        val isMatchRollupOptimization = matchRollupOptimization(expand)
-        if (isMatchRollupOptimization) {
-          // The sparkPlan: ColumnarExpandExec -> ColumnarHashAggExec => ColumnarExpandExec -> ColumnarHashAggExec -> ColumnarOptRollupExec.
-          // ColumnarHashAggExec handles the first combination by Partial mode, i.e. projections[0].
-          // ColumnarOptRollupExec handles the residual combinations by PartialMerge mode, i.e. projections[1]~projections[n].
-          OmniRollUpOptimizeTransformer(
-            p.requiredChildDistributionExpressions,
-            p.groupingExpressions,
-            p.aggregateExpressions,
-            p.aggregateAttributes,
-            p.initialInputBufferOffset,
-            p.resultExpressions,
-            expand,
-            expand.child
-          )
-        } else {
-          p
-        }
+      case p @ (OmniHashAggregateExecTransformer(_, _, _, _, _, _, ExpandExecTransformer(_, _, _))
+           | OmniAdaptiveHashAggregateExecTransformer(_, _, _, _, _, _, ExpandExecTransformer(_, _, _))) =>
+        transformer(p.asInstanceOf[HashAggregateExecTransformer])
+    }
+  }
+
+  def transformer(p: HashAggregateExecTransformer): SparkPlan = {
+    val expand = p.child.asInstanceOf[ExpandExecTransformer]
+    val isMatchRollupOptimization = matchRollupOptimization(expand)
+    if (isMatchRollupOptimization) {
+      // The sparkPlan: ColumnarExpandExec -> ColumnarHashAggExec => ColumnarExpandExec -> ColumnarHashAggExec -> ColumnarOptRollupExec.
+      // ColumnarHashAggExec handles the first combination by Partial mode, i.e. projections[0].
+      // ColumnarOptRollupExec handles the residual combinations by PartialMerge mode, i.e. projections[1]~projections[n].
+      OmniRollUpOptimizeTransformer(
+        p.requiredChildDistributionExpressions,
+        p.groupingExpressions,
+        p.aggregateExpressions,
+        p.aggregateAttributes,
+        p.initialInputBufferOffset,
+        p.resultExpressions,
+        expand,
+        expand.child
+      )
+    } else {
+      p
     }
   }
 

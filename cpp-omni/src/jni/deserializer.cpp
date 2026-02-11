@@ -231,7 +231,22 @@ Java_com_huawei_boostkit_spark_serialize_ShuffleDataSerializerUtils_rowShufflePa
  
         // create native vector
         auto vectorDataTypeId = static_cast<omniruntime::type::DataTypeId>(protoTypeId.typeid_());
-        vecs[i] = VectorHelper::CreateVector(OMNI_FLAT, vectorDataTypeId, rowCount);
+        if (vectorDataTypeId == OMNI_ARRAY) {
+            if (protoTypeId.children_size() <= 0) {
+                throw std::runtime_error("columnarShuffleParseBatch: Array type must have child type information");
+            }
+            const spark::VecType& childProtoType = protoTypeId.children(0);
+            auto elementDataTypeId = static_cast<omniruntime::type::DataTypeId>(childProtoType.typeid_());
+            std::shared_ptr<DataType> elementDataType = std::make_shared<DataType>(elementDataTypeId);
+
+            auto arrayType = std::make_shared<type::ArrayType>(elementDataType);
+            vecs[i] = VectorHelper::CreateEmptyComplexVector(arrayType.get(), rowCount);
+            BaseVector* elementVector = VectorHelper::CreateVector(OMNI_FLAT, elementDataTypeId, 0);
+            auto arrayVec =  reinterpret_cast<ArrayVector *>(vecs[i]);
+            arrayVec->SetElementVector(std::shared_ptr<BaseVector>(elementVector));
+        } else {
+            vecs[i] = VectorHelper::CreateVector(OMNI_FLAT, vectorDataTypeId, rowCount);
+        }
         vecNativeIdArrayElements[i] = (jlong)(vecs[i]);
     }
 

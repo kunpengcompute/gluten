@@ -288,6 +288,7 @@ public class OrcPushFilterBuilder {
             LOGGER.debug(e.getMessage());
         }
 
+        job.put("allColumns", StringUtils.join(allFieldsNames, ","));
         job.put("includedColumns", StringUtils.join(includedColumns, ","));
         addJulianGregorianInfo(job);
         return job.toString();
