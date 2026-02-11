@@ -31,12 +31,13 @@ import org.apache.gluten.validate.NativePlanValidationInfo
 import org.apache.gluten.vectorized.OmniNativePlanEvaluator
 import org.apache.spark.shuffle.OmniShuffleUtil
 import org.apache.spark.sql.catalyst.catalog.BucketSpec
-import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, Average, Count, First, Max, Min, StddevSamp, Sum}
+import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, Average, Count, First, Max, Min, StddevSamp, StddevPop, VarianceSamp, VariancePop, Sum}
 import org.apache.spark.sql.catalyst.expressions.{Alias, Attribute, CurrentRow, Literal, NamedExpression, Rank, PercentRank, RowNumber, SpecifiedWindowFrame, UnboundedFollowing, UnboundedPreceding, WindowExpression}
 import org.apache.spark.sql.catalyst.plans.physical.Partitioning
 import org.apache.spark.sql.connector.read.Scan
 import org.apache.spark.sql.execution.SparkPlan
 import org.apache.spark.sql.execution.datasources.FileFormat
+import org.apache.spark.sql.execution.datasources.parquet.ParquetFileFormat
 import org.apache.spark.sql.execution.datasources.orc.OrcFileFormat
 import org.apache.spark.sql.hive.execution.HiveFileFormat
 import org.apache.spark.sql.types._
@@ -169,9 +170,11 @@ object OmniBackendSettings extends BackendSettingsApi {
       outputFileFormatClassName match {
         case "org.apache.hadoop.hive.ql.io.orc.OrcOutputFormat" =>
           None
+        case "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat" =>
+          None
         case _ =>
           Some(
-            "HiveFileFormat is supported only with orc as the output file type"
+            "HiveFileFormat is supported only with orc/parquet as the output file type"
           ) // Unsupported format
       }
     }
@@ -199,11 +202,12 @@ object OmniBackendSettings extends BackendSettingsApi {
     def validateFileFormat(): Option[String] = {
       format match {
         case _: OrcFileFormat => None // Orc is directly supported
+        case _: ParquetFileFormat => None // Parquet is directly supported
         case h: HiveFileFormat if GlutenConfig.get.enableHiveFileFormatWriter =>
           validateHiveFileFormat(h) // Orc via Hive SerDe
         case _ =>
           Some(
-            "Only OrcFileFormat and HiveFileFormat are supported."
+            "Only OrcFileFormat, ParquetFileFormat and HiveFileFormat are supported."
           ) // Unsupported format
       }
     }
@@ -241,6 +245,9 @@ object OmniBackendSettings extends BackendSettingsApi {
                   case _: Average =>
                   case _: Min =>
                   case _: StddevSamp =>
+                  case _: StddevPop =>
+                  case _: VarianceSamp =>
+                  case _: VariancePop =>
                   case Count(Literal(1, IntegerType) :: Nil) | Count(ArrayBuffer(Literal(1, IntegerType))) =>
                   case Count(_) if aggFunction.children.size == 1 =>
                   case _: First =>

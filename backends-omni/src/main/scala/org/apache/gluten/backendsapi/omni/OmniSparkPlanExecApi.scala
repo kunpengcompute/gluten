@@ -45,7 +45,7 @@ import org.apache.gluten.datasources.parquet.OmniParquetFileFormat
 import org.apache.gluten.exception.GlutenNotSupportException
 import org.apache.gluten.expression.ExpressionConverter.replaceWithExpressionTransformer
 import org.apache.gluten.extension.PushDownFilterToOmniScan
-import org.apache.spark.sql.hive.OmniHiveUDFTransformer
+import org.apache.spark.sql.hive.{OmniHiveTableScanExecTransformer, OmniHiveUDFTransformer}
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.execution.datasources.orc.OrcFileFormat
 import org.apache.spark.sql.execution.datasources.parquet.ParquetFileFormat
@@ -444,15 +444,23 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
       bucketSpec: Option[BucketSpec],
       options: Map[String, String],
       staticPartitions: TablePartitionSpec): ColumnarWriteFilesExec =
-    OmniColumnarWriteFilesExec(
-      child.child,
-      noop,
-      child,
-      fileFormat,
-      partitionColumns,
-      bucketSpec,
-      options,
-      staticPartitions)
+    {
+      val nativeFormat = SparkSession.active.sparkContext.getLocalProperty("nativeFormat")
+      val effectiveFileFormat = (nativeFormat, fileFormat) match {
+        case ("orc", _: OrcFileFormat) => new OmniOrcFileFormat()
+        case ("parquet", _: ParquetFileFormat) => new OmniParquetFileFormat()
+        case _ => fileFormat
+      }
+      OmniColumnarWriteFilesExec(
+        child.child,
+        noop,
+        child,
+        effectiveFileFormat,
+        partitionColumns,
+        bucketSpec,
+        options,
+        staticPartitions)
+    }
 
   /** Create ColumnarArrowEvalPythonExec, for omni backend */
   override def createColumnarArrowEvalPythonExec(
@@ -564,5 +572,10 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
                                       expr: Expression,
                                       attributeSeq: Seq[Attribute]): ExpressionTransformer = {
     OmniHiveUDFTransformer.replaceWithExpressionTransformer(expr, attributeSeq)
+  }
+
+  override def genHiveTableScanExecTransformer(
+                                       scanExec: SparkPlan): BasicScanExecTransformer = {
+    OmniHiveTableScanExecTransformer(scanExec)
   }
 }

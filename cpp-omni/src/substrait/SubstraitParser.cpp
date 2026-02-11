@@ -47,8 +47,6 @@ type::DataTypePtr SubstraitParser::ParseKStructType(const ::substrait::Type &sub
     names.reserve(structTypes.size());
     for (int i = 0; i < structTypes.size(); i++) {
         types.emplace_back(ParseType(structTypes[i], asLowerCase));
-        // Substrait Type::Struct doesn't carry field names. Generate stable
-        // ordinal-based names to avoid crashing when building ScanSpec.
         names.emplace_back("field" + std::to_string(i));
     }
     return std::make_shared<type::RowType>(std::move(types), std::move(names));
@@ -376,6 +374,12 @@ op::FunctionType SubstraitParser::ParseFunctionType(
         return op::OMNI_AGGREGATION_TYPE_FIRST_IGNORENULL;
     } else if (funcName == "stddev_samp") {
         return op::OMNI_AGGREGATION_TYPE_SAMP;
+    } else if (funcName == "stddev_pop") {
+        return op::OMNI_AGGREGATION_TYPE_STD_POP;
+    } else if (funcName == "var_samp") {
+        return op::OMNI_AGGREGATION_TYPE_VAR_SAMP;
+    } else if (funcName == "var_pop") {
+        return op::OMNI_AGGREGATION_TYPE_VAR_POP;
     } else if (funcName == "first") {
         return op::OMNI_AGGREGATION_TYPE_FIRST_INCLUDENULL;
     } else if (funcName == "rank") {
@@ -407,6 +411,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"is_null", {IS_NULL_OMNI_EXPR_TYPE, "IS_NULL"}},
     {"not", {UNARY_OMNI_EXPR_TYPE, "NOT"}},
     {"not_equal", {BINARY_OMNI_EXPR_TYPE, "NOT_EQUAL"}},
+    {"neq", {BINARY_OMNI_EXPR_TYPE, "NOT_EQUAL"}},
     {"add", {BINARY_OMNI_EXPR_TYPE, "ADD"}},
     {"subtract", {BINARY_OMNI_EXPR_TYPE, "SUBTRACT"}},
     {"multiply", {BINARY_OMNI_EXPR_TYPE, "MULTIPLY"}},
@@ -417,6 +422,8 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"lt", {BINARY_OMNI_EXPR_TYPE, "LESS_THAN"}},
     {"lte", {BINARY_OMNI_EXPR_TYPE, "LESS_THAN_OR_EQUAL"}},
     {"equal", {BINARY_OMNI_EXPR_TYPE, "EQUAL"}},
+    {"eq", {BINARY_OMNI_EXPR_TYPE, "EQUAL"}},
+    {"equal_null_safe", {FUNCTION_OMNI_EXPR_TYPE, "equal_null_safe"}},
     {"or", {BINARY_OMNI_EXPR_TYPE, "OR"}},
     {"lower", {FUNCTION_OMNI_EXPR_TYPE, "lower"}},
     {"upper", {FUNCTION_OMNI_EXPR_TYPE, "upper"}},
@@ -439,6 +446,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"md5", {FUNCTION_OMNI_EXPR_TYPE, "Md5"}},
     {"concat", {FUNCTION_OMNI_EXPR_TYPE, "concat"}},
     {"concat_ws", {FUNCTION_OMNI_EXPR_TYPE, "concat_ws"}},
+    {"reverse", {FUNCTION_OMNI_EXPR_TYPE, "reverse"}},
     {"xxhash64", {FUNCTION_OMNI_EXPR_TYPE, "xxhash64"}},
     {"starts_with", {FUNCTION_OMNI_EXPR_TYPE, "StartsWith"}},
     {"ends_with", {FUNCTION_OMNI_EXPR_TYPE, "EndsWith"}},
@@ -447,6 +455,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"modulus", {BINARY_OMNI_EXPR_TYPE, "MODULUS"}},
     {"strpos", {FUNCTION_OMNI_EXPR_TYPE, "instr"}},
     {"greatest", {FUNCTION_OMNI_EXPR_TYPE, "Greatest"}},
+    {"least", {FUNCTION_OMNI_EXPR_TYPE, "Least"}},
     {"contains", {FUNCTION_OMNI_EXPR_TYPE, "Contains"}},
     {"locate", {FUNCTION_OMNI_EXPR_TYPE, "locate"}},
     {"position", {FUNCTION_OMNI_EXPR_TYPE, "position"}},
@@ -474,6 +483,9 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"from_unixtime", {FUNCTION_OMNI_EXPR_TYPE, "from_unixtime"}},
     {"first_ignore_null", {FUNCTION_OMNI_EXPR_TYPE, "first_ignore_null"}},
     {"stddev_samp", {FUNCTION_OMNI_EXPR_TYPE, "stddev_samp"}},
+    {"stddev_pop", {FUNCTION_OMNI_EXPR_TYPE, "stddev_samp"}},
+    {"var_samp", {FUNCTION_OMNI_EXPR_TYPE, "var_samp"}},
+    {"var_pop", {FUNCTION_OMNI_EXPR_TYPE, "var_pop"}},
     {"date_add", {FUNCTION_OMNI_EXPR_TYPE, "date_add"}},
     {"datediff", {FUNCTION_OMNI_EXPR_TYPE, "date_diff"}},
     {"date_format", {FUNCTION_OMNI_EXPR_TYPE, "DateFormat"}},
@@ -536,8 +548,22 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"power", {FUNCTION_OMNI_EXPR_TYPE, "power"}},
     {"rint", {FUNCTION_OMNI_EXPR_TYPE, "rint"}},
     {"round", {FUNCTION_OMNI_EXPR_TYPE, "round"}},
+    {"flatten", {FUNCTION_OMNI_EXPR_TYPE, "flatten"}},
+    {"rand", {FUNCTION_OMNI_EXPR_TYPE, "rand"}},
+    {"random", {FUNCTION_OMNI_EXPR_TYPE, "random"}},
+    {"hex", {FUNCTION_OMNI_EXPR_TYPE, "hex"}},
+    {"atanh", {FUNCTION_OMNI_EXPR_TYPE, "atanh"}},
+    {"cot", {FUNCTION_OMNI_EXPR_TYPE, "cot"}},
+ 	{"csc", {FUNCTION_OMNI_EXPR_TYPE, "csc"}},
+ 	{"conv", {FUNCTION_OMNI_EXPR_TYPE, "conv"}},
+    {"degrees", {FUNCTION_OMNI_EXPR_TYPE, "degrees"}},
+    {"bit_count", {FUNCTION_OMNI_EXPR_TYPE, "bit_count"}},
+    {"bit_length", {FUNCTION_OMNI_EXPR_TYPE, "bit_length"}},
+    {"factorial", {FUNCTION_OMNI_EXPR_TYPE, "factorial"}},
+    {"floor", {FUNCTION_OMNI_EXPR_TYPE, "floor"}},
+    {"nanvl", {FUNCTION_OMNI_EXPR_TYPE, "nanvl"}},
     {"timestamp_micros", {FUNCTION_OMNI_EXPR_TYPE, "timestamp_micros"}},
     {"timestamp_millis", {FUNCTION_OMNI_EXPR_TYPE, "timestamp_millis"}},
-    {"timestamp_seconds", {FUNCTION_OMNI_EXPR_TYPE, "timestamp_seconds"}}
+    {"timestamp_seconds", {FUNCTION_OMNI_EXPR_TYPE, "timestamp_seconds"}},
 };
 } // namespace omniruntime
