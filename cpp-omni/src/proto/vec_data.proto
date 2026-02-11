@@ -40,7 +40,8 @@ message VecType {
         VEC_TYPE_CONTAINER = 17;
         VEC_TYPE_BYTE = 18;
         VEC_TYPE_FLOAT = 19;
-        VEC_TYPE_INVALID = 20;
+        VEC_TYPE_VARBINARY = 20;
+        VEC_TYPE_INVALID = 21;
         VEC_TYPE_ARRAY = 30;
     }
 

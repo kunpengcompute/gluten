@@ -20,6 +20,7 @@ import org.apache.gluten.backendsapi.SparkPlanExecApi
 import org.apache.gluten.config.GlutenConfig
 import org.apache.gluten.execution._
 import org.apache.gluten.expression.{ExpressionConverter, ExpressionMappings, ExpressionNames, ExpressionTransformer, GenericExpressionTransformer, OmniAliasTransformer, OmniFromUnixTimeTransformer, OmniGetStructFieldTransformer, OmniHashExpressionTransformer, OmniUnixTimestampTransformer, Sig}
+import org.apache.gluten.expression.aggregate.OmniHLLAdapter
 import org.apache.gluten.extension.columnar.FallbackTags
 import org.apache.spark.{ShuffleDependency, SparkException}
 import org.apache.spark.rdd.RDD
@@ -62,6 +63,7 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
       Sig[BitXorAgg](ExpressionNames.BIT_XOR_AGG),
       Sig[MinBy](ExpressionNames.MIN_BY),
       Sig[MaxBy](ExpressionNames.MAX_BY),
+      Sig[OmniHLLAdapter](ExpressionNames.APPROX_DISTINCT),
     )
   }
 

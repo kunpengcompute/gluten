@@ -111,7 +111,7 @@ Java_com_huawei_boostkit_spark_serialize_ShuffleDataSerializerUtils_columnarShuf
         auto offsets = protoVec.offset().data();
         auto nulls = protoVec.nulls().data();
 
-        if (vectorDataTypeId == OMNI_CHAR || vectorDataTypeId == OMNI_VARCHAR) {
+        if (vectorDataTypeId == OMNI_CHAR || vectorDataTypeId == OMNI_VARCHAR || vectorDataTypeId == OMNI_VARBINARY) {
             auto charVec = reinterpret_cast<Vector<LargeStringContainer<std::string_view>> *>(vecs[i]);
             char *valuesAddress =
                 omniruntime::vec::unsafe::UnsafeStringVector::ExpandStringBuffer(charVec, protoVec.values().size());

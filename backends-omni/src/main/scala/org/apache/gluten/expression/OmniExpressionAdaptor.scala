@@ -34,6 +34,7 @@ import nova.hetu.omniruntime.constants.FunctionType
 import nova.hetu.omniruntime.constants.FunctionType._
 import nova.hetu.omniruntime.constants.JoinType._
 import nova.hetu.omniruntime.operator.OmniExprVerify
+import org.apache.gluten.expression.aggregate.OmniHLLAdapter
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -1049,6 +1050,7 @@ object OmniExpressionAdaptor extends Logging {
       case _: BitXorAgg => OMNI_AGGREGATION_TYPE_BIT_XOR
       case _: MinBy => OMNI_AGGREGATION_TYPE_MIN_BY
       case _: MaxBy => OMNI_AGGREGATION_TYPE_MAX_BY
+      case _: OmniHLLAdapter => OMNI_AGGREGATION_TYPE_APPROX_COUNT_DISTINCT
       case _ => throw new UnsupportedOperationException(s"Unsupported aggregate function: $agg")
     }
   }
