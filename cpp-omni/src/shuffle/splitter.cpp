@@ -738,6 +738,10 @@ void Splitter::ToSplitterTypeId(int num_cols)
                 CastOmniToShuffleType(OMNI_VARCHAR, SHUFFLE_BINARY);
                 break;
             }
+            case OMNI_VARBINARY: {
+                CastOmniToShuffleType(OMNI_VARBINARY, SHUFFLE_BINARY);
+                break;
+            }
             case OMNI_ARRAY: {
                 CastOmniToShuffleType(OMNI_ARRAY, SHUFFLE_ARRAY);
                 break;
@@ -958,6 +962,7 @@ std::unordered_map<int32_t, spark::VecType::VecTypeId> omniTypeToVecTypeMap = {
     {OMNI_CHAR, spark::VecType::VEC_TYPE_CHAR},
     {OMNI_CONTAINER, spark::VecType::VEC_TYPE_CONTAINER},
     {OMNI_BYTE, spark::VecType::VEC_TYPE_BYTE},
+    {OMNI_VARBINARY, spark::VecType::VEC_TYPE_VARBINARY},
     {OMNI_INVALID, spark::VecType::VEC_TYPE_INVALID},
     {OMNI_ARRAY, spark::VecType::VEC_TYPE_ARRAY},
 };

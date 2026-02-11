@@ -19,6 +19,7 @@ package org.apache.gluten.execution
 import com.google.protobuf.StringValue
 import org.apache.gluten.backendsapi.BackendsApiManager
 import org.apache.gluten.expression.OmniExpressionAdaptor.{sparkTypeToOmniTypeWithComplex, toOmniAggFunType}
+import org.apache.gluten.expression.aggregate.OmniHLLAdapter
 import org.apache.gluten.expression.{AggregateFunctionsBuilder, ConverterUtils, ExpressionConverter}
 import org.apache.gluten.extension.ValidationResult
 import org.apache.gluten.substrait.`type`.{TypeBuilder, TypeNode}
@@ -124,7 +125,7 @@ abstract class HashAggregateExecTransformer(
      classOf[Sum], classOf[Min], classOf[Max], classOf[Count], classOf[MinBy], classOf[MaxBy],
      classOf[Average], classOf[First], classOf[Last], classOf[StddevSamp], classOf[StddevPop],
      classOf[VarianceSamp], classOf[VariancePop], classOf[BloomFilterAggregate],
-     classOf[BitAndAgg], classOf[BitOrAgg], classOf[BitXorAgg],
+     classOf[BitAndAgg], classOf[BitOrAgg], classOf[BitXorAgg], classOf[OmniHLLAdapter],
     )
 
     var completeOnlySupported = Set(

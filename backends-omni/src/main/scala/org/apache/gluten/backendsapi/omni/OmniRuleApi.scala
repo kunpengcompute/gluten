@@ -28,7 +28,7 @@ import org.apache.gluten.extension.columnar.transition.{InsertTransitions, Remov
 import org.apache.gluten.extension.columnar.validator.{Validator, Validators}
 import org.apache.gluten.extension.injector.{Injector, SparkInjector}
 import org.apache.gluten.extension.injector.GlutenInjector.{LegacyInjector, RasInjector}
-import org.apache.gluten.extension.RewriteAQEShuffleRead
+import org.apache.gluten.extension.{OmniHLLRewriteRule, RewriteAQEShuffleRead}
 import org.apache.spark.sql.catalyst.optimizer.{CombineJoinedAggregates, DedupLeftSemiJoin, MergeSubqueryFilters, PushOrderedLimitThroughAgg, ReorderJoinEnhances, RewriteSelfJoinInInPredicate, RollupOptimization, ShuffleJoinStrategy, RewriteTopNSort, CombineWindowSort, OmniRewriteSubqueryBroadcast, CombineProject}
 import org.apache.gluten.extension.{FallbackBroadcastHashJoin, FallbackBroadcastHashJoinPrepQueryStage, PushDownFilterToOmniScan, RewriteAQEShuffleRead, OmniRewriteJoin, AdaptiveHashAggregateRule}
 import org.apache.gluten.sql.shims.SparkShimLoader
@@ -53,7 +53,7 @@ object OmniRuleApi {
     injector.injectQueryStagePrepRule(DedupLeftSemiJoin.apply)
     injector.injectPlannerStrategy(_ => ShuffleJoinStrategy)
 //    injector.injectOptimizerRule(CollectRewriteRule.apply)
-//    injector.injectOptimizerRule(HLLRewriteRule.apply)
+    injector.injectOptimizerRule(OmniHLLRewriteRule.apply)
 //    injector.injectOptimizerRule(CollapseGetJsonObjectExpressionRule.apply)
 //    injector.injectPostHocResolutionRule(ArrowConvertorRule.apply)
     injector.injectOptimizerRule(ReorderJoinEnhances.apply)
