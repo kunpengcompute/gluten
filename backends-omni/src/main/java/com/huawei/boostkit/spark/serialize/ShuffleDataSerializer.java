@@ -193,8 +193,7 @@ public class ShuffleDataSerializer {
                 for (int i = 0; i < fieldTypes.length; i++) {
                     DataType fieldType = createDataTypeFromOmniType(fieldTypes[i], precision, scale);
                     String fieldName = (fieldNames != null && i < fieldNames.length) ? fieldNames[i] : "col" + i;
-                    boolean nullable = true;
-                    fields[i] = DataTypes.createStructField(fieldName, fieldType, nullable);
+                    fields[i] = DataTypes.createStructField(fieldName, fieldType, true);
                 }
 
                 type = DataTypes.createStructType(fields);
@@ -212,7 +211,8 @@ public class ShuffleDataSerializer {
         return vecTmp;
     }
 
-    private static DataType createDataTypeFromOmniType(nova.hetu.omniruntime.type.DataType omniDataType, int precision, int scale) {
+    private static DataType createDataTypeFromOmniType(nova.hetu.omniruntime.type.DataType omniDataType,
+                                                       int precision, int scale) {
         if (omniDataType == null) {
             throw new IllegalArgumentException("omniDataType is null");
         }
