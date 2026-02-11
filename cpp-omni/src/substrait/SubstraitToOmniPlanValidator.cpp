@@ -484,8 +484,7 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::WindowRel &window
     const auto &extension = windowRel.advanced_extension();
     DataTypePtr inputRowType;
     std::vector<DataTypePtr> types;
-    std::vector<DataTypeId> excludes{DataTypeId::OMNI_ARRAY};
-    if (!ParseOmniType(extension, inputRowType, excludes) || !FlattenSingleLevel(inputRowType, types, &excludes)) {
+    if (!ParseOmniType(extension, inputRowType) || !FlattenSingleLevel(inputRowType, types)) {
         LOG_VALIDATION_MSG("Validation failed for input types in WindowRel.");
         return false;
     }
@@ -660,8 +659,7 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::SortRel &sortRel)
     const auto &extension = sortRel.advanced_extension();
     DataTypePtr inputRowType;
     std::vector<DataTypePtr> types;
-    std::vector<DataTypeId> excludes{DataTypeId::OMNI_ARRAY};
-    if (!ParseOmniType(extension, inputRowType, excludes) || !FlattenSingleLevel(inputRowType, types, &excludes)) {
+    if (!ParseOmniType(extension, inputRowType) || !FlattenSingleLevel(inputRowType, types)) {
         LOG_VALIDATION_MSG("Validation failed for input types in SortRel.");
         return false;
     }
@@ -679,6 +677,7 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::SortRel &sortRel)
             case OMNI_BOOLEAN:
             case OMNI_DECIMAL64:
             case OMNI_DECIMAL128:
+            case OMNI_ARRAY:
                 break;
             default:
                 LOG_VALIDATION_MSG(
