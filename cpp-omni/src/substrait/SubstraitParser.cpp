@@ -370,6 +370,8 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"least", {FUNCTION_OMNI_EXPR_TYPE, "Least"}},
     {"pmod", {FUNCTION_OMNI_EXPR_TYPE, "pmod"}},
     {"StaticInvokeCharTypeWriteSideCheck", {FUNCTION_OMNI_EXPR_TYPE, "StaticInvokeCharTypeWriteSideCheck"}},
+    {"StaticInvokeVarcharTypeWriteSideCheck", {FUNCTION_OMNI_EXPR_TYPE, "StaticInvokeVarcharTypeWriteSideCheck"}},
+    {"StaticInvokeCharReadPadding", {FUNCTION_OMNI_EXPR_TYPE, "StaticInvokeCharReadPadding"}},
     {"contains", {FUNCTION_OMNI_EXPR_TYPE, "Contains"}},
     {"murmur3hash", {FUNCTION_OMNI_EXPR_TYPE, "mm3hash"}},
     {"rank", {FUNCTION_OMNI_EXPR_TYPE, "rank"}},
