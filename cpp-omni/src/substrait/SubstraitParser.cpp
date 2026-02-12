@@ -523,6 +523,8 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"trim", {FUNCTION_OMNI_EXPR_TYPE, "Trim"}},
     {"ltrim", {FUNCTION_OMNI_EXPR_TYPE, "LTrim"}},
     {"rtrim", {FUNCTION_OMNI_EXPR_TYPE, "RTrim"}},
+    {"btrim", {FUNCTION_OMNI_EXPR_TYPE, "BTrim"}},
+    {"overlay", {FUNCTION_OMNI_EXPR_TYPE, "overlay"}},
     {"floor", {FUNCTION_OMNI_EXPR_TYPE, "floor"}},
     {"empty2null", {FUNCTION_OMNI_EXPR_TYPE, "empty2null"}},
     {"get_json_object", {FUNCTION_OMNI_EXPR_TYPE, "GetJsonObject"}},
