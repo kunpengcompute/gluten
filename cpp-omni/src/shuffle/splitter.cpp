@@ -896,10 +896,6 @@ void Splitter::ToSplitterTypeId(int num_cols)
                 CastOmniToShuffleType(OMNI_VARCHAR, SHUFFLE_BINARY);
                 break;
             }
-            case OMNI_VARBINARY: {
-                CastOmniToShuffleType(OMNI_VARBINARY, SHUFFLE_BINARY);
-                break;
-            }
             case OMNI_ARRAY: {
                 CastOmniToShuffleType(OMNI_ARRAY, SHUFFLE_ARRAY);
                 break;
