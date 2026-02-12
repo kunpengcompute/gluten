@@ -576,6 +576,8 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"power", {FUNCTION_OMNI_EXPR_TYPE, "power"}},
     {"rint", {FUNCTION_OMNI_EXPR_TYPE, "rint"}},
     {"round", {FUNCTION_OMNI_EXPR_TYPE, "round"}},
+    {"lpad", {FUNCTION_OMNI_EXPR_TYPE, "lpad"}},
+    {"rpad", {FUNCTION_OMNI_EXPR_TYPE, "rpad"}},
     {"flatten", {FUNCTION_OMNI_EXPR_TYPE, "flatten"}},
     {"rand", {FUNCTION_OMNI_EXPR_TYPE, "rand"}},
     {"random", {FUNCTION_OMNI_EXPR_TYPE, "random"}},
