@@ -408,6 +408,8 @@ op::FunctionType SubstraitParser::ParseFunctionType(
         return op::OMNI_AGGREGATION_TYPE_MIN_BY;
     } else if (funcName == "max_by") {
         return op::OMNI_AGGREGATION_TYPE_MAX_BY;
+    } else if (funcName == "approx_distinct") {
+        return op::OMNI_AGGREGATION_TYPE_APPROX_COUNT_DISTINCT;
     } else {
         OMNI_THROW("Substrait Error:", "Unsupported aggregate or window function: {}", funcName);
     }
@@ -525,6 +527,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"negative", {FUNCTION_OMNI_EXPR_TYPE, "negative"}},
     {"min_by", {FUNCTION_OMNI_EXPR_TYPE, "min_by"}},
     {"max_by", {FUNCTION_OMNI_EXPR_TYPE, "max_by"}},
+    {"approx_distinct", {FUNCTION_OMNI_EXPR_TYPE, "approx_distinct"}},
     {"transform", {FUNCTION_OMNI_EXPR_TYPE, "transform"}},
     {"transform_keys", {FUNCTION_OMNI_EXPR_TYPE, "transform_keys"}},
     {"transform_values", {FUNCTION_OMNI_EXPR_TYPE, "transform_values"}},
@@ -552,6 +555,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"log", {FUNCTION_OMNI_EXPR_TYPE, "log"}},
     {"sign", {FUNCTION_OMNI_EXPR_TYPE, "sign"}},
     {"sinh", {FUNCTION_OMNI_EXPR_TYPE, "sinh"}},
+    {"hypot", {FUNCTION_OMNI_EXPR_TYPE, "hypot"}},
     {"sqrt", {FUNCTION_OMNI_EXPR_TYPE, "sqrt"}},
     {"sec", {FUNCTION_OMNI_EXPR_TYPE, "sec"}},
     {"pmod", {FUNCTION_OMNI_EXPR_TYPE, "pmod"}},
@@ -573,10 +577,21 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"factorial", {FUNCTION_OMNI_EXPR_TYPE, "factorial"}},
     {"floor", {FUNCTION_OMNI_EXPR_TYPE, "floor"}},
     {"nanvl", {FUNCTION_OMNI_EXPR_TYPE, "nanvl"}},
+    {"timestamp_micros", {FUNCTION_OMNI_EXPR_TYPE, "timestamp_micros"}},
+    {"timestamp_millis", {FUNCTION_OMNI_EXPR_TYPE, "timestamp_millis"}},
+    {"timestamp_seconds", {FUNCTION_OMNI_EXPR_TYPE, "timestamp_seconds"}},
     {"array_max", {FUNCTION_OMNI_EXPR_TYPE, "array_max"}},
     {"array_min", {FUNCTION_OMNI_EXPR_TYPE, "array_min"}},
     {"coalesce", {FUNCTION_OMNI_EXPR_TYPE, "coalesce"}},
     {"if", {FUNCTION_OMNI_EXPR_TYPE, "if"}},
     {"translate", {FUNCTION_OMNI_EXPR_TYPE, "translate"}},
+    {"flatten", {FUNCTION_OMNI_EXPR_TYPE, "flatten"}},
+    {"div", {FUNCTION_OMNI_EXPR_TYPE, "div"}},
+    {"checked_div", {FUNCTION_OMNI_EXPR_TYPE, "div"}},
+    {"expm1", {FUNCTION_OMNI_EXPR_TYPE, "expm1"}},
+    {"unhex", {FUNCTION_OMNI_EXPR_TYPE, "unhex"}},
+    {"width_bucket", {FUNCTION_OMNI_EXPR_TYPE, "width_bucket"}},
+    {"spark_partition_id", {FUNCTION_OMNI_EXPR_TYPE, "spark_partition_id"}},
+    {"uuid", {FUNCTION_OMNI_EXPR_TYPE, "uuid"}}
 };
 } // namespace omniruntime
