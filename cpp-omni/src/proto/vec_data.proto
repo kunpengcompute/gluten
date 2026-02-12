@@ -12,10 +12,12 @@ message VecBatch {
 
 message Vec {
     VecType vecType = 1;
-    bytes offset = 2;
-    bytes values = 3;
-    bytes nulls = 4;
-    bytes nums =5;
+    int32 size = 2;
+    int32 offset = 3;
+    bytes values = 4;
+    bytes nulls = 5;
+    bytes offsets = 6;
+    repeated Vec subVectors = 7;
 }
 
 message VecType {
@@ -41,8 +43,10 @@ message VecType {
         VEC_TYPE_BYTE = 18;
         VEC_TYPE_FLOAT = 19;
         VEC_TYPE_VARBINARY = 20;
-        VEC_TYPE_INVALID = 21;
         VEC_TYPE_ARRAY = 30;
+        VEC_TYPE_MAP = 31;
+        VEC_TYPE_ROW = 32;
+        VEC_TYPE_INVALID = 36;
     }
 
     VecTypeId typeId = 1;

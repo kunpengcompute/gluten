@@ -88,11 +88,11 @@ int Splitter::AllocatePartitionBuffers(int32_t partition_id, int32_t new_size) {
 
     for (auto i = 0; i < num_fields; ++i) {
         switch (column_type_id_[i]) {
-            case SHUFFLE_BINARY: {
-                break;
-            }
-            case SHUFFLE_ARRAY:
+            case SHUFFLE_BINARY:
             case SHUFFLE_LARGE_BINARY:
+            case SHUFFLE_ARRAY:
+            case SHUFFLE_MAP:
+            case SHUFFLE_ROW:
             case SHUFFLE_NULL:
                  break;
             case SHUFFLE_1BYTE:
@@ -136,6 +136,8 @@ int Splitter::AllocatePartitionBuffers(int32_t partition_id, int32_t new_size) {
             }
             case SHUFFLE_BINARY:
             case SHUFFLE_ARRAY:
+            case SHUFFLE_MAP:
+            case SHUFFLE_ROW:
             default: {
                 break;
             }
@@ -244,12 +246,6 @@ void HandleNull(VCBatchInfo &vcbInfo, bool isNull) {
     }
 }
 
-void HandleNullArray(ArrayBatchInfo &arrayBatchInfo, bool isNull) {
-    if(isNull) {
-        arrayBatchInfo.SetNullFlag(isNull);
-    }
-}
-
 template<bool hasNull>
 void Splitter::SplitBinaryVector(BaseVector *varcharVector, int col_schema) {
     int32_t num_rows = varcharVector->GetSize();
@@ -349,159 +345,326 @@ void Splitter::SplitBinaryVector(BaseVector *varcharVector, int col_schema) {
     }
 }
 
-int Splitter::ToBytes(DataTypeId omniType)
+void Splitter::SerializeColumn(BaseVector *vector, std::vector<uint32_t> row_ids, spark::Vec &vec)
 {
-    switch (omniType) {
+    if (vector == nullptr) {
+        throw std::runtime_error("Splitter::SerializeColumn: vector is nullptr");
+    }
+
+    auto typeId = vector->GetTypeId();
+    switch (typeId) {
         case OMNI_BYTE:
-        case OMNI_BOOLEAN:
-            return (1 << SHUFFLE_1BYTE);
-        case OMNI_SHORT:
-            return (1 << SHUFFLE_2BYTE);
+        case OMNI_BOOLEAN: {
+            SerializeFlatVector<uint8_t>(vector, row_ids, vec, typeId);
+            break;
+        }
+        case OMNI_SHORT: {
+            SerializeFlatVector<uint16_t>(vector, row_ids, vec, typeId);
+            break;
+        }
         case OMNI_INT:
-        case OMNI_FLOAT:
-        case OMNI_DATE32:
-            return (1 << SHUFFLE_4BYTE);
+        case OMNI_DATE32: {
+            SerializeFlatVector<uint32_t>(vector, row_ids, vec, typeId);
+            break;
+        }
+        case OMNI_FLOAT: {
+            SerializeFlatVector<float>(vector, row_ids, vec, typeId);
+            break;
+        }
+        case OMNI_DOUBLE: {
+            SerializeFlatVector<double>(vector, row_ids, vec, typeId);
+            break;
+        }
         case OMNI_LONG:
         case OMNI_TIMESTAMP:
-        case OMNI_DOUBLE:
         case OMNI_DATE64:
-        case OMNI_DECIMAL64:
-            return (1 << SHUFFLE_8BYTE);
-        case OMNI_DECIMAL128:
-            return (1 << SHUFFLE_DECIMAL128);
+        case OMNI_DECIMAL64: {
+            SerializeFlatVector<uint64_t>(vector, row_ids, vec, typeId);
+            break;
+        }
+        case OMNI_DECIMAL128: {
+            SerializeFlatVector<uint128_t>(vector, row_ids, vec, typeId);
+            break;
+        }
+        case OMNI_VARBINARY:
         case OMNI_CHAR:
-        case OMNI_VARCHAR:
-            return 0;
-        default: throw std::runtime_error("Unsupported DataTypeId: " + omniType);
+        case OMNI_VARCHAR: {
+            SerializeStringVector(vector, row_ids, vec, typeId);
+            break;
+        }
+        case OMNI_ARRAY: {
+            SerializeArrayVector(vector, row_ids, vec);
+            break;
+        }
+        case OMNI_MAP: {
+            SerializeMapVector(vector, row_ids, vec);
+            break;
+        }
+        case OMNI_ROW: {
+            SerializeRowVector(vector, row_ids, vec);
+            break;
+        }
+        default: throw std::runtime_error("Unsupported DataTypeId: " + typeId);
     }
 }
 
-template<bool hasNull>
-void Splitter::SplitArrayVector(BaseVector *arrayVector, int col_schema) {
-    int32_t num_rows = arrayVector->GetSize();
-    bool is_null = false;
-    auto ar = reinterpret_cast<ArrayVector *>(arrayVector);
+template<typename T>
+void Splitter::SerializeFlatVector(BaseVector *vector, std::vector<uint32_t> row_ids, spark::Vec &vec, DataTypeId typeId)
+{
+    auto* typedVec = static_cast<Vector<T>*>(vector);
+    if (!typedVec) {
+        throw std::runtime_error("SerializeFlatVector: vector is not Vector<T>!");
+    }
+    int num_rows = row_ids.size();
 
-    DataTypeId elementType = ar->GetElementVector()->GetTypeId();
-    int typeBytes = ToBytes(elementType);
-    cached_vectorbatch_size_ += num_rows * (sizeof(int64_t) + sizeof(int64_t) + sizeof(int32_t) +
-        sizeof(int32_t) + sizeof(int64_t) + sizeof(bool)) + sizeof(int32_t);
-    for (auto &pid: partition_used_) {
-        auto &ar_partition_array = ar_partition_array_buffers_[pid];
-        uint64_t element_addr = 0;
-        uint64_t nulls_addr = 0;
-        uint32_t element_num = 0;
-        uint32_t element_len = 0;
-        uint64_t offset_addr = 0; // for varchar
+    // set the type and size of Vec
+    spark::VecType *vt = vec.mutable_vectype();
+    vt->set_typeid_(CastOmniTypeIdToProtoVecType(typeId));
+    vec.set_size(num_rows);
 
-        auto index = 0;
-        auto pos = partition_row_offset_base_[pid];
-        auto end = partition_row_offset_base_[pid + 1];
-        for (; pos < end; ++pos, ++index) {
-            element_addr = 0;
-            nulls_addr = 0;
-            element_num = 0;
-            element_len = 0;
-            offset_addr = 0;
-            auto rowId = row_offset_row_id_[pos];
-            if constexpr (hasNull) {
-                if (!ar->IsNull(rowId)) {
-                    auto curVecPtr = ar->GetArrayAt(rowId, false);
-                    BaseVector *curVec = curVecPtr.get();
+    // initialize nulls of spark::Vec
+    std::string nullsStr;
+    nullsStr.resize(num_rows, 0);
+    auto* nullsData = reinterpret_cast<uint8_t*>(nullsStr.data());
 
-                    nulls_addr = reinterpret_cast<int64_t>(UnsafeBaseVector::GetNulls(curVec));
-                    element_num = curVec->GetSize();
+    // initialize values of spark::Vec
+    std::string valuesStr;
+    valuesStr.resize(num_rows * sizeof(T));
+    auto* valuesData = reinterpret_cast<T*>(valuesStr.data());
 
-                    if (elementType != OMNI_CHAR && elementType != OMNI_VARCHAR) {
-                        element_addr = reinterpret_cast<int64_t>(VectorHelper::UnsafeGetValues(curVec));
-                        element_len = element_num * typeBytes;
-                        offset_addr = reinterpret_cast<int64_t>(VectorHelper::UnsafeGetOffsetsAddr(curVec));
-                    } else {
-                        auto varCharVec = reinterpret_cast<Vector<LargeStringContainer<std::string_view>> *>(curVec);
-
-                        element_len = 0;
-                        uint32_t* offsets_varchar = new uint32_t[element_num + 1];
-                        offsets_varchar[0] = 0;
-                        for (int i = 0; i < element_num; i++) {
-                            std::string_view value = varCharVec->GetValue(i);
-                            element_len += static_cast<uint32_t>(value.length());
-                            offsets_varchar[i + 1] = offsets_varchar[i] + value.length();
-                        }
-                        offset_addr = (uint64_t)offsets_varchar;
-
-                        uint8_t* concatenated_varchar = new uint8_t[element_len];
-
-                        for (int i = 0; i < element_num; i++) {
-                            std::string_view value = varCharVec->GetValue(i);
-                            std::memcpy(concatenated_varchar + offsets_varchar[i], value.data(), value.length());
-                        }
-                        element_addr = (uint64_t)concatenated_varchar;
-                    }
-                }
-            } else {
-                auto curVecPtr = ar->GetArrayAt(rowId, false);
-                BaseVector *curVec = curVecPtr.get();
-
-                nulls_addr = reinterpret_cast<int64_t>(UnsafeBaseVector::GetNulls(curVec));
-                element_num = curVec->GetSize();
-
-                if (elementType != OMNI_CHAR && elementType != OMNI_VARCHAR) {
-                    element_addr = reinterpret_cast<int64_t>(VectorHelper::UnsafeGetValues(curVec));
-                    element_len = element_num * typeBytes;
-                    offset_addr = reinterpret_cast<int64_t>(VectorHelper::UnsafeGetOffsetsAddr(curVec));
-                } else {
-                    auto varCharVec = reinterpret_cast<Vector<LargeStringContainer<std::string_view>> *>(curVec);
-
-                    element_len = 0;
-                    uint32_t* offsets_varchar = new uint32_t[element_num + 1];
-                    offsets_varchar[0] = 0;
-                    for (int i = 0; i < element_num; i++) {
-                        std::string_view value = varCharVec->GetValue(i);
-                        element_len += static_cast<uint32_t>(value.length());
-                        offsets_varchar[i + 1] = offsets_varchar[i] + value.length();
-                    }
-                    offset_addr = (uint64_t)offsets_varchar;
-
-                    uint8_t* concatenated_varchar = new uint8_t[element_len];
-
-                    for (int i = 0; i < element_num; i++) {
-                        std::string_view value = varCharVec->GetValue(i);
-                        std::memcpy(concatenated_varchar + offsets_varchar[i], value.data(), value.length());
-                    }
-                    element_addr = (uint64_t)concatenated_varchar;
-                }
-            }
-            if constexpr (hasNull) {
-                is_null = ar->IsNull(rowId);
-            }
-            cached_vectorbatch_size_ += element_len;
-            if ((ar_partition_array[col_schema].size() != 0) &&
-                (ar_partition_array[col_schema].back().getArrayList().size() <
-                    options_.spill_batch_row_num)) {
-                if constexpr (hasNull) {
-                    HandleNullArray(ar_partition_array[col_schema].back(), is_null);
-                }
-                ar_partition_array[col_schema].back().getArrayList().emplace_back(element_addr, nulls_addr,
-                    element_num, element_len, offset_addr, is_null);
-                ar_partition_array[col_schema].back().element_total_len += element_len;
-            } else {
-                ArrayBatchInfo arrayBatchInfo(options_.spill_batch_row_num, elementType);
-                arrayBatchInfo.getArrayList().emplace_back(element_addr, nulls_addr,
-                    element_num, element_len, offset_addr, is_null);
-                if constexpr (hasNull) {
-                    HandleNullArray(arrayBatchInfo, is_null);
-                }
-                arrayBatchInfo.element_total_len += element_len;
-                ar_partition_array[col_schema].emplace_back(arrayBatchInfo);
-            }
+    for (int32_t i = 0; i < num_rows; ++i) {
+        auto rowId = row_ids[i];
+        if (typedVec->IsNull(rowId)) {
+            nullsData[i] = 1;
+            valuesData[i] = T{}; // default value
+        } else {
+            valuesData[i] = typedVec->GetValue(rowId);
         }
     }
+
+    vec.set_nulls(std::move(nullsStr));
+    vec.set_values(std::move(valuesStr));
+}
+
+void Splitter::SerializeStringVector(BaseVector *vector, std::vector<uint32_t> row_ids, spark::Vec &vec, DataTypeId typeId)
+{
+    auto stringVec = reinterpret_cast<Vector<LargeStringContainer<std::string_view>> *>(vector);
+    int num_rows = row_ids.size();
+
+    spark::VecType *vt = vec.mutable_vectype();
+    vt->set_typeid_(CastOmniTypeIdToProtoVecType(typeId));
+    vec.set_size(num_rows);
+
+    std::string nullsStr;
+    nullsStr.resize(num_rows, 0);
+    auto* nullsData = reinterpret_cast<uint8_t*>(nullsStr.data());
+
+    std::string offsetsStr;
+    offsetsStr.resize((num_rows + 1) * sizeof(int32_t));
+    auto* offsetsData = reinterpret_cast<int32_t*>(offsetsStr.data());
+
+    std::string valuesStr;
+    int32_t currentOffset = 0;
+    offsetsData[0] = 0;
+
+    // calculate total size of strings
+    int64_t totalSize = 0;
+    for (int32_t i = 0; i < num_rows; ++i) {
+        auto rowId = row_ids[i];
+        if (!stringVec->IsNull(rowId)) {
+            auto strValue = stringVec->GetValue(rowId);
+            totalSize += strValue.size();
+        }
+    }
+    valuesStr.resize(totalSize);
+
+    char* valuesDataPtr = valuesStr.data();
+    for (int32_t i = 0; i < num_rows; ++i) {
+        auto rowId = row_ids[i];
+        if (stringVec->IsNull(rowId)) {
+            nullsData[i] = 1;
+            offsetsData[i + 1] = currentOffset;
+        } else {
+            auto strValue = stringVec->GetValue(rowId);
+            memcpy(valuesDataPtr + currentOffset, strValue.data(), strValue.size());
+            currentOffset += strValue.size();
+            offsetsData[i + 1] = currentOffset;
+        }
+    }
+
+    vec.set_nulls(std::move(nullsStr));
+    vec.set_offsets(std::move(offsetsStr));
+    vec.set_values(std::move(valuesStr));
+}
+
+void Splitter::SerializeArrayVector(BaseVector *vector, std::vector<uint32_t> row_ids, spark::Vec &vec)
+{
+    auto arrayVec = reinterpret_cast<ArrayVector *>(vector);
+    int num_rows = row_ids.size();
+
+    spark::VecType *vt = vec.mutable_vectype();
+    vt->set_typeid_(spark::VecType::VEC_TYPE_ARRAY);
+    vec.set_size(num_rows);
+
+    std::string offsetsStr;
+    offsetsStr.resize((num_rows + 1) * sizeof(int32_t));
+    auto* offsetsData = reinterpret_cast<int32_t*>(offsetsStr.data());
+
+    std::string nullsStr;
+    nullsStr.resize(num_rows, 0);
+    auto* nullsData = reinterpret_cast<uint8_t*>(nullsStr.data());
+
+    // TODO: collect ranges instead of positions
+    std::vector<uint32_t> elementPositions;
+    int64_t currentOffset = 0;
+    offsetsData[0] = 0;
+    for (int32_t i = 0; i < num_rows; ++i) {
+        auto rowId = row_ids[i];
+        if (arrayVec->IsNull(rowId)) {
+            nullsData[i] = 1;
+            offsetsData[i + 1] = currentOffset;
+        } else {
+            int64_t startPos = arrayVec->GetOffset(rowId);
+            int64_t arraySize = arrayVec->GetSize(rowId);
+            for (int64_t j = 0; j < arraySize; ++j) {
+                elementPositions.push_back(startPos + j);
+            }
+            currentOffset += arraySize;
+            offsetsData[i + 1] = currentOffset;
+        }
+    }
+
+    vec.set_offsets(std::move(offsetsStr));
+    vec.set_nulls(std::move(nullsStr));
+
+    // serialize elementVector
+    auto* subVec = vec.add_subvectors();
+    auto* elementsVec = arrayVec->GetElementVector().get();
+    SerializeColumn(elementsVec, elementPositions, *subVec);
+
+    spark::VecType* childType = vt->add_children();
+    childType->CopyFrom(subVec->vectype());
+}
+
+void Splitter::SerializeMapVector(BaseVector *vector, std::vector<uint32_t> row_ids, spark::Vec &vec)
+{
+    auto mapVec =  reinterpret_cast<MapVector *>(vector);
+    int num_rows = row_ids.size();
+
+    spark::VecType *vt = vec.mutable_vectype();
+    vt->set_typeid_(spark::VecType::VEC_TYPE_MAP);
+    vec.set_size(num_rows);
+
+    std::string offsetsStr;
+    offsetsStr.resize((num_rows + 1) * sizeof(int32_t));
+    auto* offsetsData = reinterpret_cast<int32_t*>(offsetsStr.data());
+
+    std::string nullsStr;
+    nullsStr.resize(num_rows, 0);
+    auto* nullsData = reinterpret_cast<uint8_t*>(nullsStr.data());
+
+    std::vector<uint32_t> keyValuePositions;
+    int64_t currentOffset = 0;
+    offsetsData[0] = 0;
+    for (int32_t i = 0; i < num_rows; ++i) {
+        auto rowId = row_ids[i];
+        if (mapVec->IsNull(rowId)) {
+            nullsData[i] = 1;
+            offsetsData[i + 1] = currentOffset;
+        } else {
+            int64_t startPos = mapVec->GetOffset(rowId);
+            int64_t mapSize = mapVec->GetSize(rowId);
+            for (int64_t j = 0; j < mapSize; ++j) {
+                keyValuePositions.push_back(startPos + j);
+            }
+            currentOffset += mapSize;
+            offsetsData[i + 1] = currentOffset;
+        }
+    }
+    vec.set_offsets(std::move(offsetsStr));
+    vec.set_nulls(std::move(nullsStr));
+
+
+    // serialize keys
+    auto* keysChildVec = vec.add_subvectors();
+    auto* keysVec = mapVec->GetKeyVector().get();
+    SerializeColumn(keysVec, keyValuePositions, *keysChildVec);
+
+    // serialize values
+    auto* valuesChildVec = vec.add_subvectors();
+    auto* valuesVec = mapVec->GetValueVector().get();
+    SerializeColumn(valuesVec, keyValuePositions, *valuesChildVec);
+
+    // set the children of VecType
+    spark::VecType* keyType = vt->add_children();
+    keyType->CopyFrom(keysChildVec->vectype());
+
+    spark::VecType* valueType = vt->add_children();
+    valueType->CopyFrom(valuesChildVec->vectype());
+
+}
+
+void Splitter::SerializeRowVector(BaseVector *vector, std::vector<uint32_t> row_ids, spark::Vec &vec)
+{
+    auto rowVec = reinterpret_cast<RowVector *>(vector);
+    int num_rows = row_ids.size();
+
+    spark::VecType *vt = vec.mutable_vectype();
+    vt->set_typeid_(spark::VecType::VEC_TYPE_ROW);
+    vec.set_size(num_rows);
+
+    std::string nullsStr;
+    nullsStr.resize(num_rows, 0);
+    auto* nullsData = reinterpret_cast<uint8_t*>(nullsStr.data());
+
+    for (int32_t i = 0; i < num_rows; ++i) {
+        auto rowId = row_ids[i];
+        if (rowVec->IsNull(rowId)) {
+            nullsData[i] = 1;
+        }
+    }
+
+    vec.set_nulls(std::move(nullsStr));
+
+    auto& children = rowVec->Children();
+    for (size_t childIdx = 0; childIdx < children.size(); ++childIdx) {
+        auto* childVec = vec.add_subvectors();
+        SerializeColumn(children[childIdx].get(), row_ids, *childVec);
+
+        spark::VecType* childType = vt->add_children();
+        childType->CopyFrom(childVec->vectype());
+    }
+}
+
+int Splitter::SplitComplexColumns(VectorBatch& vb)
+{
+    for (auto &pid: partition_used_) {
+        auto pos = partition_row_offset_base_[pid];
+        auto end = partition_row_offset_base_[pid + 1];
+        auto num_rows = end - pos;
+        std::vector<uint32_t> row_ids(num_rows);
+        for (int32_t i = 0; pos < end; ++pos, ++i) {
+            row_ids[i] = row_offset_row_id_[pos];
+        }
+
+        for (uint complex_col_idx = 0; complex_col_idx < complex_type_array_idx_.size(); ++complex_col_idx) {
+            auto col_idx_vb = complex_type_array_idx_[complex_col_idx];
+
+            auto *vector = vb.Get(col_idx_vb);
+            spark::Vec* proto_vec = new spark::Vec(); // initialize proto vec
+            partition_complex_type_proto_vecs_[pid][complex_col_idx] = proto_vec;
+
+            SerializeColumn(vector, row_ids, *proto_vec);
+        }
+    }
+
+    return 0;
 }
 
 int Splitter::SplitBinaryArray(VectorBatch& vb)
 {
-    auto vec_cnt_vb = vb.GetVectorCount();
-    auto vec_cnt_schema = singlePartitionFlag ? vec_cnt_vb : vec_cnt_vb - 1;
+    auto vec_cnt_vb = vb.GetVectorCount(); // Total column count, possibly including partition ID
+    auto vec_cnt_schema = singlePartitionFlag ? vec_cnt_vb : vec_cnt_vb - 1; // Schema column count: subtract partition ID column unless in single-partition mode
     for (auto col_schema = 0; col_schema < vec_cnt_schema; ++col_schema) {
         switch (column_type_id_[col_schema]) {
             case SHUFFLE_BINARY: {
@@ -512,17 +675,6 @@ int Splitter::SplitBinaryArray(VectorBatch& vb)
                     this->template SplitBinaryVector<true>(varcharVector, col_schema);
                 } else {
                     this->template SplitBinaryVector<false>(varcharVector, col_schema);
-                }
-                break;
-            }
-            case SHUFFLE_ARRAY: {
-                auto col_vb = singlePartitionFlag ? col_schema : col_schema + 1;
-                auto *arrayVector = vb.Get(col_vb);
-                arrayVectorCache.insert(arrayVector);
-                if (arrayVector->HasNull()) {
-                    this->template SplitArrayVector<true>(arrayVector, col_schema);
-                } else {
-                    this->template SplitArrayVector<false>(arrayVector, col_schema);
                 }
                 break;
             }
@@ -585,15 +737,11 @@ int Splitter::CacheVectorBatch(int32_t partition_id, bool reset_buffers) {
 
         for (int i = 0; i < num_fields; ++i) {
             switch (column_type_id_[i]) {
-                case SHUFFLE_BINARY: {
-                    break;
-                }
-                case SHUFFLE_LARGE_BINARY: {
-                    break;
-                }
-                case SHUFFLE_ARRAY: {
-                    break;
-                }
+                case SHUFFLE_BINARY:
+                case SHUFFLE_LARGE_BINARY:
+                case SHUFFLE_ARRAY:
+                case SHUFFLE_MAP:
+                case SHUFFLE_ROW:
                 case SHUFFLE_NULL: {
                     break;
                 }
@@ -655,6 +803,12 @@ int Splitter::DoSplit(VectorBatch& vb) {
 
     // Binary split last vector batch...
     SplitBinaryArray(vb);
+
+    // Complex type split
+    if (complex_type_array_idx_.size() > 0) {
+        SplitComplexColumns(vb);
+    }
+
     num_row_splited_ += vb.GetRowCount();
     // release the fixed width vector and release vectorBatch at the same time
     ReleaseVectorBatch(&vb);
@@ -730,6 +884,10 @@ void Splitter::ToSplitterTypeId(int num_cols)
                 CastOmniToShuffleType(OMNI_DECIMAL128, SHUFFLE_DECIMAL128);
                 break;
             }
+            case OMNI_VARBINARY: {
+                CastOmniToShuffleType(OMNI_VARBINARY, SHUFFLE_BINARY);
+                break;
+            }
             case OMNI_CHAR: {
                 CastOmniToShuffleType(OMNI_CHAR, SHUFFLE_BINARY);
                 break;
@@ -738,12 +896,16 @@ void Splitter::ToSplitterTypeId(int num_cols)
                 CastOmniToShuffleType(OMNI_VARCHAR, SHUFFLE_BINARY);
                 break;
             }
-            case OMNI_VARBINARY: {
-                CastOmniToShuffleType(OMNI_VARBINARY, SHUFFLE_BINARY);
-                break;
-            }
             case OMNI_ARRAY: {
                 CastOmniToShuffleType(OMNI_ARRAY, SHUFFLE_ARRAY);
+                break;
+            }
+            case OMNI_MAP: {
+                CastOmniToShuffleType(OMNI_MAP, SHUFFLE_MAP);
+                break;
+            }
+            case OMNI_ROW: {
+                CastOmniToShuffleType(OMNI_ROW, SHUFFLE_ROW);
                 break;
             }
             default: throw std::runtime_error("Unsupported DataTypeId: " + input_col_types.inputVecTypeIds[i]);
@@ -770,6 +932,7 @@ int Splitter::Split_Init(){
 
     partition_cached_vectorbatch_.resize(num_partitions_);
     fixed_width_array_idx_.clear();
+    complex_type_array_idx_.clear();
     partition_lengths_.resize(num_partitions_);
 
     fixed_valueBuffer_size_ = new uint32_t[num_partitions_]();
@@ -799,8 +962,15 @@ int Splitter::Split_Init(){
                     fixed_width_array_idx_.push_back(i + 1);
                 }
                 break;
-            case ShuffleTypeId::SHUFFLE_BINARY:
             case ShuffleTypeId::SHUFFLE_ARRAY:
+            case ShuffleTypeId::SHUFFLE_MAP:
+            case ShuffleTypeId::SHUFFLE_ROW:
+               if (singlePartitionFlag) {
+                   complex_type_array_idx_.push_back(i);
+               } else {
+                   complex_type_array_idx_.push_back(i + 1);
+               }
+               break;
             default:
                 break;
         }
@@ -821,9 +991,11 @@ int Splitter::Split_Init(){
         vc_partition_array_buffers_[i].resize(column_type_id_.size());
     }
 
-    ar_partition_array_buffers_.resize(num_partitions_);
+    /* init complex type (Array/Map/Struct) partition storage */
+    auto num_complex_types = complex_type_array_idx_.size();
+    partition_complex_type_proto_vecs_.resize(num_partitions_);
     for (auto i = 0; i < num_partitions_; ++i) {
-        ar_partition_array_buffers_[i].resize(column_type_id_.size());
+        partition_complex_type_proto_vecs_[i].resize(num_complex_types);
     }
 
     partition_arena_.resize(num_partitions_);
@@ -960,11 +1132,14 @@ std::unordered_map<int32_t, spark::VecType::VecTypeId> omniTypeToVecTypeMap = {
     {OMNI_INTERVAL_DAY_TIME, spark::VecType::VEC_TYPE_INTERVAL_DAY_TIME},
     {OMNI_VARCHAR, spark::VecType::VEC_TYPE_VARCHAR},
     {OMNI_CHAR, spark::VecType::VEC_TYPE_CHAR},
+    {OMNI_VARBINARY, spark::VecType::VEC_TYPE_VARBINARY},
     {OMNI_CONTAINER, spark::VecType::VEC_TYPE_CONTAINER},
     {OMNI_BYTE, spark::VecType::VEC_TYPE_BYTE},
     {OMNI_VARBINARY, spark::VecType::VEC_TYPE_VARBINARY},
     {OMNI_INVALID, spark::VecType::VEC_TYPE_INVALID},
     {OMNI_ARRAY, spark::VecType::VEC_TYPE_ARRAY},
+    {OMNI_MAP, spark::VecType::VEC_TYPE_MAP},
+    {OMNI_ROW, spark::VecType::VEC_TYPE_ROW},
 };
 
 spark::VecType::VecTypeId Splitter::CastOmniTypeIdToProtoVecType(int32_t omniType) {
@@ -974,7 +1149,68 @@ spark::VecType::VecTypeId Splitter::CastOmniTypeIdToProtoVecType(int32_t omniTyp
     } else {
         return result->second;
     }
-};
+}
+
+std::shared_ptr<omniruntime::type::DataType> Splitter::ProtoTypeToOmniType(const spark::VecType& protoType)
+{
+    auto omniTypeId = static_cast<omniruntime::type::DataTypeId>(protoType.typeid_());
+
+    switch (omniTypeId) {
+        case OMNI_INT:
+            return IntDataType::Instance();
+        case OMNI_LONG:
+            return LongDataType::Instance();
+        case OMNI_DOUBLE:
+            return DoubleDataType::Instance();
+        case OMNI_FLOAT:
+            return FloatDataType::Instance();
+        case OMNI_BOOLEAN:
+            return BooleanDataType::Instance();
+        case OMNI_SHORT:
+            return ShortDataType::Instance();
+        case OMNI_BYTE:
+            return ByteDataType::Instance();
+        case OMNI_DATE32:
+            return Date32DataType::Instance();
+        case OMNI_DATE64:
+            return Date64DataType::Instance();
+        case OMNI_TIME32:
+            return Time32DataType::Instance();
+        case OMNI_TIME64:
+            return Time64DataType::Instance();
+        case OMNI_TIMESTAMP:
+            return TimestampDataType::Instance();
+        case OMNI_VARCHAR:
+            return VarcharDataType::Instance();
+        case OMNI_CHAR:
+            return CharDataType::Instance();
+        case OMNI_VARBINARY:
+            return VarBinaryDataType::Instance();
+        case OMNI_ARRAY: {
+            auto elementType = ProtoTypeToOmniType(protoType.children(0));
+            auto arrayType = std::make_shared<ArrayType>(elementType);
+            return arrayType;
+        }
+        case OMNI_MAP: {
+            auto keyType = ProtoTypeToOmniType(protoType.children(0));
+            auto valueType = ProtoTypeToOmniType(protoType.children(1));
+            auto mapType = std::make_shared<MapType>(keyType, valueType);
+            return mapType;
+        }
+        // TODO: need fieldNames?
+        case OMNI_ROW: {
+            int childCount = protoType.children_size();
+            std::vector<std::shared_ptr<DataType>> childTypes;
+            for (int i = 0; i < childCount; ++i) {
+                childTypes.push_back(ProtoTypeToOmniType(protoType.children(i)));
+            }
+            auto rowType = std::make_shared<RowType>(childTypes);
+            return rowType;
+        }
+        default:
+            throw std::runtime_error("ProtoTypeToOmniType(): unexpected OmniTypeId");
+    }
+}
 
 void Splitter::SerializingFixedColumns(int32_t partitionId,
                                       spark::Vec& vec,
@@ -1095,66 +1331,8 @@ void Splitter::SerializingBinaryColumns(int32_t partitionId, spark::Vec& vec, in
     *protoValue = std::move(valuesStr);
     auto *protoNulls = vec.mutable_nulls();
     *protoNulls = std::move(nullsStr);
-    auto *protoOffset = vec.mutable_offset();
+    auto *protoOffset = vec.mutable_offsets();
     *protoOffset = std::move(offsetsStr);
-}
-
-void Splitter::SerializingArrayColumns(int32_t partitionId, spark::Vec& vec, int colIndex, int curBatch)
-{
-    LogsDebug(" ar_partition_array_buffers_[partitionId:%d][colIndex:%d] cacheBatchNum:%lu curBatch:%d", partitionId, colIndex, ar_partition_array_buffers_[partitionId][colIndex].size(), curBatch);
-    ArrayBatchInfo arrayBatchInfo = ar_partition_array_buffers_[partitionId][colIndex][curBatch];
-    int elementTotalLen = arrayBatchInfo.getElementTotalLen();
-    std::vector<ArrayLocation> lst = arrayBatchInfo.getArrayList();
-    int elementTotalNum = lst.size();
-
-    int elementType = arrayBatchInfo.getElementType();
-    DataTypeId dataTypeId = static_cast<DataTypeId>(elementType);
-
-    std::string numsStr;
-    numsStr.resize(sizeof(int32_t) * elementTotalNum);
-    std::string nullsStr;
-    std::string valuesStr;
-    valuesStr.resize(elementTotalLen);
-    std::string offsetStr;
-    if (dataTypeId == OMNI_VARCHAR || dataTypeId == OMNI_CHAR) {
-        int varcharTotalNum = 0;
-        for (int i = 0; i < elementTotalNum; i++) {
-            varcharTotalNum += lst[i].get_element_num();
-        }
-        offsetStr.resize(sizeof(int32_t) * (varcharTotalNum + 1));
-    } else {
-        offsetStr.resize(0);
-    }
-
-    if(arrayBatchInfo.hasNull()) {
-        BytesGenArray<true>(reinterpret_cast<uint64_t>(numsStr.data()),
-            nullsStr,
-            reinterpret_cast<uint64_t>(valuesStr.data()),
-            reinterpret_cast<uint64_t>(offsetStr.data()), dataTypeId, arrayBatchInfo);
-    } else {
-        BytesGenArray<false>(reinterpret_cast<uint64_t>(numsStr.data()),
-            nullsStr,
-            reinterpret_cast<uint64_t>(valuesStr.data()),
-            reinterpret_cast<uint64_t>(offsetStr.data()), dataTypeId, arrayBatchInfo);
-    }
-    auto *protoNums = vec.mutable_nums();
-    *protoNums = std::move(numsStr);
-    auto *protoValue = vec.mutable_values();
-    *protoValue = std::move(valuesStr);
-    auto *protoNulls = vec.mutable_nulls();
-    *protoNulls = std::move(nullsStr);
-    auto *protoOffset = vec.mutable_offset();
-    *protoOffset = std::move(offsetStr);
-
-    spark::VecType *vt = vec.mutable_vectype();
-    spark::VecType* childType = vt->add_children();
-    spark::VecType::VecTypeId childProtoType = omniTypeToVecTypeMap.find(elementType)->second;
-    childType->set_typeid_(childProtoType);
-
-    if (childProtoType == spark::VecType::VEC_TYPE_DECIMAL128 || vt->typeid_() == spark::VecType::VEC_TYPE_DECIMAL64) {
-        childType->set_precision(input_col_types.inputDataPrecisions[colIndex]);
-        childType->set_scale(input_col_types.inputDataScales[colIndex]);
-    }
 }
 
 int32_t Splitter::ProtoWritePartition(int32_t partition_id, std::unique_ptr<BufferedOutputStream> &bufferStream, void *bufferOut, int32_t &sizeOut) {
@@ -1175,6 +1353,8 @@ int32_t Splitter::ProtoWritePartition(int32_t partition_id, std::unique_ptr<Buff
         vecBatchProto->set_rowcnt(splitRowInfoTmp.onceCopyRow);
         vecBatchProto->set_veccnt(column_type_id_.size());
         int fixColIndexTmp = 0;
+        int complexColIndexTmp = 0;
+
         for (size_t indexSchema = 0; indexSchema < column_type_id_.size(); indexSchema++) {
             spark::Vec *vec = vecBatchProto->add_vecs();
             switch (column_type_id_[indexSchema]) {
@@ -1191,12 +1371,16 @@ int32_t Splitter::ProtoWritePartition(int32_t partition_id, std::unique_ptr<Buff
                     SerializingBinaryColumns(partition_id, *vec, indexSchema, curBatch);
                     break;
                 }
-                case ShuffleTypeId::SHUFFLE_ARRAY: {
-                    SerializingArrayColumns(partition_id, *vec, indexSchema, curBatch);
+                case ShuffleTypeId::SHUFFLE_ARRAY:
+                case ShuffleTypeId::SHUFFLE_MAP:
+                case ShuffleTypeId::SHUFFLE_ROW: {
+                    // directly obtain Vec from the serialized complex type data
+                    *vec = *partition_complex_type_proto_vecs_[partition_id][complexColIndexTmp];
+                    complexColIndexTmp++;
                     break;
                 }
                 default: {
-                    throw std::runtime_error("Unsupported ShuffleType: " + std::to_string(column_type_id_[indexSchema]));
+                    throw std::runtime_error("Unsupported ShuffleType.");
                 }
             }
             spark::VecType *vt = vec->mutable_vectype();
@@ -1236,7 +1420,10 @@ int32_t Splitter::ProtoWritePartition(int32_t partition_id, std::unique_ptr<Buff
     partition_cached_vectorbatch_[partition_id].clear();
     for (size_t col = 0; col < column_type_id_.size(); col++) {
         vc_partition_array_buffers_[partition_id][col].clear();
-        ar_partition_array_buffers_[partition_id][col].clear();
+    }
+    for (size_t complexIdx = 0; complexIdx < complex_type_array_idx_.size(); ++complexIdx) {
+        delete partition_complex_type_proto_vecs_[partition_id][complexIdx];
+        partition_complex_type_proto_vecs_[partition_id][complexIdx] = nullptr;
     }
 
     return 0;
@@ -1258,22 +1445,12 @@ int32_t Splitter::ProtoWritePartitionByRow(int32_t partition_id, std::unique_ptr
         for (uint32_t i = 0; i < proto_col_types_.size(); ++i) {
             spark::VecType *vt = protoRowBatch->add_vectypes();
             vt->set_typeid_(proto_col_types_[i]);
-            if (vt->typeid_() == spark::VecType::VEC_TYPE_DECIMAL128 || vt->typeid_() == spark::VecType::VEC_TYPE_DECIMAL64){
+            if(vt->typeid_() == spark::VecType::VEC_TYPE_DECIMAL128 || vt->typeid_() == spark::VecType::VEC_TYPE_DECIMAL64){
                 vt->set_precision(input_col_types.inputDataPrecisions[i]);
                 vt->set_scale(input_col_types.inputDataScales[i]);
                 LogsDebug("precision[indexSchema %d]: %d , scale[indexSchema %d]: %d ",
                           i, input_col_types.inputDataPrecisions[i],
                           i, input_col_types.inputDataScales[i]);
-            }
-            if (vt->typeid_() == spark::VecType::VEC_TYPE_ARRAY) {
-                spark::VecType* childType = vt->add_children();
-                spark::VecType::VecTypeId childProtoType = CastOmniTypeIdToProtoVecType(input_col_types.elementTypes->inputVecTypeIds[i]);
-                childType->set_typeid_(childProtoType);
-
-                if (childProtoType == spark::VecType::VEC_TYPE_DECIMAL128 || vt->typeid_() == spark::VecType::VEC_TYPE_DECIMAL64) {
-                    childType->set_precision(input_col_types.elementTypes->inputDataPrecisions[i]);
-                    childType->set_scale(input_col_types.elementTypes->inputDataScales[i]);
-                }
             }
         }
 
@@ -1357,12 +1534,8 @@ int Splitter::protoSpillPartition(int32_t partition_id, std::unique_ptr<Buffered
                     SerializingBinaryColumns(partition_id, *vec, indexSchema, curBatch);
                     break;
                 }
-                case ShuffleTypeId::SHUFFLE_ARRAY: {
-                    SerializingArrayColumns(partition_id, *vec, indexSchema, curBatch);
-                    break;
-                }
                 default: {
-                    throw std::runtime_error("Unsupported ShuffleType: " + std::to_string(column_type_id_[indexSchema]));
+                    throw std::runtime_error("Unsupported ShuffleType.");
                 }
             }
             spark::VecType *vt = vec->mutable_vectype();
@@ -1406,7 +1579,6 @@ int Splitter::protoSpillPartition(int32_t partition_id, std::unique_ptr<Buffered
     partition_cached_vectorbatch_[partition_id].clear();
     for (size_t col = 0; col < column_type_id_.size(); col++) {
         vc_partition_array_buffers_[partition_id][col].clear();
-        ar_partition_array_buffers_[partition_id][col].clear();
     }
 
     return 0;
@@ -1436,16 +1608,6 @@ int Splitter::protoSpillPartitionByRow(int32_t partition_id, std::unique_ptr<Buf
                 LogsDebug("precision[indexSchema %d]: %d , scale[indexSchema %d]: %d ",
                           i, input_col_types.inputDataPrecisions[i],
                           i, input_col_types.inputDataScales[i]);
-            }
-            if (vt->typeid_() == spark::VecType::VEC_TYPE_ARRAY) {
-                spark::VecType* childType = vt->add_children();
-                spark::VecType::VecTypeId childProtoType = CastOmniTypeIdToProtoVecType(input_col_types.elementTypes->inputVecTypeIds[i]);
-                childType->set_typeid_(childProtoType);
-
-                if (childProtoType == spark::VecType::VEC_TYPE_DECIMAL128 || vt->typeid_() == spark::VecType::VEC_TYPE_DECIMAL64) {
-                    childType->set_precision(input_col_types.elementTypes->inputDataPrecisions[i]);
-                    childType->set_scale(input_col_types.elementTypes->inputDataScales[i]);
-                }
             }
         }
 
@@ -1577,7 +1739,6 @@ void Splitter::MergeSpilled() {
 
     memset(partition_id_cnt_cache_, 0, num_partitions_ * sizeof(uint64_t));
     ReleaseVarcharVector();
-    ReleaseArrayVector();
     num_row_splited_ = 0;
     cached_vectorbatch_size_ = 0;
     outStream->close();
@@ -1651,7 +1812,6 @@ void Splitter::WriteSplit() {
 
     memset(partition_id_cnt_cache_, 0, num_partitions_ * sizeof(uint64_t));
     ReleaseVarcharVector();
-    ReleaseArrayVector();
     num_row_splited_ = 0;
     cached_vectorbatch_size_ = 0;
     outStream->close();
@@ -1786,4 +1946,118 @@ int Splitter::StopByRow() {
         throw std::runtime_error("delete nullptr error for free protobuf rowBatch memory");
     }
     return 0;
+}
+
+void Splitter::DeserializeProtoVecToOmniVector(const spark::Vec& protoVec, omniruntime::vec::BaseVector* omniVec)
+{
+    auto values = protoVec.values().data();
+    auto offsets = protoVec.offsets().data();
+    auto nulls = protoVec.nulls().data();
+    int rowCount = protoVec.size();
+
+    auto dataTypeId = omniVec->GetTypeId();
+
+    // set values and offsets
+    if (dataTypeId == OMNI_CHAR || dataTypeId == OMNI_VARCHAR) {
+        auto charVec = reinterpret_cast<Vector<LargeStringContainer<std::string_view>> *>(omniVec);
+        charVec->Expand(rowCount);
+        char *valuesAddress =
+            omniruntime::vec::unsafe::UnsafeStringVector::ExpandStringBuffer(charVec, protoVec.values().size());
+        auto offsetsAddress = (uint8_t *)VectorHelper::UnsafeGetOffsetsAddr(omniVec);
+        memcpy(valuesAddress, values, protoVec.values().size());
+        memcpy(offsetsAddress, offsets, protoVec.offsets().size());
+
+        // set nulls
+        // VarcharVector needs to be explicitly cast before calling the SetNull() method
+        for (auto j = 0; j < protoVec.nulls().size(); ++j) {
+            if (int(nulls[j])) {
+                charVec->SetNull(j);
+            }
+        }
+    } else if (dataTypeId == OMNI_ARRAY) {
+        auto arrayVec =  reinterpret_cast<ArrayVector *>(omniVec);
+        // for vectors with nested complex types,
+        // when initializing, the inner vector does not have its size set, so expansion is required.
+        arrayVec->Expand(rowCount);
+        const int32_t* offsetsPtr = reinterpret_cast<const int32_t*>(protoVec.offsets().data());
+
+        // TODO: be more elegant
+        for (int j = 0; j <= rowCount; ++j) {
+            arrayVec->SetOffset(j, offsetsPtr[j]);
+        }
+
+        // set nulls
+        for (auto j = 0; j < protoVec.nulls().size(); ++j) {
+            if (int(nulls[j])) {
+                arrayVec->SetNull(j);
+            }
+        }
+
+        if (!protoVec.subvectors().empty()) {
+            omniruntime::vec::BaseVector* elementVec = arrayVec->GetElementVector().get();
+            if (elementVec) {
+                DeserializeProtoVecToOmniVector(protoVec.subvectors(0), elementVec);
+            }
+        }
+    } else if (dataTypeId == OMNI_MAP) {
+        auto mapVec = reinterpret_cast<MapVector *>(omniVec);
+        mapVec->Expand(rowCount);
+        const int32_t* offsetsPtr = reinterpret_cast<const int32_t*>(protoVec.offsets().data());
+
+        // TODO: be more elegant
+        for (int j = 0; j <= rowCount; ++j) {
+            mapVec->SetOffset(j, offsetsPtr[j]);
+        }
+
+        // set nulls
+        for (auto j = 0; j < protoVec.nulls().size(); ++j) {
+            if (int(nulls[j])) {
+                mapVec->SetNull(j);
+            }
+        }
+
+        if (protoVec.subvectors_size() >= 2) {
+            omniruntime::vec::BaseVector* keyVec = mapVec->GetKeyVector().get();
+            omniruntime::vec::BaseVector* valueVec = mapVec->GetValueVector().get();
+            if (keyVec) {
+                DeserializeProtoVecToOmniVector(protoVec.subvectors(0), keyVec);
+            }
+            if (valueVec) {
+                DeserializeProtoVecToOmniVector(protoVec.subvectors(1), valueVec);
+            }
+        }
+    } else if (dataTypeId == OMNI_ROW) {
+        auto rowVec = reinterpret_cast<RowVector *>(omniVec);
+        rowVec->Expand(rowCount);
+        if (static_cast<int>(protoVec.subvectors_size()) != rowVec->ChildSize()) {
+            throw std::runtime_error("DeserializeProtoVecToOmniVector: size of subvectors in protoVec "
+                                     "is not equal to children size of RowVec");
+        }
+        // set nulls
+        for (auto j = 0; j < protoVec.nulls().size(); ++j) {
+            if (int(nulls[j])) {
+                omniVec->SetNull(j);
+            }
+        }
+
+        int childCount = rowVec->ChildSize();
+
+        for (int i = 0; i < childCount; ++i) {
+            omniruntime::vec::BaseVector* fieldVec = rowVec->ChildAt(i).get();
+            if (fieldVec) {
+                DeserializeProtoVecToOmniVector(protoVec.subvectors(i), fieldVec);
+            }
+        }
+    } else {
+        omniVec->Expand(rowCount);
+        auto *valuesAddress = (uint8_t *)VectorHelper::UnsafeGetValues(omniVec);
+        memcpy(valuesAddress, values, protoVec.values().size());
+
+        // set nulls
+        for (auto j = 0; j < protoVec.nulls().size(); ++j) {
+            if (int(nulls[j])) {
+                omniVec->SetNull(j);
+            }
+        }
+    }
 }

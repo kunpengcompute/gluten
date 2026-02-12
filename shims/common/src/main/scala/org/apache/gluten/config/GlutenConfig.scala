@@ -2520,11 +2520,12 @@ object GlutenConfig {
     .booleanConf
     .createWithDefault(false)
 
+  // do not merge for columnar shuffle
   val ENABLE_SHUFFLE_BATCH_MERGE = buildConf("spark.gluten.sql.columnar.backend.omni.sql.shuffle.merge")
     .internal()
     .doc("enable columnar shuffle merge")
     .booleanConf
-    .createWithDefault(true)
+    .createWithDefault(false)
 
   val COLUMNAR_OMNI_RESIZE_BATCHES_SHUFFLE_INPUT = buildConf("spark.gluten.sql.columnar.backend.omni.resizeBatches.shuffleInput")
     .internal()

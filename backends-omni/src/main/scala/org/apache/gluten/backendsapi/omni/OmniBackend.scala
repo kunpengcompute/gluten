@@ -334,6 +334,8 @@ class OmniValidatorApi extends ValidatorApi {
       return None
     }
     schema match {
+      case map: MapType =>
+        doSchemaValidate(map.keyType).orElse(doSchemaValidate(map.valueType))
       case struct: StructType =>
         struct.fields.foreach {
           f =>
