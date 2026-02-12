@@ -523,6 +523,10 @@ TypedExprPtr SubstraitOmniExprConverter::ToExtractExpr(const std::vector<TypedEx
 
 std::unordered_map<std::string, std::string> SubstraitOmniExprConverter::extractDatetimeFunctionMap_ = {
     {"HOUR", "hour"},
+    {"DAY", "day"},
+    {"DAY_OF_WEEK", "dayofweek"},
+    {"DAY_OF_MONTH", "dayofmonth"},
+    {"DAY_OF_YEAR", "dayofyear"},
     {"MINUTE", "minute"},
     {"SECOND", "second"},
     {"MONTH", "month"},
