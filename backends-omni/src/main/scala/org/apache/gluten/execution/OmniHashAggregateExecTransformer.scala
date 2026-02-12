@@ -19,7 +19,7 @@ package org.apache.gluten.execution
 import com.google.protobuf.StringValue
 import org.apache.gluten.backendsapi.BackendsApiManager
 import org.apache.gluten.expression.OmniExpressionAdaptor.{sparkTypeToOmniTypeWithComplex, toOmniAggFunType}
-import org.apache.gluten.expression.aggregate.OmniHLLAdapter
+import org.apache.gluten.expression.aggregate.{OmniHLLAdapter,OmniCollectSet}
 import org.apache.gluten.expression.{AggregateFunctionsBuilder, ConverterUtils, ExpressionConverter}
 import org.apache.gluten.extension.ValidationResult
 import org.apache.gluten.substrait.`type`.{TypeBuilder, TypeNode}
@@ -126,18 +126,18 @@ abstract class HashAggregateExecTransformer(
      classOf[Average], classOf[First], classOf[Last], classOf[StddevSamp], classOf[StddevPop],
      classOf[VarianceSamp], classOf[VariancePop], classOf[BloomFilterAggregate],
      classOf[BitAndAgg], classOf[BitOrAgg], classOf[BitXorAgg], classOf[OmniHLLAdapter],
-     classOf[Corr], classOf[CovPopulation], classOf[CovSample],
+     classOf[Corr], classOf[CovPopulation], classOf[CovSample], classOf[CollectSet], classOf[OmniCollectSet]
     )
 
     var completeOnlySupported = Set(
-     classOf[Sum], classOf[Min], classOf[Max], classOf[Count],
-     classOf[Average], classOf[First], classOf[Last],
+      classOf[Sum], classOf[Min], classOf[Max], classOf[Count],
+      classOf[Average], classOf[First], classOf[Last],
     )
 
     val supported = mode match {
-     case Final | PartialMerge | Partial => alwaysSupported
-     case Complete => completeOnlySupported
-     case other => Set.empty[Class[_]]
+      case Final | PartialMerge | Partial => alwaysSupported
+      case Complete => completeOnlySupported
+      case other => Set.empty[Class[_]]
     }
 
     child.output.zipWithIndex.foreach {

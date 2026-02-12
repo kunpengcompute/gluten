@@ -416,6 +416,8 @@ op::FunctionType SubstraitParser::ParseFunctionType(
         return op::OMNI_AGGREGATION_TYPE_MAX_BY;
     } else if (funcName == "approx_distinct") {
         return op::OMNI_AGGREGATION_TYPE_APPROX_COUNT_DISTINCT;
+    } else if (funcName == "collect_set") {
+        return op::OMNI_AGGREGATION_TYPE_COLLECT_SET;
     } else {
         OMNI_THROW("Substrait Error:", "Unsupported aggregate or window function: {}", funcName);
     }
@@ -457,7 +459,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"element_at", {FUNCTION_OMNI_EXPR_TYPE, "element_at"}},
     {"split", {FUNCTION_OMNI_EXPR_TYPE, "split"}},
     {"slice", {FUNCTION_OMNI_EXPR_TYPE, "slice"}},
-{"hive_string_string", {FUNCTION_OMNI_EXPR_TYPE, "hive_string_string"}},
+    {"hive_string_string", {FUNCTION_OMNI_EXPR_TYPE, "hive_string_string"}},
     {"exp", {FUNCTION_OMNI_EXPR_TYPE, "exp"}},
     {"md5", {FUNCTION_OMNI_EXPR_TYPE, "Md5"}},
     {"concat", {FUNCTION_OMNI_EXPR_TYPE, "concat"}},
@@ -600,6 +602,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"unhex", {FUNCTION_OMNI_EXPR_TYPE, "unhex"}},
     {"width_bucket", {FUNCTION_OMNI_EXPR_TYPE, "width_bucket"}},
     {"spark_partition_id", {FUNCTION_OMNI_EXPR_TYPE, "spark_partition_id"}},
-    {"uuid", {FUNCTION_OMNI_EXPR_TYPE, "uuid"}}
+    {"uuid", {FUNCTION_OMNI_EXPR_TYPE, "uuid"}},
+    {"collect_set", {FUNCTION_OMNI_EXPR_TYPE, "collect_set"}},
 };
 } // namespace omniruntime
