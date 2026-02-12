@@ -31,7 +31,7 @@ import org.apache.gluten.validate.NativePlanValidationInfo
 import org.apache.gluten.vectorized.OmniNativePlanEvaluator
 import org.apache.spark.shuffle.OmniShuffleUtil
 import org.apache.spark.sql.catalyst.catalog.BucketSpec
-import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, Average, Count, First, Max, Min, StddevSamp, StddevPop, VarianceSamp, VariancePop, Sum}
+import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, Average, Count, First, Last, Max, Min, StddevSamp, StddevPop, VarianceSamp, VariancePop, Sum}
 import org.apache.spark.sql.catalyst.expressions.{Alias, Attribute, CurrentRow, Literal, NamedExpression, Rank, PercentRank, RowNumber, SpecifiedWindowFrame, UnboundedFollowing, UnboundedPreceding, WindowExpression}
 import org.apache.spark.sql.catalyst.plans.physical.Partitioning
 import org.apache.spark.sql.connector.read.Scan
@@ -251,6 +251,7 @@ object OmniBackendSettings extends BackendSettingsApi {
                   case Count(Literal(1, IntegerType) :: Nil) | Count(ArrayBuffer(Literal(1, IntegerType))) =>
                   case Count(_) if aggFunction.children.size == 1 =>
                   case _: First =>
+                  case _: Last =>
                   case _ => isSupport = false
                 }
               case _ =>

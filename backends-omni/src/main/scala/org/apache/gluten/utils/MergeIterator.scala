@@ -22,7 +22,7 @@ import scala.collection.mutable.ListBuffer
 import nova.hetu.omniruntime.`type`._
 import nova.hetu.omniruntime.vector.{ByteVec, BooleanVec, Decimal128Vec, DoubleVec, FloatVec, IntVec, LongVec, ShortVec, VarcharVec, ArrayVec, Vec, VecBatch}
 import org.apache.spark.sql.execution.metric.SQLMetric
-import org.apache.spark.sql.types.{NullType, ByteType, BooleanType, DateType, DecimalType, DoubleType, FloatType, IntegerType, LongType, ShortType, StringType, StructType, TimestampType, ArrayType, Metadata}
+import org.apache.spark.sql.types.{NullType, ByteType, BooleanType, DateType, DecimalType, DoubleType, FloatType, IntegerType, LongType, ShortType, StringType, StructType, TimestampType, ArrayType, BinaryType, Metadata}
 import org.apache.spark.sql.vectorized.ColumnarBatch
 import org.apache.gluten.config.GlutenConfig
 import org.apache.gluten.expression.OmniExpressionAdaptor.{sparkTypeToOmniType, sparkTypeToOmniTypeWithComplex}
@@ -60,7 +60,7 @@ class MergeIterator(iter: Iterator[ColumnarBatch], localSchema: StructType,
             vecs(index) = new BooleanVec(rowSize)
           case ByteType =>
             vecs(index) = new ByteVec(rowSize)
-          case StringType =>
+          case StringType | BinaryType =>
             val vecType: DataType = sparkTypeToOmniType(field.dataType, field.metadata)
             vecs(index) = new VarcharVec(rowSize)
           case ArrayType(elementType, _) =>

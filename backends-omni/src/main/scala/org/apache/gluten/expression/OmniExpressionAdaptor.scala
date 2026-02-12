@@ -34,6 +34,7 @@ import nova.hetu.omniruntime.constants.FunctionType
 import nova.hetu.omniruntime.constants.FunctionType._
 import nova.hetu.omniruntime.constants.JoinType._
 import nova.hetu.omniruntime.operator.OmniExprVerify
+import org.apache.gluten.expression.aggregate.OmniHLLAdapter
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -1002,6 +1003,7 @@ object OmniExpressionAdaptor extends Logging {
           case IntegerType =>
           case LongType =>
           case TimestampType =>
+          case FloatType =>
           case DoubleType =>
           case BooleanType =>
           case DateType =>
@@ -1010,6 +1012,28 @@ object OmniExpressionAdaptor extends Logging {
           case _ =>
             throw new UnsupportedOperationException(
               s"First_value does not support datatype: $exprDataType")
+        }
+      })
+  }
+
+  def checkLastParamType(agg: AggregateExpression): Unit = {
+    agg.aggregateFunction.children.map(
+      exp => {
+        val exprDataType = exp.dataType
+        exprDataType match {
+          case ShortType =>
+          case IntegerType =>
+          case LongType =>
+          case TimestampType =>
+          case FloatType =>
+          case DoubleType =>
+          case BooleanType =>
+          case DateType =>
+          case dt: DecimalType =>
+          case StringType =>
+          case _ =>
+            throw new UnsupportedOperationException(
+              s"Last_value does not support datatype: $exprDataType")
         }
       })
   }
@@ -1043,12 +1067,19 @@ object OmniExpressionAdaptor extends Logging {
       case First(_, false) =>
         checkFirstParamType(agg)
         OMNI_AGGREGATION_TYPE_FIRST_INCLUDENULL
+      case Last(_, true) =>
+        checkLastParamType(agg)
+        OMNI_AGGREGATION_TYPE_LAST_IGNORENULL
+      case Last(_, false) =>
+        checkLastParamType(agg)
+        OMNI_AGGREGATION_TYPE_LAST_INCLUDENULL
       case _: BloomFilterAggregate => OMNI_AGGREGATION_TYPE_BLOOM_FILTER
       case _: BitAndAgg => OMNI_AGGREGATION_TYPE_BIT_AND
       case _: BitOrAgg => OMNI_AGGREGATION_TYPE_BIT_OR
       case _: BitXorAgg => OMNI_AGGREGATION_TYPE_BIT_XOR
       case _: MinBy => OMNI_AGGREGATION_TYPE_MIN_BY
       case _: MaxBy => OMNI_AGGREGATION_TYPE_MAX_BY
+      case _: OmniHLLAdapter => OMNI_AGGREGATION_TYPE_APPROX_COUNT_DISTINCT
       case _ => throw new UnsupportedOperationException(s"Unsupported aggregate function: $agg")
     }
   }
