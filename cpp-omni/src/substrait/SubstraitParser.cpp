@@ -612,5 +612,10 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"spark_partition_id", {FUNCTION_OMNI_EXPR_TYPE, "spark_partition_id"}},
     {"uuid", {FUNCTION_OMNI_EXPR_TYPE, "uuid"}},
     {"collect_set", {FUNCTION_OMNI_EXPR_TYPE, "collect_set"}},
+    {"cardinality", {FUNCTION_OMNI_EXPR_TYPE, "cardinality"}},
+    {"crc32", {FUNCTION_OMNI_EXPR_TYPE, "crc32"}},
+    {"isnan", {FUNCTION_OMNI_EXPR_TYPE, "isnan"}},
+    {"row_constructor", {FUNCTION_OMNI_EXPR_TYPE, "name_struct"}},
+    {"named_struct", {FUNCTION_OMNI_EXPR_TYPE, "name_struct"}},
 };
 } // namespace omniruntime
