@@ -226,7 +226,7 @@ public class OrcPushFilterBuilder {
                     includedColumns.add(target);
                 }
                 nova.hetu.omniruntime.type.DataType dataType =
-                        OmniExpressionAdaptor.sparkTypeToOmniType(field.dataType(), field.metadata());
+                        OmniExpressionAdaptor.sparkTypeToOmniTypeWithComplex(field.dataType(), field.metadata());
 
                 typeBuilder.add(dataType.getId().toValue());
                 dataTypes.add(dataType);
@@ -288,6 +288,7 @@ public class OrcPushFilterBuilder {
             LOGGER.debug(e.getMessage());
         }
 
+        job.put("allColumns", StringUtils.join(allFieldsNames, ","));
         job.put("includedColumns", StringUtils.join(includedColumns, ","));
         addJulianGregorianInfo(job);
         return job.toString();

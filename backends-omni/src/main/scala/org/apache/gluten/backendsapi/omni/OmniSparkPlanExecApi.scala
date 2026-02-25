@@ -19,7 +19,8 @@ package org.apache.gluten.backendsapi.omni
 import org.apache.gluten.backendsapi.SparkPlanExecApi
 import org.apache.gluten.config.GlutenConfig
 import org.apache.gluten.execution._
-import org.apache.gluten.expression.{ExpressionConverter, ExpressionMappings, ExpressionNames, ExpressionTransformer, GenericExpressionTransformer, OmniAliasTransformer, OmniFromUnixTimeTransformer, OmniGetStructFieldTransformer, OmniHashExpressionTransformer, OmniUnixTimestampTransformer, Sig}
+import org.apache.gluten.expression.{ExpressionConverter, ExpressionMappings, ExpressionNames, ExpressionTransformer, GenericExpressionTransformer, LiteralTransformer, OmniAliasTransformer, OmniFromUnixTimeTransformer, OmniGetStructFieldTransformer, OmniHashExpressionTransformer, OmniUnixTimestampTransformer, Sig}
+import org.apache.gluten.expression.aggregate.OmniHLLAdapter
 import org.apache.gluten.extension.columnar.FallbackTags
 import org.apache.spark.{ShuffleDependency, SparkException}
 import org.apache.spark.rdd.RDD
@@ -27,8 +28,8 @@ import org.apache.spark.serializer.Serializer
 import org.apache.spark.shuffle.{GenShuffleWriterParameters, GlutenShuffleWriterWrapper, OmniColumnarBatchSerializer, OmniColumnarShuffleWriter, OmniShuffleUtil}
 import org.apache.spark.sql.catalyst.catalog.BucketSpec
 import org.apache.spark.sql.catalyst.catalog.CatalogTypes.TablePartitionSpec
-import org.apache.spark.sql.catalyst.expressions.{ArrayTransform, Attribute, AttributeReference, BloomFilterMightContain, Cast, DateDiff, ElementAt, Expression, FromUnixTime, Generator, GetMapValue, GetStructField, HashExpression, LambdaFunction, Like, Md5, NamedExpression, PosExplode, PythonUDF, SortOrder, UnixTimestamp}
-import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, BloomFilterAggregate, MaxBy, MinBy, BitAndAgg, BitOrAgg, BitXorAgg}
+import org.apache.spark.sql.catalyst.expressions.{ArrayTransform, Attribute, AttributeReference, BloomFilterMightContain, Cast, DateDiff, ElementAt, Expression, FromUnixTime, Generator, GetMapValue, GetStructField, HashExpression, LambdaFunction, Like, Md5, NamedExpression, PosExplode, PythonUDF, SortOrder, UnixTimestamp, Uuid}
+import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, CollectSet, BloomFilterAggregate, MaxBy, MinBy, BitAndAgg, BitOrAgg, BitXorAgg}
 import org.apache.spark.sql.catalyst.optimizer.BuildSide
 import org.apache.spark.sql.catalyst.plans.JoinType
 import org.apache.spark.sql.catalyst.plans.physical.{AllTuples, BroadcastMode, Partitioning}
@@ -44,8 +45,9 @@ import org.apache.gluten.datasources.orc.OmniOrcFileFormat
 import org.apache.gluten.datasources.parquet.OmniParquetFileFormat
 import org.apache.gluten.exception.GlutenNotSupportException
 import org.apache.gluten.expression.ExpressionConverter.replaceWithExpressionTransformer
+import org.apache.gluten.expression.aggregate.OmniCollectSet
 import org.apache.gluten.extension.PushDownFilterToOmniScan
-import org.apache.spark.sql.hive.OmniHiveUDFTransformer
+import org.apache.spark.sql.hive.{OmniHiveTableScanExecTransformer, OmniHiveUDFTransformer}
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.execution.datasources.orc.OrcFileFormat
 import org.apache.spark.sql.execution.datasources.parquet.ParquetFileFormat
@@ -62,6 +64,9 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
       Sig[BitXorAgg](ExpressionNames.BIT_XOR_AGG),
       Sig[MinBy](ExpressionNames.MIN_BY),
       Sig[MaxBy](ExpressionNames.MAX_BY),
+      Sig[OmniHLLAdapter](ExpressionNames.APPROX_DISTINCT),
+      Sig[CollectSet](ExpressionNames.COLLECT_SET),
+      Sig[OmniCollectSet](ExpressionNames.COLLECT_SET),
     )
   }
 
@@ -189,10 +194,15 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
       }
     }
 
+    def hasComplexType(attributes: Seq[Attribute]): Boolean = {
+      attributes.exists(attr => !DataTypeUtils.isPrimitiveType(attr.dataType))
+    }
+
     val child = shuffle.child
     val columnarConf = GlutenConfig.get
     val isRowShuffle = columnarConf.enableOmniRowShuffle &&
-      shuffle.output.length > columnarConf.omniRowShuffleColumnsThreshold
+      shuffle.output.length > columnarConf.omniRowShuffleColumnsThreshold &&
+      !hasComplexType(shuffle.output)
     val newShuffle = OmniColumnarShuffleExchangeExec(shuffle, child, shuffle.output, isRowShuffle)
     val validationResult = newShuffle.doValidate()
     if (validationResult.ok()) {
@@ -407,11 +417,17 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
       schema: StructType,
       metrics: Map[String, SQLMetric],
       isSort: Boolean): Serializer = {
+
+    def hasComplexType(schema: StructType): Boolean = {
+      schema.exists(field => !DataTypeUtils.isPrimitiveType(field.dataType))
+    }
+
     val readBatchNumRows = metrics("avgReadBatchNumRows")
     val numOutputRows = metrics("numOutputRows")
     val columnarConf = GlutenConfig.get
     val isRowShuffle = columnarConf.enableOmniRowShuffle &&
-      schema.length > columnarConf.omniRowShuffleColumnsThreshold
+      schema.length > columnarConf.omniRowShuffleColumnsThreshold &&
+      !hasComplexType(schema)
     new OmniColumnarBatchSerializer(readBatchNumRows, numOutputRows, isRowShuffle)
   }
 
@@ -444,15 +460,23 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
       bucketSpec: Option[BucketSpec],
       options: Map[String, String],
       staticPartitions: TablePartitionSpec): ColumnarWriteFilesExec =
-    OmniColumnarWriteFilesExec(
-      child.child,
-      noop,
-      child,
-      fileFormat,
-      partitionColumns,
-      bucketSpec,
-      options,
-      staticPartitions)
+    {
+      val nativeFormat = SparkSession.active.sparkContext.getLocalProperty("nativeFormat")
+      val effectiveFileFormat = (nativeFormat, fileFormat) match {
+        case ("orc", _: OrcFileFormat) => new OmniOrcFileFormat()
+        case ("parquet", _: ParquetFileFormat) => new OmniParquetFileFormat()
+        case _ => fileFormat
+      }
+      OmniColumnarWriteFilesExec(
+        child.child,
+        noop,
+        child,
+        effectiveFileFormat,
+        partitionColumns,
+        bucketSpec,
+        options,
+        staticPartitions)
+    }
 
   /** Create ColumnarArrowEvalPythonExec, for omni backend */
   override def createColumnarArrowEvalPythonExec(
@@ -469,6 +493,16 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
     GenericExpressionTransformer(
       substraitExprName,
       Seq(left, right),
+      original)
+  }
+
+  /** Transform Uuid to Substrait. Pass the random seed as an argument. */
+  override def genUuidTransformer(
+      substraitExprName: String,
+      original: Uuid): ExpressionTransformer = {
+    GenericExpressionTransformer(
+      substraitExprName,
+      Seq(LiteralTransformer(original.randomSeed.get)),
       original)
   }
 
@@ -572,5 +606,10 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
                                       expr: Expression,
                                       attributeSeq: Seq[Attribute]): ExpressionTransformer = {
     OmniHiveUDFTransformer.replaceWithExpressionTransformer(expr, attributeSeq)
+  }
+
+  override def genHiveTableScanExecTransformer(
+                                       scanExec: SparkPlan): BasicScanExecTransformer = {
+    OmniHiveTableScanExecTransformer(scanExec)
   }
 }

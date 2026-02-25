@@ -121,37 +121,39 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
 }
 
 TypedExprPtr SubstraitOmniExprConverter::toLambdaExpr(
-        const ::substrait::Expression::ScalarFunction &substraitFunc, const DataTypesPtr &inputType)
+        std::vector<Expr *> &&args, const DataTypesPtr &inputType)
 {
     std::vector<DataTypePtr> paramTypes;
-    paramTypes.reserve(substraitFunc.arguments().size() - 1);
+    paramTypes.reserve(args.size() - 1);
 
     std::vector<ParamRefExpr*> paramRefList;
-    paramRefList.reserve(substraitFunc.arguments().size() - 1);
+    paramRefList.reserve(args.size() - 1);
 
-    for (int32_t i = 1; i < substraitFunc.arguments().size(); ++i) {
-        const auto& arg = substraitFunc.arguments(i).value();
-        OMNI_CHECK(arg.has_scalar_function(), "lambda param must be scalar function");
+    for (int32_t i = 1; i < args.size(); ++i) {
+        Expr* expr = args[i];
+        OMNI_CHECK(expr != nullptr, "SUBSTRAIT_ERROR:", "lambda param expr at index {} is null", i);
 
-        const auto& omniFunction = SubstraitParser::FindOmniFunction(functionMap_, arg.scalar_function().function_reference());
-        const auto& funcName = omniFunction.second;
-
-        Expr* expr = ToOmniExpr(arg, inputType);
         ParamRefExpr* paramRef = dynamic_cast<ParamRefExpr*>(expr);
-        OMNI_CHECK(paramRef != nullptr, "namedlambdavariable must parse to ParamRefExpr");
+        OMNI_CHECK(paramRef != nullptr, "SUBSTRAIT_ERROR:", "lambda param at index {} must be ParamRefExpr, got other type", i);
 
         paramRefList.emplace_back(paramRef);
         paramTypes.emplace_back(paramRef->dataType);
     }
 
-    for (int32_t realIdx = 0; realIdx < paramRefList.size(); ++realIdx) {
-        paramRefList[realIdx]->paramIdx_ = realIdx;
+    std::unordered_map<std::string, int32_t> paramNameToIdxMap;
+    paramNameToIdxMap.reserve(paramRefList.size());
+    for (int32_t idx = 0; idx < paramRefList.size(); ++idx) {
+        const auto& paramName = paramRefList[idx]->paramName_;
+        const int32_t paramIdx = idx;
+        auto [iter, isInsertOk] = paramNameToIdxMap.try_emplace(paramName, paramIdx);
+        OMNI_CHECK(isInsertOk, "SUBSTRAIT_ERROR:", "lambda duplicate param name '{}' is not allowed", paramName);
     }
 
-    Expr* lambdaBody = ToOmniExpr(substraitFunc.arguments(0).value(), inputType);
+    Expr* lambdaBody = args[0];
     OMNI_CHECK(lambdaBody != nullptr, "lambda body expr is null");
+    args.clear();
 
-    return new LambdaExpr(lambdaBody, std::move(paramTypes), lambdaBody->dataType);
+    return new LambdaExpr(lambdaBody, std::move(paramTypes), paramNameToIdxMap, lambdaBody->dataType);
 }
 
 TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
@@ -171,10 +173,13 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
         //
     }
     if (funcName == "lambdafunction") {
-        return toLambdaExpr(substraitFunc, inputType);
+        return toLambdaExpr(std::move(args), inputType);
     }
     if (funcName == "namedlambdavariable") {
-        Expr* paramRefExpr = new ParamRefExpr(0, std::move(outputType));
+        Expr* expr = args[0];
+        LiteralExpr* literal = dynamic_cast<LiteralExpr*>(expr);
+        OMNI_CHECK(literal != nullptr, "SUBSTRAIT_ERROR:", "namedlambdavariable param must be LiteralExpr, got other type");
+        Expr* paramRefExpr = new ParamRefExpr(*literal->stringVal, std::move(outputType));
         return paramRefExpr;
     }    
     if (funcName == "extract") {
@@ -388,7 +393,7 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(const ::substrait::Expressio
             auto precision = substraitLit.decimal().precision();
             auto scale = substraitLit.decimal().scale();
             int128_t decimalValue;
-            memcpy_s(&decimalValue, sizeof(int128_t), decimal.c_str(), sizeof(int128_t));
+            memcpy(&decimalValue, decimal.c_str(), sizeof(int128_t));
             if (precision <= DECIMAL64_DEFAULT_PRECISION) {
                 return new LiteralExpr(static_cast<int64_t>(decimalValue), Decimal64Type(precision, scale));
             } else {
@@ -518,6 +523,10 @@ TypedExprPtr SubstraitOmniExprConverter::ToExtractExpr(const std::vector<TypedEx
 
 std::unordered_map<std::string, std::string> SubstraitOmniExprConverter::extractDatetimeFunctionMap_ = {
     {"HOUR", "hour"},
+    {"DAY", "day"},
+    {"DAY_OF_WEEK", "dayofweek"},
+    {"DAY_OF_MONTH", "dayofmonth"},
+    {"DAY_OF_YEAR", "dayofyear"},
     {"MINUTE", "minute"},
     {"SECOND", "second"},
     {"MONTH", "month"},

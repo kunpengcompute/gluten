@@ -30,7 +30,6 @@ import org.apache.spark.sql.catalyst.expressions.objects.StaticInvoke
 import org.apache.spark.sql.catalyst.optimizer.NormalizeNaNAndZero
 import org.apache.spark.sql.execution.ScalarSubquery
 import org.apache.spark.sql.hive.HiveUDFTransformer
-import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types._
 
 import scala.collection.mutable.ArrayBuffer
@@ -604,6 +603,14 @@ object ExpressionConverter extends SQLConfHelper with Logging {
           tryEval,
           ExpressionNames.CHECKED_DIVIDE
         )
+      case i: IntegralDivide =>
+        BackendsApiManager.getSparkPlanExecApiInstance.genArithmeticTransformer(
+          substraitExprName,
+          replaceWithExpressionTransformer0(i.left, attributeSeq, expressionsMap),
+          replaceWithExpressionTransformer0(i.right, attributeSeq, expressionsMap),
+          i,
+          ExpressionNames.CHECKED_DIV
+        )
       case tryEval @ TryEval(a: Multiply) =>
         BackendsApiManager.getSparkPlanExecApiInstance.genTryArithmeticTransformer(
           substraitExprName,
@@ -685,21 +692,6 @@ object ExpressionConverter extends SQLConfHelper with Logging {
           substraitExprName,
           Seq(replaceWithExpressionTransformer0(c.child, attributeSeq, expressionsMap)),
           c
-        )
-      case t: TransformKeys =>
-        // default is `EXCEPTION`
-        val mapKeyDedupPolicy = SQLConf.get.getConf(SQLConf.MAP_KEY_DEDUP_POLICY)
-        if (mapKeyDedupPolicy == SQLConf.MapKeyDedupPolicy.LAST_WIN.toString) {
-          // TODO: Remove after fix ready for
-          //  https://github.com/facebookincubator/velox/issues/10219
-          throw new GlutenNotSupportException(
-            "LAST_WIN policy is not supported yet in native to deduplicate map keys"
-          )
-        }
-        GenericExpressionTransformer(
-          substraitExprName,
-          t.children.map(replaceWithExpressionTransformer0(_, attributeSeq, expressionsMap)),
-          t
         )
       case e: EulerNumber =>
         LiteralTransformer(Literal(Math.E))

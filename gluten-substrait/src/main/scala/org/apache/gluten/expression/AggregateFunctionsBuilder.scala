@@ -61,10 +61,20 @@ object AggregateFunctionsBuilder {
         ExpressionNames.BIT_OR_AGG
       case BitXorAgg(_) =>
         ExpressionNames.BIT_XOR_AGG
+      case Corr(_, _, _) =>
+        ExpressionNames.CORR
+      case CovPopulation(_, _, _) =>
+        ExpressionNames.COVAR_POP
+      case CovSample(_, _, _) =>
+        ExpressionNames.COVAR_SAMP
       case MaxBy(_, _) =>
         ExpressionNames.MAX_BY
       case MinBy(_, _) =>
         ExpressionNames.MIN_BY
+      case HyperLogLogPlusPlus(_, _, _, _) =>
+        ExpressionNames.APPROX_DISTINCT
+      case CollectSet(_, _, _) =>
+        ExpressionNames.COLLECT_SET
       case _ =>
         val nameOpt = ExpressionMappings.expressionsMap.get(aggregateFunc.getClass)
         if (nameOpt.isEmpty) {

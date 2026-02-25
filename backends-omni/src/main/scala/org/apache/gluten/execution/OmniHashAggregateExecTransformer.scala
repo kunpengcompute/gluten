@@ -16,8 +16,10 @@
  */
 package org.apache.gluten.execution
 
+import com.google.protobuf.StringValue
 import org.apache.gluten.backendsapi.BackendsApiManager
 import org.apache.gluten.expression.OmniExpressionAdaptor.{sparkTypeToOmniTypeWithComplex, toOmniAggFunType}
+import org.apache.gluten.expression.aggregate.{OmniHLLAdapter,OmniCollectSet}
 import org.apache.gluten.expression.{AggregateFunctionsBuilder, ConverterUtils, ExpressionConverter}
 import org.apache.gluten.extension.ValidationResult
 import org.apache.gluten.substrait.`type`.{TypeBuilder, TypeNode}
@@ -35,7 +37,7 @@ import org.apache.spark.sql.types._
 import java.util.{ArrayList => JArrayList, List => JList}
 import scala.collection.JavaConverters._
 
-case class OmniHashAggregateExecTransformer(
+abstract class HashAggregateExecTransformer(
     requiredChildDistributionExpressions: Option[Seq[Expression]],
     groupingExpressions: Seq[NamedExpression],
     aggregateExpressions: Seq[AggregateExpression],
@@ -121,19 +123,21 @@ case class OmniHashAggregateExecTransformer(
                                              mode: AggregateMode): Boolean = {
     val alwaysSupported = Set(
      classOf[Sum], classOf[Min], classOf[Max], classOf[Count], classOf[MinBy], classOf[MaxBy],
-     classOf[Average], classOf[First], classOf[StddevSamp], classOf[BloomFilterAggregate],
-     classOf[BitAndAgg], classOf[BitOrAgg], classOf[BitXorAgg],
+     classOf[Average], classOf[First], classOf[Last], classOf[StddevSamp], classOf[StddevPop],
+     classOf[VarianceSamp], classOf[VariancePop], classOf[BloomFilterAggregate],
+     classOf[BitAndAgg], classOf[BitOrAgg], classOf[BitXorAgg], classOf[OmniHLLAdapter],
+     classOf[Corr], classOf[CovPopulation], classOf[CovSample], classOf[CollectSet], classOf[OmniCollectSet]
     )
 
     var completeOnlySupported = Set(
-     classOf[Sum], classOf[Min], classOf[Max], classOf[Count],
-     classOf[Average], classOf[First]
+      classOf[Sum], classOf[Min], classOf[Max], classOf[Count],
+      classOf[Average], classOf[First], classOf[Last],
     )
 
     val supported = mode match {
-     case Final | PartialMerge | Partial => alwaysSupported
-     case Complete => completeOnlySupported
-     case other => Set.empty[Class[_]]
+      case Final | PartialMerge | Partial => alwaysSupported
+      case Complete => completeOnlySupported
+      case other => Set.empty[Class[_]]
     }
 
     child.output.zipWithIndex.foreach {
@@ -255,6 +259,8 @@ case class OmniHashAggregateExecTransformer(
     aggRel
   }
 
+  protected def allowFlush: Boolean = false
+
   private def getAggRelInternal(
       context: SubstraitContext,
       originalInputAttributes: Seq[Attribute],
@@ -337,14 +343,75 @@ case class OmniHashAggregateExecTransformer(
       null
     }
 
-    ExtensionBuilder.makeAdvancedExtension(null, enhancement)
+    val allowFlushStr = if (allowFlush) "1" else "0"
+    val str = s"allowFlush=$allowFlushStr\n"
+    val optimization =
+      BackendsApiManager.getTransformerApiInstance.packPBMessage(
+        StringValue.newBuilder.setValue(str).build)
+    ExtensionBuilder.makeAdvancedExtension(optimization, enhancement)
   }
 
   def isStreaming: Boolean = false
 
   def numShufflePartitions: Option[Int] = Some(0)
+}
 
-  override protected def withNewChildInternal(newChild: SparkPlan): SparkPlan =
+case class OmniAdaptiveHashAggregateExecTransformer(
+  requiredChildDistributionExpressions: Option[Seq[Expression]],
+  groupingExpressions: Seq[NamedExpression],
+  aggregateExpressions: Seq[AggregateExpression],
+  aggregateAttributes: Seq[Attribute],
+  initialInputBufferOffset: Int,
+  resultExpressions: Seq[NamedExpression],
+  child: SparkPlan)
+  extends HashAggregateExecTransformer(
+    requiredChildDistributionExpressions,
+    groupingExpressions,
+    aggregateExpressions,
+    aggregateAttributes,
+    initialInputBufferOffset,
+    resultExpressions,
+    child) {
+
+  override protected def allowFlush: Boolean = true
+
+  override def simpleString(maxFields: Int): String =
+    s"OmniAdaptive${super.simpleString(maxFields)}"
+
+  override def verboseString(maxFields: Int): String =
+    s"OmniAdaptive${super.verboseString(maxFields)}"
+
+  override protected def withNewChildInternal(newChild: SparkPlan): HashAggregateExecTransformer = {
     copy(child = newChild)
+  }
+}
 
+case class OmniHashAggregateExecTransformer(
+  requiredChildDistributionExpressions: Option[Seq[Expression]],
+  groupingExpressions: Seq[NamedExpression],
+  aggregateExpressions: Seq[AggregateExpression],
+  aggregateAttributes: Seq[Attribute],
+  initialInputBufferOffset: Int,
+  resultExpressions: Seq[NamedExpression],
+  child: SparkPlan)
+  extends HashAggregateExecTransformer(
+    requiredChildDistributionExpressions,
+    groupingExpressions,
+    aggregateExpressions,
+    aggregateAttributes,
+    initialInputBufferOffset,
+    resultExpressions,
+    child) {
+
+  override protected def allowFlush: Boolean = false
+
+  override def simpleString(maxFields: Int): String =
+    s"Omni${super.simpleString(maxFields)}"
+
+  override def verboseString(maxFields: Int): String =
+    s"Omni${super.verboseString(maxFields)}"
+
+  override protected def withNewChildInternal(newChild: SparkPlan): HashAggregateExecTransformer = {
+    copy(child = newChild)
+  }
 }

@@ -234,7 +234,13 @@ object OmniAdaptorUtil {
           vec
         }
       case StructType(fields) =>
-        val vec = new StructVec(new StructDataType(fields.map(field => sparkTypeToOmniTypeWithComplex(field.dataType, Metadata.empty))), columnSize)
+        val vec = new StructVec(
+          new StructDataType(
+            fields.map(field => sparkTypeToOmniTypeWithComplex(field.dataType, Metadata.empty)),
+            fields.map(_.name)
+          ),
+          columnSize
+        )
         val numChildren = fields.length
         for (i <- 0 until numChildren) {
           vec.setChild(i, transColumnVector (columnVector.getChild (i), columnSize))

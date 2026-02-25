@@ -123,7 +123,11 @@ case class OmniRollUpOptimizeTransformer(
       classOf[Count],
       classOf[Average],
       classOf[First],
-      classOf[StddevSamp]
+      classOf[Last],
+      classOf[StddevSamp],
+      classOf[StddevPop],
+      classOf[VarianceSamp],
+      classOf[VariancePop]
     )
 
     val completeOnlySupported = Set(
@@ -132,7 +136,8 @@ case class OmniRollUpOptimizeTransformer(
       classOf[Max],
       classOf[Count],
       classOf[Average],
-      classOf[First]
+      classOf[First],
+      classOf[Last]
     )
 
     val supported = mode match {

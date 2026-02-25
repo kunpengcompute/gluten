@@ -37,6 +37,7 @@ object ExpressionMappings {
     Sig[Subtract](SUBTRACT),
     Sig[Multiply](MULTIPLY),
     Sig[Divide](DIVIDE),
+    Sig[IntegralDivide](DIV),
     Sig[UnaryPositive](POSITIVE),
     Sig[UnaryMinus](NEGATIVE),
     Sig[And](AND),
@@ -323,7 +324,8 @@ object ExpressionMappings {
     Sig[Skewness](SKEWNESS),
     Sig[Kurtosis](KURTOSIS),
     Sig[ApproximatePercentile](APPROX_PERCENTILE),
-    Sig[Percentile](PERCENTILE)
+    Sig[Percentile](PERCENTILE),
+    Sig[HyperLogLogPlusPlus](APPROX_DISTINCT)
   ) ++ SparkShimLoader.getSparkShims.aggregateExpressionMappings
 
   /** Mapping Spark window expression to Substrait function name */

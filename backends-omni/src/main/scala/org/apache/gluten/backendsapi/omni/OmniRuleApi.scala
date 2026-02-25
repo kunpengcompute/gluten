@@ -28,9 +28,9 @@ import org.apache.gluten.extension.columnar.transition.{InsertTransitions, Remov
 import org.apache.gluten.extension.columnar.validator.{Validator, Validators}
 import org.apache.gluten.extension.injector.{Injector, SparkInjector}
 import org.apache.gluten.extension.injector.GlutenInjector.{LegacyInjector, RasInjector}
-import org.apache.gluten.extension.RewriteAQEShuffleRead
+import org.apache.gluten.extension.{OmniHLLRewriteRule, RewriteAQEShuffleRead}
 import org.apache.spark.sql.catalyst.optimizer.{CombineJoinedAggregates, DedupLeftSemiJoin, MergeSubqueryFilters, PushOrderedLimitThroughAgg, ReorderJoinEnhances, RewriteSelfJoinInInPredicate, RollupOptimization, ShuffleJoinStrategy, RewriteTopNSort, CombineWindowSort, OmniRewriteSubqueryBroadcast, CombineProject}
-import org.apache.gluten.extension.{FallbackBroadcastHashJoin, FallbackBroadcastHashJoinPrepQueryStage, PushDownFilterToOmniScan, RewriteAQEShuffleRead, OmniRewriteJoin}
+import org.apache.gluten.extension.{FallbackBroadcastHashJoin, FallbackBroadcastHashJoinPrepQueryStage, PushDownFilterToOmniScan, OmniRewriteCollectFuncRule, RewriteAQEShuffleRead, OmniRewriteJoin, AdaptiveHashAggregateRule}
 import org.apache.gluten.sql.shims.SparkShimLoader
 import org.apache.spark.sql.execution.{ColumnarCollapseTransformStages, GlutenAutoAdjustStageResourceProfile, GlutenFallbackReporter}
 
@@ -52,8 +52,8 @@ object OmniRuleApi {
     injector.injectQueryStagePrepRule(FallbackBroadcastHashJoinPrepQueryStage.apply)
     injector.injectQueryStagePrepRule(DedupLeftSemiJoin.apply)
     injector.injectPlannerStrategy(_ => ShuffleJoinStrategy)
-//    injector.injectOptimizerRule(CollectRewriteRule.apply)
-//    injector.injectOptimizerRule(HLLRewriteRule.apply)
+    injector.injectOptimizerRule(OmniRewriteCollectFuncRule.apply)
+    injector.injectOptimizerRule(OmniHLLRewriteRule.apply)
 //    injector.injectOptimizerRule(CollapseGetJsonObjectExpressionRule.apply)
 //    injector.injectPostHocResolutionRule(ArrowConvertorRule.apply)
     injector.injectOptimizerRule(ReorderJoinEnhances.apply)
@@ -102,6 +102,7 @@ object OmniRuleApi {
     injector.injectPostTransform(_ => CollapseProjectExecTransformer)
     injector.injectPostTransform(_ => CombineProject())
 //    injector.injectPostTransform(c => FlushableHashAggregateRule.apply(c.session))
+    injector.injectPostTransform(c => AdaptiveHashAggregateRule.apply(c.session))
     injector.injectPostTransform(c => InsertTransitions.create(c.outputsColumnar, OmniBatch))
     injector.injectPostTransform(_ => RewriteTopNSort())
     injector.injectPostTransform(_ => CombineWindowSort())

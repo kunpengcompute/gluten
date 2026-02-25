@@ -18,6 +18,7 @@ package org.apache.gluten.expression
 
 import org.apache.gluten.config.GlutenConfig
 import org.apache.gluten.utils.Constant._
+import org.apache.gluten.expression.aggregate.OmniCollectSet
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.{Expression, _}
@@ -34,6 +35,7 @@ import nova.hetu.omniruntime.constants.FunctionType
 import nova.hetu.omniruntime.constants.FunctionType._
 import nova.hetu.omniruntime.constants.JoinType._
 import nova.hetu.omniruntime.operator.OmniExprVerify
+import org.apache.gluten.expression.aggregate.OmniHLLAdapter
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -1002,6 +1004,7 @@ object OmniExpressionAdaptor extends Logging {
           case IntegerType =>
           case LongType =>
           case TimestampType =>
+          case FloatType =>
           case DoubleType =>
           case BooleanType =>
           case DateType =>
@@ -1010,6 +1013,28 @@ object OmniExpressionAdaptor extends Logging {
           case _ =>
             throw new UnsupportedOperationException(
               s"First_value does not support datatype: $exprDataType")
+        }
+      })
+  }
+
+  def checkLastParamType(agg: AggregateExpression): Unit = {
+    agg.aggregateFunction.children.map(
+      exp => {
+        val exprDataType = exp.dataType
+        exprDataType match {
+          case ShortType =>
+          case IntegerType =>
+          case LongType =>
+          case TimestampType =>
+          case FloatType =>
+          case DoubleType =>
+          case BooleanType =>
+          case DateType =>
+          case dt: DecimalType =>
+          case StringType =>
+          case _ =>
+            throw new UnsupportedOperationException(
+              s"Last_value does not support datatype: $exprDataType")
         }
       })
   }
@@ -1026,6 +1051,9 @@ object OmniExpressionAdaptor extends Logging {
         OMNI_AGGREGATION_TYPE_AVG
       case Min(_) => OMNI_AGGREGATION_TYPE_MIN
       case StddevSamp(_, _) => OMNI_AGGREGATION_TYPE_SAMP
+      case StddevPop(_, _) => OMNI_AGGREGATION_TYPE_STD_POP
+      case VarianceSamp(_, _) => OMNI_AGGREGATION_TYPE_VAR_POP
+      case VariancePop(_, _) => OMNI_AGGREGATION_TYPE_VAR_SAMP
       case Count(Literal(1, IntegerType) :: Nil) | Count(ArrayBuffer(Literal(1, IntegerType))) =>
         if (isMergeCount) {
           OMNI_AGGREGATION_TYPE_COUNT_COLUMN
@@ -1040,12 +1068,24 @@ object OmniExpressionAdaptor extends Logging {
       case First(_, false) =>
         checkFirstParamType(agg)
         OMNI_AGGREGATION_TYPE_FIRST_INCLUDENULL
+      case Last(_, true) =>
+        checkLastParamType(agg)
+        OMNI_AGGREGATION_TYPE_LAST_IGNORENULL
+      case Last(_, false) =>
+        checkLastParamType(agg)
+        OMNI_AGGREGATION_TYPE_LAST_INCLUDENULL
       case _: BloomFilterAggregate => OMNI_AGGREGATION_TYPE_BLOOM_FILTER
       case _: BitAndAgg => OMNI_AGGREGATION_TYPE_BIT_AND
       case _: BitOrAgg => OMNI_AGGREGATION_TYPE_BIT_OR
       case _: BitXorAgg => OMNI_AGGREGATION_TYPE_BIT_XOR
+      case _: Corr => OMNI_AGGREGATION_TYPE_CORR
+      case _: CovPopulation => OMNI_AGGREGATION_TYPE_COVAR_POP
+      case _: CovSample => OMNI_AGGREGATION_TYPE_COVAR_SAMP
       case _: MinBy => OMNI_AGGREGATION_TYPE_MIN_BY
       case _: MaxBy => OMNI_AGGREGATION_TYPE_MAX_BY
+      case _: OmniHLLAdapter => OMNI_AGGREGATION_TYPE_APPROX_COUNT_DISTINCT
+      case _: CollectSet => OMNI_AGGREGATION_TYPE_COLLECT_SET
+      case _: OmniCollectSet => OMNI_AGGREGATION_TYPE_COLLECT_SET
       case _ => throw new UnsupportedOperationException(s"Unsupported aggregate function: $agg")
     }
   }
@@ -1211,6 +1251,11 @@ object OmniExpressionAdaptor extends Logging {
         }
       case a: ArrayType =>
         new ArrayDataType(sparkTypeToOmniTypeWithComplex(a.elementType))
+      case map: MapType =>
+        new MapDataType(sparkTypeToOmniTypeWithComplex(map.keyType), sparkTypeToOmniTypeWithComplex(map.valueType))
+      case s: StructType =>
+        val children = s.fields.map(f => sparkTypeToOmniTypeWithComplex(f.dataType, f.metadata))
+        new StructDataType(children)
       case NullType => BooleanDataType.BOOLEAN
       case _ =>
         throw new UnsupportedOperationException(s"Unsupported datatype: $dataType")
@@ -1254,7 +1299,8 @@ object OmniExpressionAdaptor extends Logging {
         new MapDataType(sparkTypeToOmniTypeWithComplex(m.keyType), sparkTypeToOmniTypeWithComplex(m.valueType))
       case s: StructType =>
         val children = s.fields.map(f => sparkTypeToOmniTypeWithComplex(f.dataType, f.metadata))
-        new StructDataType(children)
+        val names = s.fields.map(_.name)
+        new StructDataType(children, names)
       case _ =>
         throw new UnsupportedOperationException(s"Unsupported datatype: $dataType")
     }

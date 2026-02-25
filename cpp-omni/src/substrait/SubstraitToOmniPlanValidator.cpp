@@ -72,7 +72,7 @@ bool ValidatePattern(const std::string &pattern, std::string &error)
 
 const std::unordered_set<std::string> kRegexFunctions = {"rlike", "like"};
 
-const std::unordered_set<std::string> kBlackList = {"get_struct_field", "rpad"};
+const std::unordered_set<std::string> kBlackList = {"get_struct_field"};
 } // namespace
 
 bool SubstraitToOmniPlanValidator::ParseOmniType(
@@ -194,6 +194,10 @@ bool SubstraitToOmniPlanValidator::ValidateScalarFunction(
         return false;
     }
     if (kRegexFunctions.find(funcName) != kRegexFunctions.end()) {
+        // LIKE:  OmniOperator supports both literal and non-literal pattern (column/expr); skip strict literal check
+        if (funcName == "like") {
+            return true;
+        }
         return ValidateRegexExpr(funcName, scalarFunction);
     }
     return true;
