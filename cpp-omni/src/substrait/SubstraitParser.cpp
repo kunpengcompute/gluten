@@ -404,12 +404,20 @@ op::FunctionType SubstraitParser::ParseFunctionType(
         return op::OMNI_AGGREGATION_TYPE_BIT_OR;
     } else if (funcName == "bit_xor") {
         return op::OMNI_AGGREGATION_TYPE_BIT_XOR;
-    } else if (funcName == "min_by") {
+    } else if (funcName == "corr") {
+ 	    return op::OMNI_AGGREGATION_TYPE_CORR;
+ 	} else if (funcName == "covar_pop") {
+ 	    return op::OMNI_AGGREGATION_TYPE_COVAR_POP;
+ 	} else if (funcName == "covar_samp") {
+ 	   return op::OMNI_AGGREGATION_TYPE_COVAR_SAMP;
+ 	} else if (funcName == "min_by") {
         return op::OMNI_AGGREGATION_TYPE_MIN_BY;
     } else if (funcName == "max_by") {
         return op::OMNI_AGGREGATION_TYPE_MAX_BY;
     } else if (funcName == "approx_distinct") {
         return op::OMNI_AGGREGATION_TYPE_APPROX_COUNT_DISTINCT;
+    } else if (funcName == "collect_set") {
+        return op::OMNI_AGGREGATION_TYPE_COLLECT_SET;
     } else {
         OMNI_THROW("Substrait Error:", "Unsupported aggregate or window function: {}", funcName);
     }
@@ -451,7 +459,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"element_at", {FUNCTION_OMNI_EXPR_TYPE, "element_at"}},
     {"split", {FUNCTION_OMNI_EXPR_TYPE, "split"}},
     {"slice", {FUNCTION_OMNI_EXPR_TYPE, "slice"}},
-{"hive_string_string", {FUNCTION_OMNI_EXPR_TYPE, "hive_string_string"}},
+    {"hive_string_string", {FUNCTION_OMNI_EXPR_TYPE, "hive_string_string"}},
     {"exp", {FUNCTION_OMNI_EXPR_TYPE, "exp"}},
     {"md5", {FUNCTION_OMNI_EXPR_TYPE, "Md5"}},
     {"concat", {FUNCTION_OMNI_EXPR_TYPE, "concat"}},
@@ -510,9 +518,15 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"month", {FUNCTION_OMNI_EXPR_TYPE, "month"}},
     {"quarter", {FUNCTION_OMNI_EXPR_TYPE, "quarter"}},
     {"year", {FUNCTION_OMNI_EXPR_TYPE, "year"}},
+    {"day", {FUNCTION_OMNI_EXPR_TYPE, "day"}},
+    {"dayofmonth", {FUNCTION_OMNI_EXPR_TYPE, "dayofmonth"}},
+    {"dayofweek", {FUNCTION_OMNI_EXPR_TYPE, "dayofweek"}},
+    {"dayofyear", {FUNCTION_OMNI_EXPR_TYPE, "dayofyear"}},
     {"trim", {FUNCTION_OMNI_EXPR_TYPE, "Trim"}},
     {"ltrim", {FUNCTION_OMNI_EXPR_TYPE, "LTrim"}},
     {"rtrim", {FUNCTION_OMNI_EXPR_TYPE, "RTrim"}},
+    {"btrim", {FUNCTION_OMNI_EXPR_TYPE, "BTrim"}},
+    {"overlay", {FUNCTION_OMNI_EXPR_TYPE, "overlay"}},
     {"floor", {FUNCTION_OMNI_EXPR_TYPE, "floor"}},
     {"empty2null", {FUNCTION_OMNI_EXPR_TYPE, "empty2null"}},
     {"get_json_object", {FUNCTION_OMNI_EXPR_TYPE, "GetJsonObject"}},
@@ -547,6 +561,9 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"bit_and", {FUNCTION_OMNI_EXPR_TYPE, "bit_and"}},
     {"bit_or", {FUNCTION_OMNI_EXPR_TYPE, "bit_or"}},
     {"bit_xor", {FUNCTION_OMNI_EXPR_TYPE, "bit_xor"}},
+    {"corr", {FUNCTION_OMNI_EXPR_TYPE, "corr"}},
+    {"covar_pop", {FUNCTION_OMNI_EXPR_TYPE, "covar_pop"}},
+    {"covar_samp", {FUNCTION_OMNI_EXPR_TYPE, "covar_samp"}},
     {"cbrt", {FUNCTION_OMNI_EXPR_TYPE, "cbrt"}},
     {"ceil", {FUNCTION_OMNI_EXPR_TYPE, "ceil"}},
     {"log1p", {FUNCTION_OMNI_EXPR_TYPE, "log1p"}},
@@ -563,6 +580,8 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"power", {FUNCTION_OMNI_EXPR_TYPE, "power"}},
     {"rint", {FUNCTION_OMNI_EXPR_TYPE, "rint"}},
     {"round", {FUNCTION_OMNI_EXPR_TYPE, "round"}},
+    {"lpad", {FUNCTION_OMNI_EXPR_TYPE, "lpad"}},
+    {"rpad", {FUNCTION_OMNI_EXPR_TYPE, "rpad"}},
     {"flatten", {FUNCTION_OMNI_EXPR_TYPE, "flatten"}},
     {"rand", {FUNCTION_OMNI_EXPR_TYPE, "rand"}},
     {"random", {FUNCTION_OMNI_EXPR_TYPE, "random"}},
@@ -592,6 +611,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"unhex", {FUNCTION_OMNI_EXPR_TYPE, "unhex"}},
     {"width_bucket", {FUNCTION_OMNI_EXPR_TYPE, "width_bucket"}},
     {"spark_partition_id", {FUNCTION_OMNI_EXPR_TYPE, "spark_partition_id"}},
-    {"uuid", {FUNCTION_OMNI_EXPR_TYPE, "uuid"}}
+    {"uuid", {FUNCTION_OMNI_EXPR_TYPE, "uuid"}},
+    {"collect_set", {FUNCTION_OMNI_EXPR_TYPE, "collect_set"}},
 };
 } // namespace omniruntime

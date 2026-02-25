@@ -72,7 +72,7 @@ bool ValidatePattern(const std::string &pattern, std::string &error)
 
 const std::unordered_set<std::string> kRegexFunctions = {"rlike", "like"};
 
-const std::unordered_set<std::string> kBlackList = {"get_struct_field", "rpad"};
+const std::unordered_set<std::string> kBlackList = {"get_struct_field"};
 } // namespace
 
 bool SubstraitToOmniPlanValidator::ParseOmniType(

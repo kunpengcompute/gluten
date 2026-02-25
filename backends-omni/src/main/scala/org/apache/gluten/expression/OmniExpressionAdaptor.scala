@@ -18,6 +18,7 @@ package org.apache.gluten.expression
 
 import org.apache.gluten.config.GlutenConfig
 import org.apache.gluten.utils.Constant._
+import org.apache.gluten.expression.aggregate.OmniCollectSet
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.{Expression, _}
@@ -1077,9 +1078,14 @@ object OmniExpressionAdaptor extends Logging {
       case _: BitAndAgg => OMNI_AGGREGATION_TYPE_BIT_AND
       case _: BitOrAgg => OMNI_AGGREGATION_TYPE_BIT_OR
       case _: BitXorAgg => OMNI_AGGREGATION_TYPE_BIT_XOR
+      case _: Corr => OMNI_AGGREGATION_TYPE_CORR
+      case _: CovPopulation => OMNI_AGGREGATION_TYPE_COVAR_POP
+      case _: CovSample => OMNI_AGGREGATION_TYPE_COVAR_SAMP
       case _: MinBy => OMNI_AGGREGATION_TYPE_MIN_BY
       case _: MaxBy => OMNI_AGGREGATION_TYPE_MAX_BY
       case _: OmniHLLAdapter => OMNI_AGGREGATION_TYPE_APPROX_COUNT_DISTINCT
+      case _: CollectSet => OMNI_AGGREGATION_TYPE_COLLECT_SET
+      case _: OmniCollectSet => OMNI_AGGREGATION_TYPE_COLLECT_SET
       case _ => throw new UnsupportedOperationException(s"Unsupported aggregate function: $agg")
     }
   }
