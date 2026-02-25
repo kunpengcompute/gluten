@@ -520,5 +520,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"sinh", {FUNCTION_OMNI_EXPR_TYPE, "sinh"}},
     {"sqrt", {FUNCTION_OMNI_EXPR_TYPE, "sqrt"}},
     {"sec", {FUNCTION_OMNI_EXPR_TYPE, "sec"}},
+    {"make_date", {FUNCTION_OMNI_EXPR_TYPE, "make_date"}},
+    {"make_timestamp", {FUNCTION_OMNI_EXPR_TYPE, "make_timestamp"}}
 };
 } // namespace omniruntime
