@@ -148,16 +148,12 @@ case class OmniGenerateExecTransformer(
 
 object OmniGenerateExecTransformer {
   def supportsGenerate(generator: Generator, outer: Boolean): Boolean = {
-    // TODO: supports outer and remove this param.
-    if (outer) {
-      false
-    } else {
-      generator match {
-        case _: Inline | _: ExplodeBase | _: JsonTuple | _: Stack =>
-          true
-        case _ =>
-          false
-      }
+    // Support both outer and non-outer variants
+    generator match {
+      case _: Inline | _: ExplodeBase | _: JsonTuple | _: Stack =>
+        true
+      case _ =>
+        false
     }
   }
 }

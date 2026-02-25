@@ -1156,7 +1156,10 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::Generate
         withOrdinality = true;
     }
 
+    // Read outer field from GenerateRel
+    bool outer = generateRel.outer();
+
     return std::make_shared<UnnestNode>(
-        NextPlanNodeId(), replicated, unnest, childNode, withOrdinality);
+        NextPlanNodeId(), replicated, unnest, childNode, withOrdinality, outer);
 }
 } // namespace omniruntime
