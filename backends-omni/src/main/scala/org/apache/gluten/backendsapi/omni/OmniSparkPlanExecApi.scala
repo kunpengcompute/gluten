@@ -29,7 +29,7 @@ import org.apache.spark.shuffle.{GenShuffleWriterParameters, GlutenShuffleWriter
 import org.apache.spark.sql.catalyst.catalog.BucketSpec
 import org.apache.spark.sql.catalyst.catalog.CatalogTypes.TablePartitionSpec
 import org.apache.spark.sql.catalyst.expressions.{ArrayTransform, Attribute, AttributeReference, BloomFilterMightContain, Cast, DateDiff, ElementAt, Expression, FromUnixTime, Generator, GetMapValue, GetStructField, HashExpression, LambdaFunction, Like, Md5, NamedExpression, PosExplode, PythonUDF, SortOrder, UnixTimestamp, Uuid}
-import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, CollectSet, BloomFilterAggregate, MaxBy, MinBy, BitAndAgg, BitOrAgg, BitXorAgg}
+import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, CollectList, CollectSet, BloomFilterAggregate, MaxBy, MinBy, BitAndAgg, BitOrAgg, BitXorAgg}
 import org.apache.spark.sql.catalyst.optimizer.BuildSide
 import org.apache.spark.sql.catalyst.plans.JoinType
 import org.apache.spark.sql.catalyst.plans.physical.{AllTuples, BroadcastMode, Partitioning}
@@ -45,7 +45,7 @@ import org.apache.gluten.datasources.orc.OmniOrcFileFormat
 import org.apache.gluten.datasources.parquet.OmniParquetFileFormat
 import org.apache.gluten.exception.GlutenNotSupportException
 import org.apache.gluten.expression.ExpressionConverter.replaceWithExpressionTransformer
-import org.apache.gluten.expression.aggregate.OmniCollectSet
+import org.apache.gluten.expression.aggregate.{OmniCollectList, OmniCollectSet}
 import org.apache.gluten.extension.PushDownFilterToOmniScan
 import org.apache.spark.sql.hive.{OmniHiveTableScanExecTransformer, OmniHiveUDFTransformer}
 import org.apache.spark.sql.SparkSession
@@ -67,6 +67,8 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
       Sig[OmniHLLAdapter](ExpressionNames.APPROX_DISTINCT),
       Sig[CollectSet](ExpressionNames.COLLECT_SET),
       Sig[OmniCollectSet](ExpressionNames.COLLECT_SET),
+      Sig[CollectList](ExpressionNames.COLLECT_LIST),
+      Sig[OmniCollectList](ExpressionNames.COLLECT_LIST),
     )
   }
 
