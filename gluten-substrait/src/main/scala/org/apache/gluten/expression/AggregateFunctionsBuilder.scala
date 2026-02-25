@@ -75,6 +75,8 @@ object AggregateFunctionsBuilder {
         ExpressionNames.APPROX_DISTINCT
       case CollectSet(_, _, _) =>
         ExpressionNames.COLLECT_SET
+      case CollectList(_, _, _) =>
+        ExpressionNames.COLLECT_LIST
       case _ =>
         val nameOpt = ExpressionMappings.expressionsMap.get(aggregateFunc.getClass)
         if (nameOpt.isEmpty) {

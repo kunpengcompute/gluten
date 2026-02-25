@@ -1380,7 +1380,7 @@ int32_t Splitter::ProtoWritePartition(int32_t partition_id, std::unique_ptr<Buff
                     break;
                 }
                 default: {
-                    throw std::runtime_error("Unsupported ShuffleType.");
+                    throw std::runtime_error("ProtoWritePartition # Unsupported ShuffleType.");
                 }
             }
             spark::VecType *vt = vec->mutable_vectype();
@@ -1535,7 +1535,7 @@ int Splitter::protoSpillPartition(int32_t partition_id, std::unique_ptr<Buffered
                     break;
                 }
                 default: {
-                    throw std::runtime_error("Unsupported ShuffleType.");
+                    throw std::runtime_error("protoSpillPartition # Unsupported ShuffleType.");
                 }
             }
             spark::VecType *vt = vec->mutable_vectype();
