@@ -355,11 +355,21 @@ static jobject Transform(JNIEnv *env, VectorBatch &result)
         vecAddresses[i] = reinterpret_cast<uintptr_t>(vector);
         dataTypeIds[i] = vector->GetTypeId();
         encodings[i] = vector->GetEncoding();
-        // By default, all 3 buf arrays will have a value,
-        // if not, it will be 0, which means a null pointer.
-        valueBufAddrs[i] = reinterpret_cast<uintptr_t>(VectorHelper::UnsafeGetValues(vector));
-        nullBufAddrs[i] = reinterpret_cast<uintptr_t>(omniruntime::vec::unsafe::UnsafeBaseVector::GetNulls(vector));
-        offsetsBufAddrs[i] = reinterpret_cast<uintptr_t>(VectorHelper::UnsafeGetOffsetsAddr(vector));
+
+        if (vector->GetEncoding() == OMNI_ENCODING_CONST) {
+            // ConstVector has no value/offset buffers; null buffer is still valid
+            valueBufAddrs[i] = 0;
+            nullBufAddrs[i] = reinterpret_cast<uintptr_t>(
+                omniruntime::vec::unsafe::UnsafeBaseVector::GetNulls(vector));
+            offsetsBufAddrs[i] = 0;
+        } else {
+            // By default, all 3 buf arrays will have a value,
+            // if not, it will be 0, which means a null pointer.
+            valueBufAddrs[i] = reinterpret_cast<uintptr_t>(VectorHelper::UnsafeGetValues(vector));
+            nullBufAddrs[i] = reinterpret_cast<uintptr_t>(
+                omniruntime::vec::unsafe::UnsafeBaseVector::GetNulls(vector));
+            offsetsBufAddrs[i] = reinterpret_cast<uintptr_t>(VectorHelper::UnsafeGetOffsetsAddr(vector));
+        }
     }
 
     // set vector addresses parameter to vector batch construct.

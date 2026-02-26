@@ -205,6 +205,8 @@ public class OmniColumnVector extends WritableColumnVector {
     private MapVec mapDataVec;
     private StructVec structVec;
 
+    private ConstVec constVec;
+
     // init vec
     private boolean initVec;
     private int[] offsets;
@@ -224,6 +226,9 @@ public class OmniColumnVector extends WritableColumnVector {
      * @return Vec
      */
     public Vec getVec() {
+        if (constVec != null) {
+            return constVec;
+        }
         if (dictionaryData != null) {
             return dictionaryData;
         }
@@ -271,6 +276,10 @@ public class OmniColumnVector extends WritableColumnVector {
      * @param vec Vec
      */
     public void setVec(Vec vec) {
+        if (vec instanceof ConstVec) {
+            this.constVec = (ConstVec) vec;
+            return;
+        }
         if (vec instanceof DictionaryVec) {
             dictionaryData = (DictionaryVec) vec;
         } else if (type instanceof LongType || type instanceof TimestampType) {
@@ -320,6 +329,10 @@ public class OmniColumnVector extends WritableColumnVector {
     public void close() {
         childColumns = null;
         super.close();
+        if (constVec != null) {
+            constVec.close();
+            constVec = null;
+        }
         if (booleanDataVec != null) {
             booleanDataVec.close();
             booleanDataVec = null;
@@ -380,6 +393,9 @@ public class OmniColumnVector extends WritableColumnVector {
 
     @Override
     public boolean hasNull() {
+        if (constVec != null) {
+            return constVec.hasNull();
+        }
         if (dictionaryData != null) {
             return dictionaryData.hasNull();
         }
@@ -562,6 +578,9 @@ public class OmniColumnVector extends WritableColumnVector {
 
     @Override
     public boolean isNullAt(int rowId) {
+        if (constVec != null) {
+            return constVec.isNull(rowId);
+        }
         if (dictionaryData != null) {
             return dictionaryData.isNull(rowId);
         }
@@ -632,6 +651,9 @@ public class OmniColumnVector extends WritableColumnVector {
 
     @Override
     public boolean getBoolean(int rowId) {
+        if (constVec != null) {
+            return constVec.getConstBoolean();
+        }
         if (dictionaryData != null) {
             return dictionaryData.getBoolean(rowId);
         }
@@ -701,6 +723,9 @@ public class OmniColumnVector extends WritableColumnVector {
 
     @Override
     public byte getByte(int rowId) {
+        if (constVec != null) {
+            return constVec.getConstByte();
+        }
         if (dictionary != null) {
             return (byte) dictionary.decodeToInt(dictionaryIds.getDictId(rowId));
         } else if (dictionaryData != null) {
@@ -730,6 +755,9 @@ public class OmniColumnVector extends WritableColumnVector {
 
     @Override
     public UTF8String getUTF8String(int rowId) {
+        if (constVec != null) {
+            return UTF8String.fromBytes(constVec.getConstBytes());
+        }
         if (dictionaryData != null) {
             return UTF8String.fromBytes(dictionaryData.getBytes(rowId));
         } else {
@@ -749,6 +777,9 @@ public class OmniColumnVector extends WritableColumnVector {
     @Override
     public byte[] getBinary(int rowId) {
         // binary and varchar are implemented the same way
+        if (constVec != null) {
+            return constVec.getConstBytes();
+        }
         if (dictionaryData != null) {
             return dictionaryData.getBytes(rowId);
         } else {
@@ -784,6 +815,9 @@ public class OmniColumnVector extends WritableColumnVector {
 
     @Override
     public short getShort(int rowId) {
+        if (constVec != null) {
+            return constVec.getConstShort();
+        }
         if (dictionary != null) {
             return (short) dictionary.decodeToInt(dictionaryIds.getDictId(rowId));
         } else if (dictionaryData != null) {
@@ -842,6 +876,9 @@ public class OmniColumnVector extends WritableColumnVector {
 
     @Override
     public int getInt(int rowId) {
+        if (constVec != null) {
+            return constVec.getConstInt();
+        }
         if (dictionary != null) {
             return dictionary.decodeToInt(dictionaryIds.getDictId(rowId));
         } else if (dictionaryData != null) {
@@ -910,6 +947,9 @@ public class OmniColumnVector extends WritableColumnVector {
 
     @Override
     public long getLong(int rowId) {
+        if (constVec != null) {
+            return constVec.getConstLong();
+        }
         if (dictionary != null) {
             return dictionary.decodeToLong(dictionaryIds.getDictId(rowId));
         } else if (dictionaryData != null) {
@@ -969,6 +1009,9 @@ public class OmniColumnVector extends WritableColumnVector {
 
     @Override
     public float getFloat(int rowId) {
+        if (constVec != null) {
+            return constVec.getConstFloat();
+        }
         if (dictionary != null) {
             return dictionary.decodeToFloat(dictionaryIds.getDictId(rowId));
         } else if (dictionaryData != null) {
@@ -1027,6 +1070,9 @@ public class OmniColumnVector extends WritableColumnVector {
 
     @Override
     public double getDouble(int rowId) {
+        if (constVec != null) {
+            return constVec.getConstDouble();
+        }
         if (dictionary != null) {
             return dictionary.decodeToDouble(dictionaryIds.getDictId(rowId));
         } else if (dictionaryData != null) {
@@ -1125,6 +1171,14 @@ public class OmniColumnVector extends WritableColumnVector {
     @Override
     public Decimal getDecimal(int rowId, int precision, int scale) {
         if (isNullAt(rowId)) return null;
+        if (constVec != null) {
+            if (precision <= Decimal.MAX_LONG_DIGITS()) {
+                return Decimal.apply(constVec.getConstLong(), precision, scale);
+            } else {
+                BigInteger value = constVec.getConstDecimal128();
+                return Decimal.apply(new BigDecimal(value, scale), precision, scale);
+            }
+        }
         if (precision <= Decimal.MAX_LONG_DIGITS()) {
             return Decimal.apply(getLong(rowId), precision, scale);
         } else {
