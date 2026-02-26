@@ -356,19 +356,6 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
     GenericExpressionTransformer(substraitExprName, Seq(child), attributeSeq.head)
   }
 
-  /** Transform inline to Substrait.
-    * Note: This follows the same pattern as genPosExplodeTransformer, using
-    * GenericExpressionTransformer to wrap the child expression transformer.
-    * The original Inline expression is passed as the third parameter to preserve
-    * type information and metadata.
-    */
-  override def genInlineTransformer(
-      substraitExprName: String,
-      child: ExpressionTransformer,
-      expr: Expression): ExpressionTransformer = {
-    GenericExpressionTransformer(substraitExprName, Seq(child), expr)
-  }
-
   /**
    * Generate ShuffleDependency for ColumnarShuffleExchangeExec.
    *
