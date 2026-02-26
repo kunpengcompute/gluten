@@ -29,7 +29,7 @@ import org.apache.spark.shuffle.{GenShuffleWriterParameters, GlutenShuffleWriter
 import org.apache.spark.sql.catalyst.catalog.BucketSpec
 import org.apache.spark.sql.catalyst.catalog.CatalogTypes.TablePartitionSpec
 import org.apache.spark.sql.catalyst.expressions.{ArrayTransform, Attribute, AttributeReference, BloomFilterMightContain, Cast, DateDiff, ElementAt, Expression, FromUnixTime, Generator, GetMapValue, GetStructField, HashExpression, LambdaFunction, Like, Md5, NamedExpression, PosExplode, PythonUDF, SortOrder, UnixTimestamp, Uuid}
-import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, CollectList, CollectSet, BloomFilterAggregate, MaxBy, MinBy, BitAndAgg, BitOrAgg, BitXorAgg}
+import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, CollectList, CollectSet, BloomFilterAggregate, MaxBy, MinBy, BitAndAgg, BitOrAgg, BitXorAgg, Skewness, Kurtosis}
 import org.apache.spark.sql.catalyst.optimizer.BuildSide
 import org.apache.spark.sql.catalyst.plans.JoinType
 import org.apache.spark.sql.catalyst.plans.physical.{AllTuples, BroadcastMode, Partitioning}
@@ -69,6 +69,8 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
       Sig[OmniCollectSet](ExpressionNames.COLLECT_SET),
       Sig[CollectList](ExpressionNames.COLLECT_LIST),
       Sig[OmniCollectList](ExpressionNames.COLLECT_LIST),
+      Sig[Skewness](ExpressionNames.SKEWNESS),
+      Sig[Kurtosis](ExpressionNames.KURTOSIS),
     )
   }
 
