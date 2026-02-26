@@ -502,6 +502,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"bloom_filter_agg", {FUNCTION_OMNI_EXPR_TYPE, "bloom_filter_agg"}},
     {"substring_index", {FUNCTION_OMNI_EXPR_TYPE, "substring_index"}},
     {"regexp_extract", {FUNCTION_OMNI_EXPR_TYPE, "regexp_extract"}},
+    {"regexp_extract_all", {FUNCTION_OMNI_EXPR_TYPE, "regexp_extract_all"}},
     {"regexp_replace", {FUNCTION_OMNI_EXPR_TYPE, "regexp_replace"}},
     {"make_decimal", {FUNCTION_OMNI_EXPR_TYPE, "MakeDecimal"}},
     {"unix_timestamp", {FUNCTION_OMNI_EXPR_TYPE, "unix_timestamp"}},
