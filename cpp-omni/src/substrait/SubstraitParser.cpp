@@ -646,5 +646,8 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"map_entries", {FUNCTION_OMNI_EXPR_TYPE, "map_entries"}},
     {"map_concat", {FUNCTION_OMNI_EXPR_TYPE, "map_concat"}},
     {"map", {FUNCTION_OMNI_EXPR_TYPE, "map"}},
+    {"find_in_set", {FUNCTION_OMNI_EXPR_TYPE, "find_in_set"}},
+    {"initcap", {FUNCTION_OMNI_EXPR_TYPE, "initcap"}},
+    {"levenshtein", {FUNCTION_OMNI_EXPR_TYPE, "levenshtein"}},
 };
 } // namespace omniruntime
