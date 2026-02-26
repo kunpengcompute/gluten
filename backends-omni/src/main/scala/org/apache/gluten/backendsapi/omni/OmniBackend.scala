@@ -98,8 +98,15 @@ object OmniBackendSettings extends BackendSettingsApi {
         case f: FloatType => "FloatType"
         case s: StructType => "StructType"
         case m: MapType => "MapType"
-        case a: ArrayType
-          if (!DataTypeUtils.isPrimitiveType(a.elementType)) => "nested ArrayType"
+        case a: ArrayType =>
+          format match {
+            case ReadFileFormat.ParquetReadFormat =>
+              "ArrayType"
+            case _ =>
+              if (!DataTypeUtils.isPrimitiveType(a.elementType)) {
+                "nested ArrayType"
+              }
+          }
       }
       for (unsupportedDataType <- unsupportedDataTypes) {
         return ValidationResult.failed(s"Validation failed for ${this.getClass.toString}"
