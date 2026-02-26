@@ -356,6 +356,21 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
     GenericExpressionTransformer(substraitExprName, Seq(child), attributeSeq.head)
   }
 
+  /** Transform inline to Substrait.
+    * Note: Inline is handled at the GenerateExec level via pullOutPreProject,
+    * which converts it to an array field reference. This transformer should
+    * never be called in practice, but we provide a fallback that treats it
+    * as a pass-through to the child expression (which should be an array).
+    */
+  override def genInlineTransformer(
+      substraitExprName: String,
+      child: ExpressionTransformer,
+      expr: Expression): ExpressionTransformer = {
+    // Inline should be converted to array field reference in pullOutPreProject,
+    // but if this is called, treat it as a pass-through to the child (array)
+    child
+  }
+
   /**
    * Generate ShuffleDependency for ColumnarShuffleExchangeExec.
    *
