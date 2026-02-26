@@ -420,6 +420,10 @@ op::FunctionType SubstraitParser::ParseFunctionType(
         return op::OMNI_AGGREGATION_TYPE_COLLECT_SET;
     } else if (funcName == "collect_list") {
         return op::OMNI_AGGREGATION_TYPE_COLLECT_LIST;
+    } else if (funcName == "skewness") {
+        return op::OMNI_AGGREGATION_TYPE_SKEWNESS;
+    } else if (funcName == "kurtosis") {
+        return op::OMNI_AGGREGATION_TYPE_KURTOSIS;
     } else {
         OMNI_THROW("Substrait Error:", "Unsupported aggregate or window function: {}", funcName);
     }
@@ -544,6 +548,8 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"min_by", {FUNCTION_OMNI_EXPR_TYPE, "min_by"}},
     {"max_by", {FUNCTION_OMNI_EXPR_TYPE, "max_by"}},
     {"approx_distinct", {FUNCTION_OMNI_EXPR_TYPE, "approx_distinct"}},
+    {"skewness", {FUNCTION_OMNI_EXPR_TYPE, "skewness"}},
+    {"kurtosis", {FUNCTION_OMNI_EXPR_TYPE, "kurtosis"}},
     {"transform", {FUNCTION_OMNI_EXPR_TYPE, "transform"}},
     {"transform_keys", {FUNCTION_OMNI_EXPR_TYPE, "transform_keys"}},
     {"transform_values", {FUNCTION_OMNI_EXPR_TYPE, "transform_values"}},

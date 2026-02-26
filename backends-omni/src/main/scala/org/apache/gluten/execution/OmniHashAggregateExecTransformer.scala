@@ -127,7 +127,7 @@ abstract class HashAggregateExecTransformer(
       classOf[VarianceSamp], classOf[VariancePop], classOf[BloomFilterAggregate],
       classOf[BitAndAgg], classOf[BitOrAgg], classOf[BitXorAgg], classOf[OmniHLLAdapter],
       classOf[Corr], classOf[CovPopulation], classOf[CovSample], classOf[CollectSet], classOf[OmniCollectSet],
-      classOf[CollectList], classOf[OmniCollectList],
+      classOf[CollectList], classOf[OmniCollectList], classOf[Skewness], classOf[Kurtosis],
     )
 
     var completeOnlySupported = Set(
