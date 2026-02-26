@@ -330,9 +330,8 @@ class OmniValidatorApi extends ValidatorApi {
       case struct: StructType =>
         struct.fields.foreach {
           f =>
-            val reason = doSchemaValidateForShuffle(f.dataType)
-            if (reason.isDefined) {
-              return reason
+            if (!DataTypeUtils.isPrimitiveType(f.dataType)) {
+              return Some(s"Schema / data type not supported: $schema")
             }
         }
         None
