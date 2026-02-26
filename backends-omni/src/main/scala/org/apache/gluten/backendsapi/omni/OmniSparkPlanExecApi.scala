@@ -357,18 +357,16 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
   }
 
   /** Transform inline to Substrait.
-    * Note: Inline is handled at the GenerateExec level via pullOutPreProject,
-    * which converts it to an array field reference. This transformer should
-    * never be called in practice, but we provide a fallback that treats it
-    * as a pass-through to the child expression (which should be an array).
+    * Note: This follows the same pattern as genPosExplodeTransformer, using
+    * GenericExpressionTransformer to wrap the child expression transformer.
+    * The original Inline expression is passed as the third parameter to preserve
+    * type information and metadata.
     */
   override def genInlineTransformer(
       substraitExprName: String,
       child: ExpressionTransformer,
       expr: Expression): ExpressionTransformer = {
-    // Inline should be converted to array field reference in pullOutPreProject,
-    // but if this is called, treat it as a pass-through to the child (array)
-    child
+    GenericExpressionTransformer(substraitExprName, Seq(child), expr)
   }
 
   /**
