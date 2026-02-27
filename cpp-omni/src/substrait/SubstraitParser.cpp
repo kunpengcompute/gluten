@@ -613,6 +613,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"array_min", {FUNCTION_OMNI_EXPR_TYPE, "array_min"}},
     {"coalesce", {FUNCTION_OMNI_EXPR_TYPE, "coalesce"}},
     {"if", {FUNCTION_OMNI_EXPR_TYPE, "if"}},
+    {"translate", {FUNCTION_OMNI_EXPR_TYPE, "translate"}},
     {"flatten", {FUNCTION_OMNI_EXPR_TYPE, "flatten"}},
     {"div", {FUNCTION_OMNI_EXPR_TYPE, "div"}},
     {"checked_div", {FUNCTION_OMNI_EXPR_TYPE, "div"}},
