@@ -83,7 +83,6 @@ JNIEXPORT jlong JNICALL Java_com_huawei_boostkit_spark_jni_SparkJniWrapper_nativ
         elementTypes->inputDataPrecisions = elementPrecisions;
         elementTypes->inputDataScales = elementScales;
         elementTypes->inputVecTypeIds = elementTypIds;
-        inputDataTypes.clear();
 
         InputDataTypes inputDataTypesTmp;
         inputDataTypesTmp.inputVecTypeIds = (int32_t*)inputVecTypeIds;
@@ -147,6 +146,7 @@ JNIEXPORT jlong JNICALL Java_com_huawei_boostkit_spark_jni_SparkJniWrapper_nativ
 
         auto splitter = Splitter::Make(partitioning_name, inputDataTypesTmp, jNumCols, num_partitions,
             std::move(splitOptions));
+        splitter->SetInputDataTypes(inputDataTypes);
         return reinterpret_cast<intptr_t>(static_cast<void*>(splitter));
     JNI_FUNC_END(runtimeExceptionClass)
 }

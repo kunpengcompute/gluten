@@ -212,15 +212,10 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
       }
     }
 
-    def hasComplexType(attributes: Seq[Attribute]): Boolean = {
-      attributes.exists(attr => !DataTypeUtils.isPrimitiveType(attr.dataType))
-    }
-
     val child = shuffle.child
     val columnarConf = GlutenConfig.get
     val isRowShuffle = columnarConf.enableOmniRowShuffle &&
-      shuffle.output.length > columnarConf.omniRowShuffleColumnsThreshold &&
-      !hasComplexType(shuffle.output)
+      shuffle.output.length > columnarConf.omniRowShuffleColumnsThreshold
     val newShuffle = OmniColumnarShuffleExchangeExec(shuffle, child, shuffle.output, isRowShuffle)
     val validationResult = newShuffle.doValidate()
     if (validationResult.ok()) {
@@ -483,17 +478,11 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
       schema: StructType,
       metrics: Map[String, SQLMetric],
       isSort: Boolean): Serializer = {
-
-    def hasComplexType(schema: StructType): Boolean = {
-      schema.exists(field => !DataTypeUtils.isPrimitiveType(field.dataType))
-    }
-
     val readBatchNumRows = metrics("avgReadBatchNumRows")
     val numOutputRows = metrics("numOutputRows")
     val columnarConf = GlutenConfig.get
     val isRowShuffle = columnarConf.enableOmniRowShuffle &&
-      schema.length > columnarConf.omniRowShuffleColumnsThreshold &&
-      !hasComplexType(schema)
+      schema.length > columnarConf.omniRowShuffleColumnsThreshold
     new OmniColumnarBatchSerializer(readBatchNumRows, numOutputRows, isRowShuffle)
   }
 
