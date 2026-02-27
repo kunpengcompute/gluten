@@ -628,5 +628,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"row_constructor", {FUNCTION_OMNI_EXPR_TYPE, "name_struct"}},
     {"named_struct", {FUNCTION_OMNI_EXPR_TYPE, "name_struct"}},
     {"collect_list", {FUNCTION_OMNI_EXPR_TYPE, "collect_list"}},
+    {"make_date", {FUNCTION_OMNI_EXPR_TYPE, "make_date"}},
+    {"make_timestamp", {FUNCTION_OMNI_EXPR_TYPE, "make_timestamp"}},
 };
 } // namespace omniruntime

@@ -518,6 +518,14 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
     GenericExpressionTransformer(substraitExprName, Seq(endDate, startDate), original)
   }
 
+  /** Transform make_timestamp to Substrait (Omni backend supports it). */
+  override def genMakeTimestampTransformer(
+      substraitExprName: String,
+      children: Seq[ExpressionTransformer],
+      expr: Expression): ExpressionTransformer = {
+    GenericExpressionTransformer(substraitExprName, children, expr)
+  }
+
   override def genGenerateTransformer(
       generator: Generator,
       requiredChildOutput: Seq[Attribute],
