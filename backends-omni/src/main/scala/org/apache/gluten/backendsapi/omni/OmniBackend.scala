@@ -21,6 +21,8 @@ import org.apache.gluten.backendsapi._
 import org.apache.gluten.columnarbatch.OmniBatch
 import org.apache.gluten.component.Component.BuildInfo
 import org.apache.gluten.config.GlutenConfig
+import org.apache.gluten.datasources.orc.OmniOrcFileFormat
+import org.apache.gluten.datasources.parquet.OmniParquetFileFormat
 import org.apache.gluten.extension.ValidationResult
 import org.apache.gluten.extension.columnar.transition.Convention
 import org.apache.gluten.sql.shims.SparkShimLoader
@@ -182,7 +184,7 @@ object OmniBackendSettings extends BackendSettingsApi {
     // Validate if all types are supported.
     def validateDataTypes(): Option[String] = {
       val unsupportedTypes: Seq[String] = format match {
-        case _: OrcFileFormat =>
+        case _: OrcFileFormat | _: OmniOrcFileFormat =>
           fields.flatMap {
             case StructField(_, _: YearMonthIntervalType, _, _) =>
               Some("YearMonthIntervalType")
@@ -203,11 +205,14 @@ object OmniBackendSettings extends BackendSettingsApi {
       format match {
         case _: OrcFileFormat => None // Orc is directly supported
         case _: ParquetFileFormat => None // Parquet is directly supported
+        case _: OmniOrcFileFormat => None // Omni native Orc writer
+        case _: OmniParquetFileFormat => None // Omni native Parquet writer
         case h: HiveFileFormat if GlutenConfig.get.enableHiveFileFormatWriter =>
           validateHiveFileFormat(h) // Orc via Hive SerDe
         case _ =>
           Some(
-            "Only OrcFileFormat, ParquetFileFormat and HiveFileFormat are supported."
+            "Only OrcFileFormat, ParquetFileFormat, OmniOrcFileFormat, " +
+              "OmniParquetFileFormat and HiveFileFormat are supported."
           ) // Unsupported format
       }
     }

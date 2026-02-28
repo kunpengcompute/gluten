@@ -28,18 +28,24 @@ import org.apache.gluten.vectorized.OmniColumnVector;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.spark.sql.catalyst.util.RebaseDateTime;
+import org.apache.spark.sql.types.ArrayType;
+import org.apache.spark.sql.types.BinaryType;
 import org.apache.spark.sql.types.BooleanType;
+import org.apache.spark.sql.types.ByteType;
 import org.apache.spark.sql.types.CharType;
 import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DateType;
 import org.apache.spark.sql.types.DecimalType;
 import org.apache.spark.sql.types.DoubleType;
+import org.apache.spark.sql.types.FloatType;
 import org.apache.spark.sql.types.IntegerType;
 import org.apache.spark.sql.types.LongType;
+import org.apache.spark.sql.types.MapType;
 import org.apache.spark.sql.types.ShortType;
 import org.apache.spark.sql.types.StringType;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
+import org.apache.spark.sql.types.TimestampType;
 import org.apache.spark.sql.types.VarcharType;
 import org.apache.spark.sql.vectorized.ColumnarBatch;
 import org.json.JSONObject;
@@ -252,7 +258,8 @@ public class ParquetColumnarBatchWriter {
             fieldTypes[i] = sparkTypeToParquetLibType(field.dataType());
             nullables[i] = field.nullable();
         }
-        writer = jniWriter.initializeSchema(writer, fieldNames, fieldTypes, nullables, extractDecimalParam(dataSchema));
+        writer = jniWriter.initializeSchema(writer, fieldNames, fieldTypes, nullables,
+            extractDecimalParam(dataSchema), dataSchema.json());
     }
 
     /**
@@ -266,6 +273,8 @@ public class ParquetColumnarBatchWriter {
         int parquetType;
         if (dataType instanceof BooleanType) {
             parquetType =  ParquetLibTypeKind.BOOL.ordinal();
+        } else if (dataType instanceof ByteType) {
+            parquetType = ParquetLibTypeKind.INT8.ordinal();
         } else if (dataType instanceof ShortType) {
             parquetType = ParquetLibTypeKind.INT16.ordinal();
         } else if (dataType instanceof IntegerType) {
@@ -287,12 +296,18 @@ public class ParquetColumnarBatchWriter {
             }
         } else if (dataType instanceof DoubleType) {
             parquetType = ParquetLibTypeKind.DOUBLE.ordinal();
+        } else if (dataType instanceof FloatType) {
+            parquetType = ParquetLibTypeKind.FLOAT.ordinal();
         } else if (dataType instanceof VarcharType) {
             parquetType = ParquetLibTypeKind.STRING.ordinal();
         } else if (dataType instanceof StringType) {
             parquetType = ParquetLibTypeKind.STRING.ordinal();
         } else if (dataType instanceof CharType) {
             parquetType = ParquetLibTypeKind.STRING.ordinal();
+        } else if (dataType instanceof BinaryType) {
+            parquetType = ParquetLibTypeKind.BINARY.ordinal();
+        } else if (dataType instanceof TimestampType) {
+            parquetType = ParquetLibTypeKind.TIMESTAMP.ordinal();
         } else if (dataType instanceof DecimalType) {
             DecimalType decimalType = (DecimalType) dataType;
             switch (decimalType.defaultSize()) {
@@ -304,6 +319,12 @@ public class ParquetColumnarBatchWriter {
                     throw new RuntimeException(
                             "UnSupport size " + decimalType.defaultSize() + " of decimal type");
             }
+        } else if (dataType instanceof ArrayType) {
+            parquetType = ParquetLibTypeKind.LIST.ordinal();
+        } else if (dataType instanceof MapType) {
+            parquetType = ParquetLibTypeKind.MAP.ordinal();
+        } else if (dataType instanceof StructType) {
+            parquetType = ParquetLibTypeKind.STRUCT.ordinal();
         } else {
             throw new RuntimeException(
                     "UnSupport type convert  spark type " + dataType.simpleString() + " to parquet lib type");

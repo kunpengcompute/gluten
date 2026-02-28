@@ -23,7 +23,8 @@ public class ParquetColumnarBatchJniWriter {
 
     public native void initializeWriter(JSONObject var1, long writer);
 
-    public native long initializeSchema(long writer, String[] fieldNames, int[] fieldTypes, boolean[] nullables, int[][] decimalParam);
+    public native long initializeSchema(long writer, String[] fieldNames, int[] fieldTypes, boolean[] nullables,
+        int[][] decimalParam, String schemaJson);
 
     public native void write(long writer, long[] vecNativeId, int[] omniTypes, boolean[] dataColumnsIds, int rowNums);
 

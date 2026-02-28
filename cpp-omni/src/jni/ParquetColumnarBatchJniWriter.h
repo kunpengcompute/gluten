@@ -52,7 +52,7 @@ JNIEXPORT void JNICALL Java_com_huawei_boostkit_write_jni_ParquetColumnarBatchJn
  */
 JNIEXPORT jlong JNICALL Java_com_huawei_boostkit_write_jni_ParquetColumnarBatchJniWriter_initializeSchema
     (JNIEnv *env, jobject jObj, jlong writer, jobjectArray filedNames, jintArray fieldTypes,
-    jbooleanArray nullables, jobjectArray decimalParam);
+    jbooleanArray nullables, jobjectArray decimalParam, jstring schemaJson);
 
 /*
  * Class:       com_huawei_boostkit_writer_jni_ParquetColumnarBatchJniWriter

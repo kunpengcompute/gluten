@@ -19,7 +19,7 @@
 package org.apache.gluten.datasources.parquet
 
 import com.huawei.boostkit.spark.jni.ParquetColumnarBatchWriter
-import org.apache.gluten.expression.OmniExpressionAdaptor.sparkTypeToOmniType
+import org.apache.gluten.expression.OmniExpressionAdaptor.sparkTypeToOmniTypeWithComplex
 import org.apache.hadoop.fs.Path
 import org.apache.hadoop.mapreduce._
 import org.apache.spark.sql.catalyst.InternalRow
@@ -46,10 +46,10 @@ class OmniParquetOutputWriter(path: String, dataSchema: StructType,
     writer.initializeSchemaJava(dataSchema)
     writer.initializeWriterJava(filePath)
     omniTypes = dataSchema.fields
-      .map(field => sparkTypeToOmniType(field.dataType, field.metadata).getId.ordinal())
+      .map(field => sparkTypeToOmniTypeWithComplex(field.dataType, field.metadata).getId.toValue())
       .toArray
     allOmniTypes = allColumns.toStructType.fields
-      .map(field => sparkTypeToOmniType(field.dataType, field.metadata).getId.ordinal())
+      .map(field => sparkTypeToOmniTypeWithComplex(field.dataType, field.metadata).getId.toValue())
       .toArray
     dataColumnsIds = allColumns.map(x => dataColumns.contains(x)).toArray
   }
