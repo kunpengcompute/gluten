@@ -2,6 +2,7 @@ package org.apache.gluten.execution
 
 import com.google.protobuf.{Any, StringValue}
 import io.substrait.proto.JoinRel
+import org.apache.gluten.exception.GlutenNotSupportException
 import org.apache.gluten.backendsapi.BackendsApiManager
 import org.apache.gluten.extension.ValidationResult
 import org.apache.gluten.substrait.{JoinParams, SubstraitContext}
@@ -11,6 +12,7 @@ import org.apache.spark.sql.catalyst.optimizer.{BuildLeft, BuildRight, BuildSide
 import org.apache.spark.sql.catalyst.plans._
 import org.apache.spark.sql.execution.SparkPlan
 import org.apache.spark.sql.execution.joins.BuildSideRelation
+import org.apache.spark.sql.types._
 import org.apache.spark.sql.vectorized.ColumnarBatch
 
 import scala.collection.Seq
@@ -62,7 +64,32 @@ case class OmniBroadcastHashJoinExecTransformer(
       return ValidationResult.failed(s"isNullAwareAntiJoin is not supported in OmniBroadcastHashJoinExecTransformer")
     }
 
-    super.doValidateInternal();
+    val schemas = Seq(left.schema, right.schema)
+    for (schema <- schemas) {
+      for (field <- schema.fields) {
+        field.dataType match {
+          case _: BooleanType =>
+          case _: ByteType =>
+          case _: ShortType =>
+          case _: IntegerType =>
+          case _: LongType =>
+          case _: FloatType =>
+          case _: DoubleType =>
+          case _: StringType =>
+          case _: TimestampType =>
+          case _: DateType =>
+          case _: BinaryType =>
+          case _: DecimalType =>
+          case YearMonthIntervalType.DEFAULT =>
+          case _: NullType =>
+          case _ =>
+            throw new GlutenNotSupportException(
+              s"${field.dataType} is unsupported in " +
+                s"OmniBroadcastHashJoinExecTransformer.")
+        }
+      }
+    }
+    ValidationResult.succeeded
   }
 
   override protected def doTransform(context: SubstraitContext): TransformContext = {
