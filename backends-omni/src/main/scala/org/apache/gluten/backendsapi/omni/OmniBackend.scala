@@ -37,7 +37,6 @@ import org.apache.spark.sql.catalyst.plans.physical.Partitioning
 import org.apache.spark.sql.connector.read.Scan
 import org.apache.spark.sql.execution.SparkPlan
 import org.apache.spark.sql.execution.datasources.FileFormat
-import org.apache.spark.sql.execution.datasources.parquet.ParquetFileFormat
 import org.apache.spark.sql.execution.datasources.orc.OrcFileFormat
 import org.apache.spark.sql.hive.execution.HiveFileFormat
 import org.apache.spark.sql.types._
@@ -170,11 +169,9 @@ object OmniBackendSettings extends BackendSettingsApi {
       outputFileFormatClassName match {
         case "org.apache.hadoop.hive.ql.io.orc.OrcOutputFormat" =>
           None
-        case "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat" =>
-          None
         case _ =>
           Some(
-            "HiveFileFormat is supported only with orc/parquet as the output file type"
+            "HiveFileFormat is supported only with orc as the output file type"
           ) // Unsupported format
       }
     }
@@ -202,12 +199,11 @@ object OmniBackendSettings extends BackendSettingsApi {
     def validateFileFormat(): Option[String] = {
       format match {
         case _: OrcFileFormat => None // Orc is directly supported
-        case _: ParquetFileFormat => None // Parquet is directly supported
         case h: HiveFileFormat if GlutenConfig.get.enableHiveFileFormatWriter =>
           validateHiveFileFormat(h) // Orc via Hive SerDe
         case _ =>
           Some(
-            "Only OrcFileFormat, ParquetFileFormat and HiveFileFormat are supported."
+            "Only OrcFileFormat and HiveFileFormat are supported."
           ) // Unsupported format
       }
     }

@@ -47,6 +47,8 @@ type::DataTypePtr SubstraitParser::ParseKStructType(const ::substrait::Type &sub
     names.reserve(structTypes.size());
     for (int i = 0; i < structTypes.size(); i++) {
         types.emplace_back(ParseType(structTypes[i], asLowerCase));
+        // Substrait Type::Struct doesn't carry field names. Generate stable
+        // ordinal-based names to avoid crashing when building ScanSpec.
         names.emplace_back("field" + std::to_string(i));
     }
     return std::make_shared<type::RowType>(std::move(types), std::move(names));

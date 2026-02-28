@@ -464,23 +464,15 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
       bucketSpec: Option[BucketSpec],
       options: Map[String, String],
       staticPartitions: TablePartitionSpec): ColumnarWriteFilesExec =
-    {
-      val nativeFormat = SparkSession.active.sparkContext.getLocalProperty("nativeFormat")
-      val effectiveFileFormat = (nativeFormat, fileFormat) match {
-        case ("orc", _: OrcFileFormat) => new OmniOrcFileFormat()
-        case ("parquet", _: ParquetFileFormat) => new OmniParquetFileFormat()
-        case _ => fileFormat
-      }
-      OmniColumnarWriteFilesExec(
-        child.child,
-        noop,
-        child,
-        effectiveFileFormat,
-        partitionColumns,
-        bucketSpec,
-        options,
-        staticPartitions)
-    }
+    OmniColumnarWriteFilesExec(
+      child.child,
+      noop,
+      child,
+      fileFormat,
+      partitionColumns,
+      bucketSpec,
+      options,
+      staticPartitions)
 
   /** Create ColumnarArrowEvalPythonExec, for omni backend */
   override def createColumnarArrowEvalPythonExec(

@@ -30,7 +30,6 @@ import org.apache.spark.sql.expression.UDFResolver
 import org.apache.spark.sql.internal.GlutenConfigUtil
 import org.apache.spark.util.{SparkDirectoryUtil, SparkResourceUtil}
 import org.apache.gluten.datasources.OmniOrcFormatWriterInjects
-import org.apache.gluten.datasources.parquet.OmniParquetFormatWriterInjects
 import org.apache.gluten.execution.datasource.GlutenFormatFactory
 import org.apache.spark.sql.execution.datasources.OmniGlutenWriterColumnarRules
 import java.util.concurrent.atomic.AtomicBoolean
@@ -108,9 +107,7 @@ class OmniListenerApi extends ListenerApi with Logging {
       JniLibLoader.loadFromPath(actualLibPath, true)
     }
     // Inject backend-specific implementations to override spark classes.
-    GlutenFormatFactory.register(
-      new OmniOrcFormatWriterInjects(),
-      new OmniParquetFormatWriterInjects())
+    GlutenFormatFactory.register(new OmniOrcFormatWriterInjects())
     GlutenFormatFactory.injectPostRuleFactory(
       session => OmniGlutenWriterColumnarRules.NativeWritePostRule(session))
     OmniNativeBackendInitializer.forBackend(OmniBackend.BACKEND_NAME).initialize(parsed)
