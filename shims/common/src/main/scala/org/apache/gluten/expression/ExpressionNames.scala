@@ -290,7 +290,6 @@ object ExpressionNames {
   final val TRANSFORM_KEYS = "transform_keys"
   final val TRANSFORM_VALUES = "transform_values"
   final val STR_TO_MAP = "str_to_map"
-  final val MAP_CONCAT = "map_concat"
 
   // struct functions
   final val GET_STRUCT_FIELD = "get_struct_field"
