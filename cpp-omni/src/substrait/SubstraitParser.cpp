@@ -539,6 +539,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"get_json_object", {FUNCTION_OMNI_EXPR_TYPE, "GetJsonObject"}},
     {"to_json", {FUNCTION_OMNI_EXPR_TYPE, "to_json"}},
     {"json_object_keys", {FUNCTION_OMNI_EXPR_TYPE, "json_object_keys"}},
+    {"json_array_length", {FUNCTION_OMNI_EXPR_TYPE, "json_array_length"}},
     {"might_contain", {FUNCTION_OMNI_EXPR_TYPE, "might_contain"}},
     {"bitwise_and", {FUNCTION_OMNI_EXPR_TYPE, "bitwise_and"}},
     {"bitwise_or", {FUNCTION_OMNI_EXPR_TYPE, "bitwise_or"}},
