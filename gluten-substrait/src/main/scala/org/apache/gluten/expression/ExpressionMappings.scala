@@ -207,6 +207,7 @@ object ExpressionMappings {
     Sig[PreciseTimestampConversion](PRECYSE_TIMESTAMP_CONVERSION),
     // JSON functions
     Sig[GetJsonObject](GET_JSON_OBJECT),
+    Sig[JsonObjectKeys](JSON_OBJECT_KEYS),
     Sig[LengthOfJsonArray](JSON_ARRAY_LENGTH),
     Sig[StructsToJson](TO_JSON),
     Sig[JsonToStructs](FROM_JSON),

@@ -235,6 +235,7 @@ object ExpressionNames {
   // JSON functions
   final val GET_JSON_OBJECT = "get_json_object"
   final val JSON_ARRAY_LENGTH = "json_array_length"
+  final val JSON_OBJECT_KEYS = "json_object_keys"
   final val TO_JSON = "to_json"
   final val FROM_JSON = "from_json"
   final val JSON_TUPLE = "json_tuple"
