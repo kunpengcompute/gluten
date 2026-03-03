@@ -251,7 +251,8 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::WindowRe
     const auto& partitions = windowRel.partition_expressions();
     for (const auto& partition : partitions) {
         auto expression = exprConverter->ToOmniExpr(partition, childNode->OutputType());
-        auto fieldExpr = dynamic_cast<const FieldExpr *>(expression);
+        auto fieldExpr = ExtractFieldExprFromPartitionOrSortKey(expression);
+        OMNI_CHECK(fieldExpr != nullptr, "Partition expression must resolve to a field reference");
         partitionCols.emplace_back(fieldExpr->colVal);
     }
 
@@ -905,9 +906,8 @@ SubstraitToOmniPlanConverter::ProcessSortField(
     for (const auto &sort : sortFields) {
         OMNI_CHECK(sort.has_expr(), "Sort field must have expr");
         auto expression = exprConverter->ToOmniExpr(sort.expr(), inputType);
-        auto fieldExpr = dynamic_cast<const FieldExpr *>(expression);
-        // OMNI_CHECK(fieldExpr==nullptr, "Sort Operator only supports field sorting
-        // key");
+        auto fieldExpr = ExtractFieldExprFromPartitionOrSortKey(expression);
+        OMNI_CHECK(fieldExpr != nullptr, "Sort expression must resolve to a field reference");
         sortingKeys.emplace_back(fieldExpr->colVal);
         auto sortOrder = ToSortOrder(sort);
         sortingOrders.emplace_back(sortOrder.IsAscending());
