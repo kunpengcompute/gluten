@@ -127,7 +127,8 @@ case class OmniRollUpOptimizeTransformer(
       classOf[StddevSamp],
       classOf[StddevPop],
       classOf[VarianceSamp],
-      classOf[VariancePop]
+      classOf[VariancePop],
+      classOf[ApproximatePercentile]
     )
 
     val completeOnlySupported = Set(
@@ -137,7 +138,8 @@ case class OmniRollUpOptimizeTransformer(
       classOf[Count],
       classOf[Average],
       classOf[First],
-      classOf[Last]
+      classOf[Last],
+      classOf[ApproximatePercentile]
     )
 
     val supported = mode match {
@@ -216,7 +218,7 @@ case class OmniRollUpOptimizeTransformer(
 
   override protected def checkType(dataType: DataType): Boolean = {
     dataType match {
-      case ShortType | IntegerType | LongType | TimestampType | DoubleType | BooleanType |
+      case ByteType | ShortType | IntegerType | LongType | TimestampType | DoubleType | BooleanType |
           StringType | DateType | NullType=>
         true
       case _: DecimalType => true

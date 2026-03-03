@@ -99,7 +99,7 @@ abstract class HashAggregateExecBaseTransformer(
 
   protected def checkType(dataType: DataType): Boolean = {
     dataType match {
-      case BooleanType | StringType | TimestampType | DateType | BinaryType =>
+      case ByteType | BooleanType | StringType | TimestampType | DateType | BinaryType =>
         true
       case _: NumericType => true
       case _: ArrayType => true

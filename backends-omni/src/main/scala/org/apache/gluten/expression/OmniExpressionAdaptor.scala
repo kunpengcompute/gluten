@@ -1090,6 +1090,7 @@ object OmniExpressionAdaptor extends Logging {
       case _: OmniCollectList => OMNI_AGGREGATION_TYPE_COLLECT_LIST
       case _: Skewness => OMNI_AGGREGATION_TYPE_SKEWNESS
       case _: Kurtosis => OMNI_AGGREGATION_TYPE_KURTOSIS
+      case _: ApproximatePercentile => OMNI_AGGREGATION_TYPE_APPROX_PERCENTILE
       case _ => throw new UnsupportedOperationException(s"Unsupported aggregate function: $agg")
     }
   }

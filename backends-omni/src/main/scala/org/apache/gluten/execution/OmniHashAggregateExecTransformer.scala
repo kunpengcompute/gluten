@@ -127,12 +127,12 @@ abstract class HashAggregateExecTransformer(
       classOf[VarianceSamp], classOf[VariancePop], classOf[BloomFilterAggregate],
       classOf[BitAndAgg], classOf[BitOrAgg], classOf[BitXorAgg], classOf[OmniHLLAdapter],
       classOf[Corr], classOf[CovPopulation], classOf[CovSample], classOf[CollectSet], classOf[OmniCollectSet],
-      classOf[CollectList], classOf[OmniCollectList], classOf[Skewness], classOf[Kurtosis],
+      classOf[CollectList], classOf[OmniCollectList], classOf[Skewness], classOf[Kurtosis], classOf[ApproximatePercentile],
     )
 
     var completeOnlySupported = Set(
       classOf[Sum], classOf[Min], classOf[Max], classOf[Count],
-      classOf[Average], classOf[First], classOf[Last],
+      classOf[Average], classOf[First], classOf[Last], classOf[ApproximatePercentile],
     )
 
     val supported = mode match {
@@ -217,7 +217,7 @@ abstract class HashAggregateExecTransformer(
 
   protected override def checkType(dataType: DataType): Boolean = {
     dataType match {
-      case ShortType | IntegerType | LongType | TimestampType | DoubleType | BooleanType |
+      case ByteType | ShortType | IntegerType | LongType | TimestampType | DoubleType | BooleanType |
            StringType | DateType | NullType | FloatType | BinaryType => true
       case _: DecimalType => true
       case _: ArrayType => true
