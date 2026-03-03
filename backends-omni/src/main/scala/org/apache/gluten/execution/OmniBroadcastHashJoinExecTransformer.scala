@@ -89,7 +89,7 @@ case class OmniBroadcastHashJoinExecTransformer(
         }
       }
     }
-    ValidationResult.succeeded
+    super.doValidateInternal()
   }
 
   override protected def doTransform(context: SubstraitContext): TransformContext = {
