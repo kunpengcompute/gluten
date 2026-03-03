@@ -34,7 +34,7 @@ import org.apache.gluten.vectorized.OmniNativePlanEvaluator
 import org.apache.spark.shuffle.OmniShuffleUtil
 import org.apache.spark.sql.catalyst.catalog.BucketSpec
 import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, Average, Count, First, Last, Max, Min, StddevSamp, StddevPop, VarianceSamp, VariancePop, Sum}
-import org.apache.spark.sql.catalyst.expressions.{Alias, Attribute, CurrentRow, Literal, NamedExpression, Rank, PercentRank, RowNumber, SpecifiedWindowFrame, UnboundedFollowing, UnboundedPreceding, WindowExpression}
+import org.apache.spark.sql.catalyst.expressions.{Alias, Attribute, CurrentRow, Lag, Lead, Literal, NamedExpression, Rank, PercentRank, RowNumber, SpecifiedWindowFrame, UnboundedFollowing, UnboundedPreceding, WindowExpression}
 import org.apache.spark.sql.catalyst.plans.physical.Partitioning
 import org.apache.spark.sql.connector.read.Scan
 import org.apache.spark.sql.execution.SparkPlan
@@ -241,8 +241,11 @@ object OmniBackendSettings extends BackendSettingsApi {
         val aliasExpr = windowExpr.asInstanceOf[Alias]
         aliasExpr.child match {
           case wExpression: WindowExpression =>
-            wExpression.windowFunction match {
+            val isOffsetFunc = wExpression.windowFunction match {
               case RowNumber() | Rank(_) | PercentRank(_) =>
+                false
+              case _: Lead | _: Lag =>
+                true
               case AggregateExpression(aggFunction, _, false, _, _) =>
                 aggFunction match {
                   case _: Sum =>
@@ -259,18 +262,22 @@ object OmniBackendSettings extends BackendSettingsApi {
                   case _: Last =>
                   case _ => isSupport = false
                 }
+                false
               case _ =>
                 isSupport = false
+                false
             }
-            wExpression.windowSpec.frameSpecification match {
-              case swf: SpecifiedWindowFrame =>
-                if (swf.lower != UnboundedPreceding && swf.lower != CurrentRow) {
-                  isSupport = false
-                }
-                if (swf.upper != UnboundedFollowing && swf.upper != CurrentRow) {
-                  isSupport = false
-                }
-              case _ =>
+            if (!isOffsetFunc) {
+              wExpression.windowSpec.frameSpecification match {
+                case swf: SpecifiedWindowFrame =>
+                  if (swf.lower != UnboundedPreceding && swf.lower != CurrentRow) {
+                    isSupport = false
+                  }
+                  if (swf.upper != UnboundedFollowing && swf.upper != CurrentRow) {
+                    isSupport = false
+                  }
+                case _ =>
+              }
             }
           case _ =>
             isSupport = false

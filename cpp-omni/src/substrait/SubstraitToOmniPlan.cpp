@@ -194,11 +194,39 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::WindowRe
         std::vector<substrait::Expression> expressionNodes;
         for (const auto& arg : windowFunction.arguments()) {
             expressionNodes.emplace_back(arg.value());
-            auto expression = exprConverter->ToOmniExpr(arg.value(), childNode->OutputType());
-            argumentKeys.emplace_back(expression);
         }
         auto funcName = SubstraitParser::FindOmniFunction(functionMap, windowFunction.function_reference());
         op::FunctionType functionType = SubstraitParser::ParseFunctionType(funcName.second, expressionNodes, false);
+        if (functionType == op::OMNI_WINDOW_TYPE_LEAD || functionType == op::OMNI_WINDOW_TYPE_LAG) {
+            if (!windowFunction.arguments().empty()) {
+                auto expression = exprConverter->ToOmniExpr(
+                    windowFunction.arguments(0).value(), childNode->OutputType());
+                argumentKeys.emplace_back(expression);
+            }
+            int64_t leadLagOffset = 1;
+            if (windowFunction.arguments_size() >= 2) {
+                const auto& offsetArg = windowFunction.arguments(1).value();
+                if (offsetArg.has_literal()) {
+                    leadLagOffset = SubstraitParser::GetLiteralValue<int64_t>(offsetArg.literal());
+                }
+            }
+            int32_t defaultEndChannel = -1;
+            if (windowFunction.arguments_size() >= 3) {
+                const auto& defaultArg = windowFunction.arguments(2).value();
+                auto defaultExpr = exprConverter->ToOmniExpr(defaultArg, childNode->OutputType());
+                argumentKeys.emplace_back(defaultExpr);
+                defaultEndChannel = -2;
+            }
+            op::WindowFrameInfo frame(op::OMNI_FRAME_TYPE_ROWS,
+                op::OMNI_FRAME_BOUND_UNBOUNDED_PRECEDING, static_cast<int32_t>(leadLagOffset),
+                op::OMNI_FRAME_BOUND_UNBOUNDED_FOLLOWING, defaultEndChannel);
+            windowFrameInfos.push_back(std::move(frame));
+        } else {
+            for (const auto& arg : windowFunction.arguments()) {
+                auto expression = exprConverter->ToOmniExpr(arg.value(), childNode->OutputType());
+                argumentKeys.emplace_back(expression);
+            }
+        }
         windowFunctionTypes.push_back(functionType);
         auto windowFunctionReturnType = SubstraitParser::ParseType(windowFunction.output_type());
         windowFunctionReturnTypesVec.push_back(windowFunctionReturnType);
@@ -206,7 +234,9 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::WindowRe
         auto type = windowFunction.window_type();
         auto lowerBound = windowFunction.lower_bound();
         auto upperBound = windowFunction.upper_bound();
-        windowFrameInfos.push_back(std::move(createWindowFrameInfo(lowerBound, upperBound, type)));
+        if (functionType != op::OMNI_WINDOW_TYPE_LEAD && functionType != op::OMNI_WINDOW_TYPE_LAG) {
+            windowFrameInfos.push_back(std::move(createWindowFrameInfo(lowerBound, upperBound, type)));
+        }
     }
     for (auto& windowFrameInfo : windowFrameInfos) {
         windowFrameTypes.push_back(windowFrameInfo.GetType());
@@ -300,9 +330,11 @@ const WindowFrameInfo SubstraitToOmniPlanConverter::createWindowFrameInfo(
         } else if (boundType.has_unbounded_preceding()) {
             return std::make_tuple(op::OMNI_FRAME_BOUND_UNBOUNDED_PRECEDING, -1);
         } else if (boundType.has_following()) {
-            OMNI_THROW("Substrait Error", "The BoundType is not supported: Bound Type: N FOLLOWING");
+            return std::make_tuple(op::OMNI_FRAME_BOUND_FOLLOWING,
+                static_cast<int32_t>(boundType.following().offset()));
         } else if (boundType.has_preceding()) {
-            OMNI_THROW("Substrait Error", "The BoundType is not supported: Bound Type: N PRECEDING");
+            return std::make_tuple(op::OMNI_FRAME_BOUND_PRECEDING,
+                static_cast<int32_t>(boundType.preceding().offset()));
         } else {
             OMNI_THROW("Substrait Error", "Unknown or unset bound type.");
         }
