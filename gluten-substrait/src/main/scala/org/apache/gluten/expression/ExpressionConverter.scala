@@ -681,6 +681,11 @@ object ExpressionConverter extends SQLConfHelper with Logging {
           ExpressionNames.CHECKED_MULTIPLY
         )
       case a: Divide =>
+        if (a.evalMode == TRY) {
+          throw new GlutenNotSupportException(
+            s"Divide with TRY evalMode (try_divide) is not supported by Gluten, fallback to Spark native execution. Expression: $a"
+          )
+        }
         BackendsApiManager.getSparkPlanExecApiInstance.genArithmeticTransformer(
           substraitExprName,
           replaceWithExpressionTransformer0(a.left, attributeSeq, expressionsMap),
