@@ -642,6 +642,11 @@ object ExpressionConverter extends SQLConfHelper with Logging {
           ExpressionNames.CHECKED_MULTIPLY
         )
       case a: Add =>
+        if (a.evalMode == TRY) {
+          throw new GlutenNotSupportException(
+            s"Add with TRY evalMode (try_add) is not supported by Gluten, fallback to Spark native execution. Expression: $a"
+          )
+        }
         BackendsApiManager.getSparkPlanExecApiInstance.genArithmeticTransformer(
           substraitExprName,
           replaceWithExpressionTransformer0(a.left, attributeSeq, expressionsMap),
@@ -650,6 +655,11 @@ object ExpressionConverter extends SQLConfHelper with Logging {
           ExpressionNames.CHECKED_ADD
         )
       case a: Subtract =>
+        if (a.evalMode == TRY) {
+          throw new GlutenNotSupportException(
+            s"Subtract with TRY evalMode (try_subtract) is not supported by Gluten, fallback to Spark native execution. Expression: $a"
+          )
+        }
         BackendsApiManager.getSparkPlanExecApiInstance.genArithmeticTransformer(
           substraitExprName,
           replaceWithExpressionTransformer0(a.left, attributeSeq, expressionsMap),
