@@ -642,5 +642,9 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"make_date", {FUNCTION_OMNI_EXPR_TYPE, "make_date"}},
     {"make_timestamp", {FUNCTION_OMNI_EXPR_TYPE, "make_timestamp"}},
     {"approx_percentile", {FUNCTION_OMNI_EXPR_TYPE, "approx_percentile"}},
+    {"str_to_map", {FUNCTION_OMNI_EXPR_TYPE, "str_to_map"}},
+    {"map_entries", {FUNCTION_OMNI_EXPR_TYPE, "map_entries"}},
+    {"map_concat", {FUNCTION_OMNI_EXPR_TYPE, "map_concat"}},
+    {"map", {FUNCTION_OMNI_EXPR_TYPE, "map"}},
 };
 } // namespace omniruntime
