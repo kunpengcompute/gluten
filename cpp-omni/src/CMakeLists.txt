@@ -85,9 +85,9 @@ target_link_libraries (${PROJ_TARGET} PUBLIC
         lz4
         zstd
         re2
-        boostkit-omniop-vector-2.0.0-aarch64
-        boostkit-omniop-operator-2.0.0-aarch64
-        boostkit-omniop-codegen-2.0.0-aarch64
+        boostkit-omniop-vector-2.1.0-aarch64
+        boostkit-omniop-operator-2.1.0-aarch64
+        boostkit-omniop-codegen-2.1.0-aarch64
         )
 
 set_target_properties(${PROJ_TARGET} PROPERTIES
