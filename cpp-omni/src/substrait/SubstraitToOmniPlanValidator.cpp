@@ -1058,6 +1058,10 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::AggregateRel &agg
                 dynamic_cast<const FieldExpr *>(omniExpr) != nullptr) {
                 continue;
             }
+            const auto *funcExpr = dynamic_cast<const FuncExpr *>(omniExpr);
+            if (funcExpr != nullptr && funcExpr->funcName == "array") {
+                continue;
+            }
             if (!ev.VisitExpr(*omniExpr)) {
                 LOG_VALIDATION_MSG("aggFunExpression validation fail!");
                 return false;

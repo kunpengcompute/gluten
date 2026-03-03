@@ -424,6 +424,8 @@ op::FunctionType SubstraitParser::ParseFunctionType(
         return op::OMNI_AGGREGATION_TYPE_SKEWNESS;
     } else if (funcName == "kurtosis") {
         return op::OMNI_AGGREGATION_TYPE_KURTOSIS;
+    } else if (funcName == "approx_percentile") {
+        return op::OMNI_AGGREGATION_TYPE_APPROX_PERCENTILE;
     } else {
         OMNI_THROW("Substrait Error:", "Unsupported aggregate or window function: {}", funcName);
     }
@@ -633,5 +635,6 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"collect_list", {FUNCTION_OMNI_EXPR_TYPE, "collect_list"}},
     {"make_date", {FUNCTION_OMNI_EXPR_TYPE, "make_date"}},
     {"make_timestamp", {FUNCTION_OMNI_EXPR_TYPE, "make_timestamp"}},
+    {"approx_percentile", {FUNCTION_OMNI_EXPR_TYPE, "approx_percentile"}},
 };
 } // namespace omniruntime

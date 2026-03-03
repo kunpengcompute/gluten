@@ -59,6 +59,14 @@ DataTypePtr GetScalarType(const ::substrait::Expression::Literal &literal)
             return Date32Type();
         case ::substrait::Expression_Literal::LiteralTypeCase::kTimestamp:
             return TimestampType();
+        case ::substrait::Expression_Literal::LiteralTypeCase::kList: {
+            const auto &list = literal.list();
+            if (list.values().empty()) {
+                return std::make_shared<type::ArrayType>(DoubleType());
+            }
+            const auto &first = *list.values().begin();
+            return std::make_shared<type::ArrayType>(GetScalarType(first));
+        }
         case ::substrait::Expression_Literal::LiteralTypeCase::kString:
             return VarcharType();
         case ::substrait::Expression_Literal::LiteralTypeCase::kVarChar:
@@ -421,6 +429,23 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(const ::substrait::Expressio
             }
             expr->isNull = true;
             return expr;
+        }
+        case ::substrait::Expression_Literal::LiteralTypeCase::kList: {
+            const auto &listVal = substraitLit.list();
+            std::vector<Expr *> args;
+            for (const auto &childExpr : listVal.values()) {
+                args.push_back(ToOmniExpr(childExpr, nullptr));
+            }
+            if (args.empty()) {
+                DataTypePtr elemType = (defaultType != nullptr && defaultType->GetId() == type::OMNI_ARRAY)
+                    ? std::dynamic_pointer_cast<type::ArrayType>(defaultType)->ElementType()
+                    : DoubleType();
+                DataTypePtr arrayType = std::make_shared<type::ArrayType>(elemType);
+                return new LiteralExpr(0, arrayType);
+            }
+            DataTypePtr elemType = args[0]->GetReturnType();
+            DataTypePtr arrayType = std::make_shared<type::ArrayType>(elemType);
+            return new FuncExpr("array", args, arrayType);
         }
         default:
             throw omniruntime::exception::OmniException(SUBSTRAIT_PARSE_ERROR,

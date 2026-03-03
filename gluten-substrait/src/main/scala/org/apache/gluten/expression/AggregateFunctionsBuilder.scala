@@ -81,6 +81,8 @@ object AggregateFunctionsBuilder {
         ExpressionNames.SKEWNESS
       case Kurtosis(_, _) =>
         ExpressionNames.KURTOSIS
+      case ApproximatePercentile(_, _, _, _, _) =>
+        ExpressionNames.APPROX_PERCENTILE
       case _ =>
         val nameOpt = ExpressionMappings.expressionsMap.get(aggregateFunc.getClass)
         if (nameOpt.isEmpty) {
