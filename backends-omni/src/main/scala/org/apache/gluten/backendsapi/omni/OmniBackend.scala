@@ -98,15 +98,8 @@ object OmniBackendSettings extends BackendSettingsApi {
         case f: FloatType => "FloatType"
         case s: StructType => "StructType"
         case m: MapType => "MapType"
-        case a: ArrayType =>
-          format match {
-            case ReadFileFormat.ParquetReadFormat =>
-              "ArrayType"
-            case _ =>
-              if (!DataTypeUtils.isPrimitiveType(a.elementType)) {
-                "nested ArrayType"
-              }
-          }
+        case a: ArrayType if format == ReadFileFormat.ParquetReadFormat => "ArrayType"
+        case a: ArrayType if !DataTypeUtils.isPrimitiveType(a.elementType) => "nested ArrayType"
       }
       for (unsupportedDataType <- unsupportedDataTypes) {
         return ValidationResult.failed(s"Validation failed for ${this.getClass.toString}"
@@ -252,14 +245,14 @@ object OmniBackendSettings extends BackendSettingsApi {
               case RowNumber() | Rank(_) =>
               case AggregateExpression(aggFunction, _, false, _, _) =>
                 aggFunction match {
-                  case _: Sum =>
-                  case _: Max =>
-                  case _: Average =>
-                  case _: Min =>
-                  case _: StddevSamp =>
+                  case sum: Sum if DataTypeUtils.isPrimitiveType(sum.child.dataType) =>
+                  case max: Max if DataTypeUtils.isPrimitiveType(max.child.dataType) =>
+                  case avg: Average if DataTypeUtils.isPrimitiveType(avg.child.dataType) =>
+                  case min: Min if DataTypeUtils.isPrimitiveType(min.child.dataType) =>
+                  case stdDev: StddevSamp if DataTypeUtils.isPrimitiveType(stdDev.child.dataType) =>
                   case Count(Literal(1, IntegerType) :: Nil) | Count(ArrayBuffer(Literal(1, IntegerType))) =>
-                  case Count(_) if aggFunction.children.size == 1 =>
-                  case _: First =>
+                  case Count(_) if aggFunction.children.size == 1 && DataTypeUtils.isPrimitiveType(aggFunction.children.head.dataType) =>
+                  case first: First if DataTypeUtils.isPrimitiveType(first.child.dataType) =>
                   case _ => isSupport = false
                 }
               case _ =>
