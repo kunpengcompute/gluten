@@ -664,6 +664,11 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::SortRel &sortRel)
         return false;
     }
 
+    if (types.empty()) {
+        LOG_VALIDATION_MSG("Validation failed for empty input schema in SortRel.");
+        return false;
+    }
+
     for (const auto &type : types) {
         switch (type->GetId()) {
             case OMNI_SHORT:
