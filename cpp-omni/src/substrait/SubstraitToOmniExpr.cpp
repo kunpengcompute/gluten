@@ -237,6 +237,23 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
             return func;
         }
 
+        if (funcName == "map_from_arrays" && args.size() > 2 && args.size() % 2 == 0) {
+            auto mapType = std::dynamic_pointer_cast<type::MapType>(outputType);
+            OMNI_CHECK(mapType != nullptr, "SUBSTRAIT_ERROR:", "CreateMap expects MapType output");
+            std::vector<Expr *> keys;
+            std::vector<Expr *> values;
+            keys.reserve(args.size() / 2);
+            values.reserve(args.size() / 2);
+            for (size_t i = 0; i < args.size(); i += 2) {
+                keys.push_back(args[i]);
+                values.push_back(args[i + 1]);
+            }
+            auto keyArrayType = std::make_shared<type::ArrayType>(mapType->Key());
+            auto valueArrayType = std::make_shared<type::ArrayType>(mapType->Value());
+            auto keysArray = new FuncExpr("array", keys, std::move(keyArrayType));
+            auto valuesArray = new FuncExpr("array", values, std::move(valueArrayType));
+            return new FuncExpr("map_from_arrays", {keysArray, valuesArray}, std::move(outputType));
+        }
         if (funcName == "might_contain") {
             LiteralExpr *childExpr = dynamic_cast<LiteralExpr *>(args[0]);
             std::string *sp = childExpr->stringVal;

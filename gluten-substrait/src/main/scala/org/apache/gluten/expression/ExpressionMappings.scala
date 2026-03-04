@@ -269,6 +269,7 @@ object ExpressionMappings {
     Sig[MapConcat](MAP_CONCAT),
     Sig[TransformKeys](TRANSFORM_KEYS),
     Sig[TransformValues](TRANSFORM_VALUES),
+    Sig[MapFilter](MAP_FILTER),
     // Struct functions
     Sig[GetStructField](GET_STRUCT_FIELD),
     Sig[CreateNamedStruct](NAMED_STRUCT),
