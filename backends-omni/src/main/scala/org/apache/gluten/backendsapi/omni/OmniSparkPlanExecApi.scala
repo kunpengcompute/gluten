@@ -325,6 +325,14 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
     Seq(left, right),
     original)
 
+  /** Transform map_entries to Substrait. */
+  override def genMapEntriesTransformer(
+      substraitExprName: String,
+      child: ExpressionTransformer,
+      expr: Expression): ExpressionTransformer = {
+    GenericExpressionTransformer(substraitExprName, Seq(child), expr)
+  }
+ 	 
   override def genHashExpressionTransformer(
       substraitExprName: String,
       exprs: Seq[ExpressionTransformer],
