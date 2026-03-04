@@ -1208,7 +1208,7 @@ std::shared_ptr<omniruntime::type::DataType> Splitter::ProtoTypeToOmniType(const
             return rowType;
         }
         default:
-            throw std::runtime_error("ProtoTypeToOmniType(): unexpected OmniTypeId");
+            throw std::runtime_error("Unexpected OmniTypeId in ProtoTypeToOmniType(): " + omniTypeId);
     }
 }
 
@@ -1380,7 +1380,7 @@ int32_t Splitter::ProtoWritePartition(int32_t partition_id, std::unique_ptr<Buff
                     break;
                 }
                 default: {
-                    throw std::runtime_error("ProtoWritePartition # Unsupported ShuffleType.");
+                    throw std::runtime_error("ProtoWritePartition # Unsupported ShuffleType: " + std::to_string(column_type_id_[indexSchema]));
                 }
             }
             spark::VecType *vt = vec->mutable_vectype();
@@ -1535,7 +1535,7 @@ int Splitter::protoSpillPartition(int32_t partition_id, std::unique_ptr<Buffered
                     break;
                 }
                 default: {
-                    throw std::runtime_error("protoSpillPartition # Unsupported ShuffleType.");
+                    throw std::runtime_error("protoSpillPartition # Unsupported ShuffleType: " + std::to_string(column_type_id_[indexSchema]));
                 }
             }
             spark::VecType *vt = vec->mutable_vectype();
@@ -1958,7 +1958,7 @@ void Splitter::DeserializeProtoVecToOmniVector(const spark::Vec& protoVec, omnir
     auto dataTypeId = omniVec->GetTypeId();
 
     // set values and offsets
-    if (dataTypeId == OMNI_CHAR || dataTypeId == OMNI_VARCHAR) {
+    if (dataTypeId == OMNI_CHAR || dataTypeId == OMNI_VARCHAR || dataTypeId == OMNI_VARBINARY) {
         auto charVec = reinterpret_cast<Vector<LargeStringContainer<std::string_view>> *>(omniVec);
         charVec->Expand(rowCount);
         char *valuesAddress =
@@ -1966,14 +1966,6 @@ void Splitter::DeserializeProtoVecToOmniVector(const spark::Vec& protoVec, omnir
         auto offsetsAddress = (uint8_t *)VectorHelper::UnsafeGetOffsetsAddr(omniVec);
         memcpy(valuesAddress, values, protoVec.values().size());
         memcpy(offsetsAddress, offsets, protoVec.offsets().size());
-
-        // set nulls
-        // VarcharVector needs to be explicitly cast before calling the SetNull() method
-        for (auto j = 0; j < protoVec.nulls().size(); ++j) {
-            if (int(nulls[j])) {
-                charVec->SetNull(j);
-            }
-        }
     } else if (dataTypeId == OMNI_ARRAY) {
         auto arrayVec =  reinterpret_cast<ArrayVector *>(omniVec);
         // for vectors with nested complex types,
@@ -1984,13 +1976,6 @@ void Splitter::DeserializeProtoVecToOmniVector(const spark::Vec& protoVec, omnir
         // TODO: be more elegant
         for (int j = 0; j <= rowCount; ++j) {
             arrayVec->SetOffset(j, offsetsPtr[j]);
-        }
-
-        // set nulls
-        for (auto j = 0; j < protoVec.nulls().size(); ++j) {
-            if (int(nulls[j])) {
-                arrayVec->SetNull(j);
-            }
         }
 
         if (!protoVec.subvectors().empty()) {
@@ -2007,13 +1992,6 @@ void Splitter::DeserializeProtoVecToOmniVector(const spark::Vec& protoVec, omnir
         // TODO: be more elegant
         for (int j = 0; j <= rowCount; ++j) {
             mapVec->SetOffset(j, offsetsPtr[j]);
-        }
-
-        // set nulls
-        for (auto j = 0; j < protoVec.nulls().size(); ++j) {
-            if (int(nulls[j])) {
-                mapVec->SetNull(j);
-            }
         }
 
         if (protoVec.subvectors_size() >= 2) {
@@ -2033,12 +2011,6 @@ void Splitter::DeserializeProtoVecToOmniVector(const spark::Vec& protoVec, omnir
             throw std::runtime_error("DeserializeProtoVecToOmniVector: size of subvectors in protoVec "
                                      "is not equal to children size of RowVec");
         }
-        // set nulls
-        for (auto j = 0; j < protoVec.nulls().size(); ++j) {
-            if (int(nulls[j])) {
-                omniVec->SetNull(j);
-            }
-        }
 
         int childCount = rowVec->ChildSize();
 
@@ -2052,12 +2024,12 @@ void Splitter::DeserializeProtoVecToOmniVector(const spark::Vec& protoVec, omnir
         omniVec->Expand(rowCount);
         auto *valuesAddress = (uint8_t *)VectorHelper::UnsafeGetValues(omniVec);
         memcpy(valuesAddress, values, protoVec.values().size());
+    }
 
-        // set nulls
-        for (auto j = 0; j < protoVec.nulls().size(); ++j) {
-            if (int(nulls[j])) {
-                omniVec->SetNull(j);
-            }
+    // set nulls
+    for (auto j = 0; j < protoVec.nulls().size(); ++j) {
+        if (int(nulls[j])) {
+            omniVec->SetNull(j);
         }
     }
 }
