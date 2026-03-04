@@ -1222,7 +1222,7 @@ public class OmniColumnVector extends WritableColumnVector {
             arrayDataVec.addOffsets(offsets);
         } else if (type instanceof StructType) {
             for (int i = 0; i < ((StructType) type).fields().length; i++) {
-                structVec.addChild(((OmniColumnVector) (getChild(i))).getVec());
+                structVec.setChild(i, ((OmniColumnVector) (getChild(i))).getVec());
             }
         }
     }
