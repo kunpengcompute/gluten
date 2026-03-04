@@ -42,12 +42,19 @@ type::DataTypePtr SubstraitParser::ParseKStructType(const ::substrait::Type &sub
 {
     const auto& substraitStruct = substraitType.struct_();
     const auto& structTypes = substraitStruct.types();
+    const auto& structNames = substraitStruct.names();
     std::vector<type::DataTypePtr> types;
     std::vector<std::string> names;
+    types.reserve(structTypes.size());
     names.reserve(structTypes.size());
     for (int i = 0; i < structTypes.size(); i++) {
         types.emplace_back(ParseType(structTypes[i], asLowerCase));
-        names.emplace_back("field" + std::to_string(i));
+        // Use field name from Substrait if available, otherwise use auto-generated name
+        if (i < structNames.size() && !structNames[i].empty()) {
+            names.emplace_back(structNames[i]);
+        } else {
+            names.emplace_back("field" + std::to_string(i));
+        }
     }
     return std::make_shared<type::RowType>(std::move(types), std::move(names));
 }
