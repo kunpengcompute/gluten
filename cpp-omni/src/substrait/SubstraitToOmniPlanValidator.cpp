@@ -744,6 +744,7 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::SortRel &sortRel)
             case OMNI_FLOAT:
             case OMNI_ARRAY:
             case OMNI_ROW:
+            case OMNI_MAP:
                 break;
             default:
                 LOG_VALIDATION_MSG(
