@@ -505,8 +505,10 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
             literalExpr->isNull = true;
             OMNI_THROW("substrait_error", "the literal expression in substraitIfThen case is null here");
         }
+        std::cout << "1111111111111111111111" << std::endl;
         return new IfExpr(cond, trueExpr, literalExpr);
     }
+    std::cout << "2222222222222222222222" << std::endl;
     return new IfExpr(cond, trueExpr, falseExpr);
 }
 

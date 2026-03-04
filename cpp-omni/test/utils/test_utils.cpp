@@ -486,11 +486,11 @@ void Test_splitter_close(long splitter_addr) {
 }
 
 void GetFilePath(const char *path, const char *filename, char *filepath, const uint64_t filepathLen) {
-    strcpy_s(filepath, filepathLen, path);
+    strcpy(filepath, path);
     if(filepath[strlen(path) - 1] != '/') {
-        strcat_s(filepath, filepathLen, "/");
+        strcat(filepath, "/");
     }
-    strcat_s(filepath, filepathLen, filename);
+    strcat(filepath, filename);
 }
 
 void DeletePathAll(const char* path) {
