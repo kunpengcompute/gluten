@@ -264,8 +264,7 @@ object OmniPullOutGenerateProjectHelper extends PullOutProjectHelper {
         case PosExplode(_) =>
           val originalOrdinal = generate.generatorOutput.head
           val ordinal = {
-            val subtract = Subtract(Cast(originalOrdinal, IntegerType), Literal(1))
-            Alias(subtract, generatePostAliasName)(
+            Alias(Cast(originalOrdinal, IntegerType), generatePostAliasName)(
               originalOrdinal.exprId,
               originalOrdinal.qualifier)
           }
