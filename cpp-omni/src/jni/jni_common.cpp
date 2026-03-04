@@ -35,6 +35,7 @@ jclass vecBatchCls;
 jclass infoCls;
 jclass runtimeAwareClass;
 jclass metricsBuilderClass;
+jclass metaInfoClass;
 
 jmethodID jsonMethodInt;
 jmethodID jsonMethodLong;
@@ -53,6 +54,15 @@ jmethodID vecBatchInitMethodId;
 jmethodID method;
 jmethodID runtimeAwareCtxHandle;
 jmethodID metricsBuilderConstructor;
+jmethodID readByteMethod;
+
+jmethodID ctor;
+jfieldID fidTypeIds;
+jfieldID fidPrec;
+jfieldID fidScales;
+jfieldID fidVecIds;
+jfieldID fidRowCount;
+jfieldID fidVecCount;
 
 static jint JNI_VERSION = JNI_VERSION_1_8;
 
@@ -168,6 +178,18 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved)
         OMNI_THROW("RUNTIME_ERROR", errorMessage);
     }
     method = env->GetMethodID(infoCls, "<init>", "(ILjava/lang/String;)V");
+
+    metaInfoClass = CreateGlobalClassReference(env, "com/huawei/boostkit/spark/serialize/SerializerMeta");
+    jclass jniByteInputStreamClass = CreateGlobalClassReference(env, "org/apache/gluten/vectorized/JniByteInputStream");
+    readByteMethod = env->GetMethodID(jniByteInputStreamClass, "read", "(JJ)J");
+
+    ctor = env->GetMethodID(metaInfoClass, "<init>", "()V");
+    fidTypeIds = env->GetFieldID(metaInfoClass, "typeIdArray", "[I");
+    fidPrec = env->GetFieldID(metaInfoClass, "precisionArray", "[I");
+    fidScales = env->GetFieldID(metaInfoClass, "scaleArray", "[I");
+    fidVecIds = env->GetFieldID(metaInfoClass, "vecNativeIdArray", "[J");
+    fidRowCount = env->GetFieldID(metaInfoClass, "rowCount", "I");
+    fidVecCount = env->GetFieldID(metaInfoClass, "vecCount", "I");
 
     return JNI_VERSION;
 }

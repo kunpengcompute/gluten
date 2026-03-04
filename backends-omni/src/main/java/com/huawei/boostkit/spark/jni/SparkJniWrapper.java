@@ -17,10 +17,16 @@
 package com.huawei.boostkit.spark.jni;
 
 import com.huawei.boostkit.spark.vectorized.SplitResult;
+
 import org.apache.gluten.vectorized.NativePartitioning;
+import org.apache.gluten.vectorized.JniByteInputStream;
 
+/**
+ * SparkJniWrapper
+ *
+ * @since 2025/05/16
+ */
 public class SparkJniWrapper {
-
   public SparkJniWrapper() {
   }
 
@@ -109,4 +115,23 @@ public class SparkJniWrapper {
    * @param splitterId splitter instance id
    */
   public native void close(long splitterId);
+
+    /**
+     * make shuffle deserializer hold by native
+     *
+     * @param inputStream              JniByteInputStream
+     * @param compressCodec            compress Codec
+     * @param shuffleCompressBlockSize configured compress block size
+     * @param isRowShuffle             if support row shuffle
+     * @return Deserializer result
+     */
+    public native long makeNativeDeserializer(JniByteInputStream inputStream, String compressCodec,
+                                              int shuffleCompressBlockSize, boolean isRowShuffle);
+
+    /**
+     * Release resources
+     *
+     * @param shuffleReaderHandle handler id
+     */
+    public native void closeDeserializer(long shuffleReaderHandle);
 }

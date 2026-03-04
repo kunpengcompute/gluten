@@ -21,12 +21,12 @@ import org.apache.gluten.config.GlutenConfig
 import org.apache.spark.SparkEnv
 import org.apache.spark.internal.Logging
 import org.apache.spark.serializer.{DeserializationStream, SerializationStream, Serializer, SerializerInstance}
+import org.apache.gluten.vectorized.{JniByteInputStream, JniByteInputStreams, ShuffleColumnarBatchOutIterator}
 import org.apache.spark.sql.execution.metric.SQLMetric
 import org.apache.spark.sql.vectorized.ColumnarBatch
+import java.util.concurrent.atomic.AtomicBoolean
 
-import com.google.common.io.ByteStreams
-import com.huawei.boostkit.spark.compress.{CompressionUtil, DecompressionStream}
-import com.huawei.boostkit.spark.serialize.ShuffleDataSerializer
+import com.huawei.boostkit.spark.jni.SparkJniWrapper
 
 import java.io._
 import java.nio.ByteBuffer
@@ -61,7 +61,9 @@ private class ColumnarBatchSerializerInstance(
   private val conf = SparkEnv.get.conf
 
   private val shuffleCompressBlockSize = columnarConf.omniColumnarShuffleCompressBlockSize
-  private val enableShuffleCompress = conf.getBoolean("spark.shuffle.compress", true)
+  private val enableShuffleCompress = conf.getBoolean("spark.shuffle.compress", defaultValue = true)
+
+  private val jniWrapper = new SparkJniWrapper()
 
   val shuffleCompressionCodec =
     if (enableShuffleCompress) {
@@ -76,47 +78,15 @@ private class ColumnarBatchSerializerInstance(
       private var numBatchesTotal: Long = _
       private var numRowsTotal: Long = _
 
-      private[this] val dIn: DataInputStream = if (enableShuffleCompress) {
-        val codec = CompressionUtil.createCodec(shuffleCompressionCodec)
-        new DataInputStream(
-          new BufferedInputStream(new DecompressionStream(in, codec, shuffleCompressBlockSize)))
-      } else {
-        new DataInputStream(new BufferedInputStream(in))
-      }
-      private[this] var columnarBuffer: Array[Byte] = new Array[Byte](1024)
+      // Otherwise calling close() twice would cause resource ID not found error.
+      private val closeCalled: AtomicBoolean = new AtomicBoolean(false)
 
-      private[this] val EOF: Int = -1
+      private val dIn: JniByteInputStream = JniByteInputStreams.create(in)
 
-      override def asKeyValueIterator: Iterator[(Int, ColumnarBatch)] = {
-        new Iterator[(Int, ColumnarBatch)] {
-          private[this] def readSize(): Int = try {
-            dIn.readInt()
-          } catch {
-            case e: EOFException =>
-              dIn.close()
-              EOF
-          }
-
-          private[this] var dataSize: Int = readSize()
-          override def hasNext: Boolean = dataSize != EOF
-
-          override def next(): (Int, ColumnarBatch) = {
-            if (columnarBuffer.length < dataSize) {
-              columnarBuffer = new Array[Byte](dataSize)
-            }
-            ByteStreams.readFully(dIn, columnarBuffer, 0, dataSize)
-            // protobuf serialize
-            val columnarBatch: ColumnarBatch =
-              ShuffleDataSerializer.deserialize(isRowShuffle, columnarBuffer, dataSize)
-            dataSize = readSize()
-            if (dataSize == EOF) {
-              dIn.close()
-              columnarBuffer = null
-            }
-            (0, columnarBatch)
-          }
-        }
-      }
+      private val shuffleReaderHandle =
+        jniWrapper.makeNativeDeserializer(dIn, shuffleCompressionCodec, shuffleCompressBlockSize, isRowShuffle)
+      private var cb: ColumnarBatch = _
+      private val wrappedOut: ShuffleColumnarBatchOutIterator = new ShuffleColumnarBatchOutIterator(shuffleReaderHandle)
 
       override def asIterator: Iterator[Any] = {
         // This method is never called by shuffle code.
@@ -129,18 +99,30 @@ private class ColumnarBatchSerializerInstance(
         null.asInstanceOf[T]
       }
 
+      @throws(classOf[EOFException])
       override def readValue[T: ClassTag](): T = {
-        val dataSize = dIn.readInt()
-        if (columnarBuffer.size < dataSize) {
-          columnarBuffer = new Array[Byte](dataSize)
+        val batch = {
+          val maybeBatch =
+            try {
+              wrappedOut.next()
+            } catch {
+              case ioe: IOException =>
+                this.close()
+                logError("Failed to load next RecordBatch", ioe)
+                throw ioe
+            }
+          if (maybeBatch == null) {
+            // EOF reached
+            this.close()
+            throw new EOFException
+          }
+          maybeBatch
         }
-        ByteStreams.readFully(dIn, columnarBuffer, 0, dataSize)
-        // protobuf serialize
-        val columnarBatch: ColumnarBatch =
-          ShuffleDataSerializer.deserialize(isRowShuffle, columnarBuffer, dataSize)
+        val numRows = batch.numRows()
+        logDebug(s"Read ColumnarBatch of $numRows rows")
         numBatchesTotal += 1
-        numRowsTotal += columnarBatch.numRows()
-        columnarBatch.asInstanceOf[T]
+        numRowsTotal += numRows
+        batch.asInstanceOf[T]
       }
 
       override def readObject[T: ClassTag](): T = {
@@ -154,6 +136,10 @@ private class ColumnarBatchSerializerInstance(
         }
         numOutputRows += numRowsTotal
         dIn.close()
+        if (!closeCalled.compareAndSet(false, true)) {
+          return
+        }
+        jniWrapper.closeDeserializer(shuffleReaderHandle)
       }
     }
   }

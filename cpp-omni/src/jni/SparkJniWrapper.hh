@@ -88,6 +88,17 @@ JNIEXPORT void JNICALL Java_org_apache_gluten_init_OmniNativeBackendInitializer_
 
 JNIEXPORT void JNICALL Java_org_apache_gluten_udf_UdfJniWrapper_registerFunctionSignatures( // NOLINT
     JNIEnv *env, jclass);
+
+JNIEXPORT jlong JNICALL Java_com_huawei_boostkit_spark_jni_SparkJniWrapper_makeNativeDeserializer(JNIEnv *env, jobject obj,
+    jobject jniIn, jstring codec_jstr, int64_t shuffleCompressBlockSize, jboolean isRowShuffle);
+
+JNIEXPORT void JNICALL Java_com_huawei_boostkit_spark_jni_SparkJniWrapper_closeDeserializer(JNIEnv *env, jobject obj, jlong handler);
+
+JNIEXPORT jlong JNICALL Java_org_apache_gluten_vectorized_ShuffleColumnarBatchOutIterator_nativeNext(JNIEnv *env,
+    jobject wrapper, jlong iterHandle);
+
+JNIEXPORT jobject JNICALL Java_org_apache_gluten_vectorized_ShuffleColumnarBatchOutIterator_nativeMetaInfo(JNIEnv *env,
+    jobject wrapper, jlong iterHandle);
 #ifdef __cplusplus
 }
 #endif
