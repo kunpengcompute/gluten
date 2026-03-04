@@ -126,6 +126,8 @@ private:
         const ::substrait::Expression::ScalarFunction &scalarFunction,
         const DataTypesPtr &inputType);
 
+    bool IsAllowedCast(const DataTypePtr& fromType, const DataTypePtr& toType);
+
     /// Validate Substrait Cast expression.
     bool ValidateCast(const ::substrait::Expression::Cast &castExpr, const DataTypesPtr &inputType);
 

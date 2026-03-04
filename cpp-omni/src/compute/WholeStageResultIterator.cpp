@@ -154,6 +154,14 @@ std::unordered_map<std::string, std::string> WholeStageResultIterator::GetQueryC
     std::unordered_map<std::string, std::string> configs = {};
 
     try {
+        if (omniCfg_->ValueExists(kDefaultSessionTimezone)) {
+            configs[config::QueryConfig::kSessionTimezone] = omniCfg_->Get<std::string>(kDefaultSessionTimezone, "");
+        }
+        if (omniCfg_->ValueExists(kSessionTimezone)) {
+            configs[config::QueryConfig::kSessionTimezone] = omniCfg_->Get<std::string>(kSessionTimezone, "");
+        }
+        // Adjust timestamp according to the above configured session timezone.
+        configs[config::QueryConfig::kAdjustTimestampToTimezone] = "true";
         configs[config::QueryConfig::KSpillDir] = spillDir;
         if (spillStrategy_ == "none") {
             configs[config::QueryConfig::kSpillEnabled] = "false";

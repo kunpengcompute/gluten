@@ -804,6 +804,8 @@ object GlutenConfig {
       COLUMNAR_OMNI_SHUFFLE_COMPRESS_BLOCK_SIZE.key,
       COLUMNAR_OMNI_SHUFFLE_TASK_SPILL_MEMORY_THRESHOLD.key,
       COLUMNAR_OMNI_SHUFFLE_SPILL_BATCH_ROW_NUM.key,
+      SQLConf.SESSION_LOCAL_TIMEZONE.key,
+      GLUTEN_DEFAULT_SESSION_TIMEZONE.key,
       COLUMNAR_OMNI_SPILL_MEM_PCT_THRESHOLD.key,
       ENABLE_OMNI_AGGREGATION_SPILL.key,
       ENABLE_OMNI_EXP_CHECK.key,
@@ -2404,6 +2406,13 @@ object GlutenConfig {
       .doc("columnar shuffle compress block size")
       .intConf
       .createWithDefault(65536)
+
+  val GLUTEN_DEFAULT_SESSION_TIMEZONE = buildConf("spark.gluten.sql.session.timeZone.default")
+    .doc(
+      "used to hold default session timezone and will be really used by Gluten only if " +
+        "`spark.sql.session.timeZone` is not set.")
+    .stringConf
+    .createWithDefaultString(SQLConf.SESSION_LOCAL_TIMEZONE.defaultValueString)
 
   val COLUMNAR_OMNI_SHUFFLE_TASK_SPILL_MEMORY_THRESHOLD =
     buildConf("spark.gluten.sql.columnar.backend.omni.shuffleTaskSpillMemoryThreshold")
