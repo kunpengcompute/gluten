@@ -421,6 +421,22 @@ op::FunctionType SubstraitParser::ParseFunctionType(
  	    return op::OMNI_AGGREGATION_TYPE_COVAR_POP;
  	} else if (funcName == "covar_samp") {
  	   return op::OMNI_AGGREGATION_TYPE_COVAR_SAMP;
+ 	} else if (funcName == "regr_count") {
+        return op::OMNI_AGGREGATION_TYPE_REGR_COUNT;
+    } else if (funcName == "regr_intercept") {
+        return op::OMNI_AGGREGATION_TYPE_REGR_INTERCEPT;
+    } else if (funcName == "regr_r2") {
+        return op::OMNI_AGGREGATION_TYPE_REGR_R2;
+    } else if (funcName == "regr_slope") {
+        return op::OMNI_AGGREGATION_TYPE_REGR_SLOPE;
+    } else if (funcName == "regr_sxx") {
+        return op::OMNI_AGGREGATION_TYPE_REGR_SXX;
+    } else if (funcName == "regr_sxy") {
+        return op::OMNI_AGGREGATION_TYPE_REGR_SXY;
+    } else if (funcName == "regr_syy") {
+        return op::OMNI_AGGREGATION_TYPE_REGR_SYY;
+    } else if (funcName == "regr_replacement") {
+        return op::OMNI_AGGREGATION_TYPE_REGR_REPLACEMENT;
  	} else if (funcName == "min_by") {
         return op::OMNI_AGGREGATION_TYPE_MIN_BY;
     } else if (funcName == "max_by") {
@@ -672,6 +688,14 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"initcap", {FUNCTION_OMNI_EXPR_TYPE, "initcap"}},
     {"levenshtein", {FUNCTION_OMNI_EXPR_TYPE, "levenshtein"}},
     {"sha1", {FUNCTION_OMNI_EXPR_TYPE, "sha1"}},
-    {"sha2", {FUNCTION_OMNI_EXPR_TYPE, "sha2"}}
+    {"sha2", {FUNCTION_OMNI_EXPR_TYPE, "sha2"}},
+    {"regr_count", {FUNCTION_OMNI_EXPR_TYPE, "regr_count"}},
+    {"regr_intercept", {FUNCTION_OMNI_EXPR_TYPE, "regr_intercept"}},
+    {"regr_r2", {FUNCTION_OMNI_EXPR_TYPE, "regr_r2"}},
+    {"regr_slope", {FUNCTION_OMNI_EXPR_TYPE, "regr_slope"}},
+    {"regr_sxx", {FUNCTION_OMNI_EXPR_TYPE, "regr_sxx"}},
+    {"regr_sxy", {FUNCTION_OMNI_EXPR_TYPE, "regr_sxy"}},
+    {"regr_syy", {FUNCTION_OMNI_EXPR_TYPE, "regr_syy"}},
+    {"regr_replacement", {FUNCTION_OMNI_EXPR_TYPE, "regr_replacement"}},
 };
 } // namespace omniruntime
