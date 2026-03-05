@@ -29,6 +29,38 @@ using TypedExprPtr = expressions::Expr *;
 const int RLIKE_INPUT = 2;
 const int COALESCE_INPUT = 2;
 
+/**
+ * Extracts a FieldExpr from an expression that may be wrapped in Spark's
+ * floating-point normalization pattern for complex types (e.g. STRUCT containing DOUBLE):
+ *   Simple struct:   IF(IsNull(field), null_literal, field)
+ *   Struct w/ float: IF(IsNull(field), null_literal, named_struct(...normalization...))
+ * Both patterns are semantically referencing the original column, so we unwrap
+ * to retrieve the underlying FieldExpr for partition/sort key extraction.
+ *
+ * @return The underlying FieldExpr pointer, or nullptr if the pattern is unrecognized.
+ */
+inline FieldExpr *ExtractFieldExprFromPartitionOrSortKey(Expr *expression)
+{
+    if (expression->GetType() == ExprType::FIELD_E) {
+        return static_cast<FieldExpr *>(expression);
+    }
+    if (expression->GetType() == ExprType::IF_E) {
+        auto *ifExpr = static_cast<IfExpr *>(expression);
+        if (ifExpr->condition->GetType() == ExprType::IS_NULL_E &&
+            ifExpr->trueExpr->GetType() == ExprType::LITERAL_E &&
+            static_cast<LiteralExpr *>(ifExpr->trueExpr)->isNull) {
+            auto *isNullExpr = static_cast<IsNullExpr *>(ifExpr->condition);
+            if (isNullExpr->value->GetType() == ExprType::FIELD_E) {
+                return static_cast<FieldExpr *>(isNullExpr->value);
+            }
+            if (ifExpr->falseExpr->GetType() == ExprType::FIELD_E) {
+                return static_cast<FieldExpr *>(ifExpr->falseExpr);
+            }
+        }
+    }
+    return nullptr;
+}
+
 class SubstraitOmniExprConverter {
 public:
     /// subParser: A Substrait parser used to convert Substrait representations

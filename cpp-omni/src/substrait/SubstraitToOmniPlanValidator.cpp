@@ -584,13 +584,14 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::WindowRel &window
     expressions.reserve(groupByExprs.size());
     for (const auto &expr : groupByExprs) {
         auto expression = exprConverter_->ToOmniExpr(expr, rowType);
-        auto exprField = dynamic_cast<const FieldExpr *>(expression);
-        if (exprField == nullptr) {
-            LOG_VALIDATION_MSG("Only field is supported for partition key in Window Operator!");
+        auto fieldExpr = ExtractFieldExprFromPartitionOrSortKey(expression);
+        if (fieldExpr == nullptr) {
+            LOG_VALIDATION_MSG("Only field is supported for partition key in Window Operator!"
+                               " Got expression type: " +
+                               std::to_string(static_cast<int>(expression->GetType())));
             return false;
-        } else {
-            expressions.emplace_back(expression);
         }
+        expressions.emplace_back(fieldExpr);
     }
     // Try to compile the expressions. If there is any unregistred funciton or
     // mismatched type, exception will be thrown.
@@ -617,13 +618,13 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::WindowRel &window
 
         if (sort.has_expr()) {
             auto expression = exprConverter_->ToOmniExpr(sort.expr(), rowType);
-            auto exprField = dynamic_cast<const FieldExpr *>(expression);
-            if (!exprField) {
+            auto fieldExpr = ExtractFieldExprFromPartitionOrSortKey(expression);
+            if (fieldExpr == nullptr) {
                 LOG_VALIDATION_MSG("in windowRel, the sorting key in Sort Operator "
                                    "only support field.");
                 return false;
             }
-            if (!ev.VisitExpr(*expression)) {
+            if (!ev.VisitExpr(*fieldExpr)) {
                 return false;
             }
         }
@@ -669,11 +670,11 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::WindowGroupLimitR
     partitionExpressions.reserve(partitionExprs.size());
     for (const auto& expr : partitionExprs) {
         auto expression = exprConverter_->ToOmniExpr(expr, rowType);
-        auto exprField = dynamic_cast<const FieldExpr*>(expression);
-        if (exprField == nullptr) {
+        auto fieldExpr = ExtractFieldExprFromPartitionOrSortKey(expression);
+        if (fieldExpr == nullptr) {
             LOG_VALIDATION_MSG("Only field is supported for partition key in WindowGroupLimit Operator!");
         } else {
-            partitionExpressions.emplace_back(expression);
+            partitionExpressions.emplace_back(fieldExpr);
         }
     }
 
@@ -704,13 +705,13 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::WindowGroupLimitR
 
         if (sort.has_expr()) {
             auto expression = exprConverter_->ToOmniExpr(sort.expr(), rowType);
-            auto exprField = dynamic_cast<const FieldExpr *>(expression);
-            if (!exprField) {
+            auto fieldExpr = ExtractFieldExprFromPartitionOrSortKey(expression);
+            if (fieldExpr == nullptr) {
                 LOG_VALIDATION_MSG("in windowGroupLimitRel, the sorting key in Sort Operator "
                                    "only support field.");
                 return false;
             }
-            if (!ev.VisitExpr(*expression)) {
+            if (!ev.VisitExpr(*fieldExpr)) {
                 return false;
             }
         }
@@ -830,8 +831,14 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::SortRel &sortRel)
 
         if (sort.has_expr()) {
             auto expression = exprConverter_->ToOmniExpr(sort.expr(), rowType);
+            auto fieldExpr = ExtractFieldExprFromPartitionOrSortKey(expression);
+            if (fieldExpr == nullptr) {
+                LOG_VALIDATION_MSG("in SortRel, sort key must resolve to a field reference.");
+                return false;
+            }
             ExprVerifier ev;
-            if (!ev.VisitExpr(*expression)) {
+            if (!ev.VisitExpr(*fieldExpr)) {
+                LOG_VALIDATION_MSG("Sort expression verification failed.");
                 return false;
             }
         }
