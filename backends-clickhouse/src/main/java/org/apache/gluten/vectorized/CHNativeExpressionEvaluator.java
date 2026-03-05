@@ -29,68 +29,73 @@ import java.util.Map;
 
 public class CHNativeExpressionEvaluator extends ExpressionEvaluatorJniWrapper {
 
-  private CHNativeExpressionEvaluator() {}
+    private CHNativeExpressionEvaluator() {
+    }
 
-  // Used to initialize the native computing.
-  public static void initNative(scala.collection.Map<String, String> conf) {
-    Map<String, String> nativeConfMap =
-        GlutenConfig.getNativeBackendConf(BackendsApiManager.getBackendName(), conf);
+    // Used to initialize the native computing.
+    public static void initNative(scala.collection.Map<String, String> conf) {
+        Map<String, String> nativeConfMap =
+                GlutenConfig.getNativeBackendConf(BackendsApiManager.getBackendName(), conf);
 
-    // Get the customer config from SparkConf for each backend
-    BackendsApiManager.getTransformerApiInstance()
-        .postProcessNativeConfig(
-            nativeConfMap, GlutenConfig.prefixOf(BackendsApiManager.getBackendName()));
+        // Get the customer config from SparkConf for each backend
+        BackendsApiManager.getTransformerApiInstance()
+                .postProcessNativeConfig(
+                        nativeConfMap, GlutenConfig.prefixOf(BackendsApiManager.getBackendName()));
 
-    nativeInitNative(ConfigUtil.serialize(nativeConfMap));
-  }
+        nativeInitNative(ConfigUtil.serialize(nativeConfMap));
+    }
 
-  public static void finalizeNative() {
-    nativeFinalizeNative();
-  }
+    public static void finalizeNative() {
+        nativeFinalizeNative();
+    }
 
-  // Used to validate the Substrait plan in native compute engine.
-  public static boolean doValidate(byte[] subPlan) {
-    throw new UnsupportedOperationException("doValidate is not supported in Clickhouse Backend");
-  }
+    public static void destroyNative() {
+        nativeDestroyNative();
+    }
 
-  private static Map<String, String> getNativeBackendConf() {
-    return GlutenConfig.getNativeBackendConf(
-        BackendsApiManager.getBackendName(), SQLConf.get().getAllConfs());
-  }
+    // Used to validate the Substrait plan in native compute engine.
+    public static boolean doValidate(byte[] subPlan) {
+        throw new UnsupportedOperationException("doValidate is not supported in Clickhouse Backend");
+    }
 
-  // Used by WholeStageTransform to create the native computing pipeline and
-  // return a columnar result iterator.
-  public static BatchIterator createKernelWithBatchIterator(
-      byte[] wsPlan,
-      byte[][] splitInfo,
-      List<ColumnarNativeIterator> iterList,
-      boolean materializeInput) {
-    CHThreadGroup.registerNewThreadGroup();
-    long handle =
-        nativeCreateKernelWithIterator(
-            wsPlan,
-            splitInfo,
-            iterList.toArray(new ColumnarNativeIterator[0]),
-            ConfigUtil.serialize(getNativeBackendConf()),
-            materializeInput);
-    return createBatchIterator(handle);
-  }
+    private static Map<String, String> getNativeBackendConf() {
+        return GlutenConfig.getNativeBackendConf(
+                BackendsApiManager.getBackendName(), SQLConf.get().getAllConfs());
+    }
 
-  // Only for UT.
-  public static BatchIterator createKernelWithBatchIterator(
-      byte[] wsPlan, byte[][] splitInfo, List<ColumnarNativeIterator> iterList) {
-    CHThreadGroup.registerNewThreadGroup();
-    long handle =
-        nativeCreateKernelWithIterator(
-            wsPlan,
-            splitInfo,
-            iterList.toArray(new ColumnarNativeIterator[0]),
-            ConfigUtil.serialize(getNativeBackendConf()),
-            false);
-    return createBatchIterator(handle);
-  }
+    // Used by WholeStageTransform to create the native computing pipeline and
+    // return a columnar result iterator.
+    public static BatchIterator createKernelWithBatchIterator(
+            byte[] wsPlan,
+            byte[][] splitInfo,
+            List<ColumnarNativeIterator> iterList,
+            boolean materializeInput) {
+        CHThreadGroup.registerNewThreadGroup();
+        long handle =
+                nativeCreateKernelWithIterator(
+                        wsPlan,
+                        splitInfo,
+                        iterList.toArray(new ColumnarNativeIterator[0]),
+                        ConfigUtil.serialize(getNativeBackendConf()),
+                        materializeInput);
+        return createBatchIterator(handle);
+    }
 
-  private static BatchIterator createBatchIterator(long nativeHandle) {
-    return new BatchIterator(nativeHandle);
-  }
+    // Only for UT.
+    public static BatchIterator createKernelWithBatchIterator(
+            byte[] wsPlan, byte[][] splitInfo, List<ColumnarNativeIterator> iterList) {
+        CHThreadGroup.registerNewThreadGroup();
+        long handle =
+                nativeCreateKernelWithIterator(
+                        wsPlan,
+                        splitInfo,
+                        iterList.toArray(new ColumnarNativeIterator[0]),
+                        ConfigUtil.serialize(getNativeBackendConf()),
+                        false);
+        return createBatchIterator(handle);
+    }
+
+    private static BatchIterator createBatchIterator(long nativeHandle) {
+        return new BatchIterator(nativeHandle);
+    }
 }
