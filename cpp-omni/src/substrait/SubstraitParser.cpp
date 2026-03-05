@@ -562,6 +562,8 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"dayofmonth", {FUNCTION_OMNI_EXPR_TYPE, "dayofmonth"}},
     {"dayofweek", {FUNCTION_OMNI_EXPR_TYPE, "dayofweek"}},
     {"dayofyear", {FUNCTION_OMNI_EXPR_TYPE, "dayofyear"}},
+    {"week_of_year", {FUNCTION_OMNI_EXPR_TYPE, "week_of_year"}},
+    {"weekday", {FUNCTION_OMNI_EXPR_TYPE, "weekday"}},
     {"trim", {FUNCTION_OMNI_EXPR_TYPE, "Trim"}},
     {"ltrim", {FUNCTION_OMNI_EXPR_TYPE, "LTrim"}},
     {"rtrim", {FUNCTION_OMNI_EXPR_TYPE, "RTrim"}},

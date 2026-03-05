@@ -571,6 +571,8 @@ std::unordered_map<std::string, std::string> SubstraitOmniExprConverter::extract
     {"DAY_OF_WEEK", "dayofweek"},
     {"DAY_OF_MONTH", "dayofmonth"},
     {"DAY_OF_YEAR", "dayofyear"},
+    {"WEEK_OF_YEAR", "week_of_year"},
+    {"WEEK_DAY", "weekday"},
     {"MINUTE", "minute"},
     {"SECOND", "second"},
     {"MONTH", "month"},
