@@ -47,6 +47,19 @@ object AggregateFunctionsBuilder {
       ConverterUtils.makeFuncName(substraitAggFuncName, inputTypes, FunctionConfig.REQ))
   }
 
+  /**
+   * Register aggregate function by explicit substrait name and input types.
+   * Used only by backends that need to override the default name (e.g. Omni maps RegrReplacement
+   * to regr_sxx/regr_syy with two args). Does not change getSubstraitFunctionName or create();
+   * other aggregates are unaffected.
+   */
+  def createWithName(args: java.lang.Object, substraitName: String, inputTypes: Seq[DataType]): Long = {
+    val functionMap = args.asInstanceOf[java.util.HashMap[String, java.lang.Long]]
+    ExpressionBuilder.newScalarFunction(
+      functionMap,
+      ConverterUtils.makeFuncName(substraitName, inputTypes, FunctionConfig.REQ))
+  }
+
   def getSubstraitFunctionName(aggregateFunc: AggregateFunction): String = {
     aggregateFunc match {
       case First(_, ignoreNulls) if ignoreNulls =>
@@ -83,15 +96,37 @@ object AggregateFunctionsBuilder {
         ExpressionNames.KURTOSIS
       case ApproximatePercentile(_, _, _, _, _) =>
         ExpressionNames.APPROX_PERCENTILE
+      case RegrCount(_, _) =>
+        ExpressionNames.REGR_COUNT
+      case RegrSlope(_, _) =>
+        ExpressionNames.REGR_SLOPE
+      case RegrIntercept(_, _) =>
+        ExpressionNames.REGR_INTERCEPT
+      case RegrR2(_, _) =>
+        ExpressionNames.REGR_R2
+      case RegrSXY(_, _) =>
+        ExpressionNames.REGR_SXY
+      case RegrReplacement(_) =>
+        ExpressionNames.REGR_REPLACEMENT
       case _ =>
         val nameOpt = ExpressionMappings.expressionsMap.get(aggregateFunc.getClass)
-        if (nameOpt.isEmpty) {
-          throw new GlutenNotSupportException(
-            s"Could not find a valid substrait mapping name for $aggregateFunc.")
-        }
-        nameOpt.get match {
-          case ExpressionNames.UDAF_PLACEHOLDER => aggregateFunc.prettyName
-          case name => name
+        if (nameOpt.isDefined) {
+          nameOpt.get match {
+            case ExpressionNames.UDAF_PLACEHOLDER => aggregateFunc.prettyName
+            case name => name
+          }
+        } else {
+          // RegrSxx/RegrSyy may not exist in all Spark versions (e.g. missing in some 3.5);
+          // resolve by class name so Substrait gets regr_sxx/regr_syy when the class exists.
+          aggregateFunc.getClass.getName match {
+            case "org.apache.spark.sql.catalyst.expressions.aggregate.RegrSXX" =>
+              ExpressionNames.REGR_SXX
+            case "org.apache.spark.sql.catalyst.expressions.aggregate.RegrSYY" =>
+              ExpressionNames.REGR_SYY
+            case _ =>
+              throw new GlutenNotSupportException(
+                s"Could not find a valid substrait mapping name for $aggregateFunc.")
+          }
         }
     }
   }

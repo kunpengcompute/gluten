@@ -18,6 +18,7 @@ package org.apache.gluten.execution
 
 import com.google.protobuf.StringValue
 import org.apache.gluten.backendsapi.BackendsApiManager
+import org.apache.gluten.expression.{OmniExpressionAdaptor, OmniRegrMeasureBuilder}
 import org.apache.gluten.expression.OmniExpressionAdaptor.{sparkTypeToOmniTypeWithComplex, toOmniAggFunType}
 import org.apache.gluten.expression.aggregate.{OmniHLLAdapter,OmniCollectSet, OmniCollectList}
 import org.apache.gluten.expression.{AggregateFunctionsBuilder, ConverterUtils, ExpressionConverter}
@@ -75,7 +76,8 @@ abstract class HashAggregateExecTransformer(
       aggregateFunction: AggregateFunction,
       childrenNodeList: JList[ExpressionNode],
       aggregateMode: AggregateMode,
-      aggregateNodeList: JList[AggregateFunctionNode]): Unit = {
+      aggregateNodeList: JList[AggregateFunctionNode],
+      regrOverrideName: Option[String] = None): Unit = {
     def addFunctionNodeWithAggFunctionInputAggBuf(): Unit = {
       val aggFunctionInputAggBufferAttributeFTuple = aggregateFunction.inputAggBufferAttributes
         .map {
@@ -89,9 +91,19 @@ abstract class HashAggregateExecTransformer(
             left._2.add(right._2)
             left
           })
+      val functionId = regrOverrideName match {
+        case Some(name) =>
+          val inputTypes = aggregateMode match {
+            case Partial | Complete => OmniRegrMeasureBuilder.regrSxxSyyPartialInputTypes
+            case _ => aggregateFunction.inputAggBufferAttributes.map(_.dataType)
+          }
+          AggregateFunctionsBuilder.createWithName(args, name, inputTypes)
+        case None =>
+          AggregateFunctionsBuilder.create(args, aggregateFunction)
+      }
       aggregateNodeList.add(
         ExpressionBuilder.makeAggregateFunction(
-          AggregateFunctionsBuilder.create(args, aggregateFunction),
+          functionId,
           childrenNodeList,
           modeToKeyWord(aggregateMode),
           TypeBuilder.makeStruct(
@@ -106,9 +118,17 @@ abstract class HashAggregateExecTransformer(
         addFunctionNodeWithAggFunctionInputAggBuf()
       case Final | Complete =>
         validDataType(aggregateFunction.dataType)
+        val functionId = regrOverrideName match {
+          case Some(name) =>
+            val inputTypes = if (aggregateMode == Complete) OmniRegrMeasureBuilder.regrSxxSyyPartialInputTypes
+            else aggregateFunction.inputAggBufferAttributes.map(_.dataType)
+            AggregateFunctionsBuilder.createWithName(args, name, inputTypes)
+          case None =>
+            AggregateFunctionsBuilder.create(args, aggregateFunction)
+        }
         aggregateNodeList.add(
           ExpressionBuilder.makeAggregateFunction(
-            AggregateFunctionsBuilder.create(args, aggregateFunction),
+            functionId,
             childrenNodeList,
             modeToKeyWord(aggregateMode),
             ConverterUtils.getTypeNode(aggregateFunction.dataType, aggregateFunction.nullable)
@@ -128,6 +148,9 @@ abstract class HashAggregateExecTransformer(
       classOf[BitAndAgg], classOf[BitOrAgg], classOf[BitXorAgg], classOf[OmniHLLAdapter],
       classOf[Corr], classOf[CovPopulation], classOf[CovSample], classOf[CollectSet], classOf[OmniCollectSet],
       classOf[CollectList], classOf[OmniCollectList], classOf[Skewness], classOf[Kurtosis], classOf[ApproximatePercentile],
+      classOf[RegrReplacement],
+      classOf[RegrCount], classOf[RegrSlope], classOf[RegrIntercept], classOf[RegrR2],
+      classOf[RegrSXY],
     )
 
     var completeOnlySupported = Set(
@@ -147,6 +170,9 @@ abstract class HashAggregateExecTransformer(
     }
 
     if (supported.exists(_.isInstance(agg.aggregateFunction))) {
+      toOmniAggFunType(agg)
+      true
+    } else if (OmniExpressionAdaptor.isRegrAggregateByClassName(agg.aggregateFunction)) {
       toOmniAggFunType(agg)
       true
     } else {
@@ -293,14 +319,37 @@ abstract class HashAggregateExecTransformer(
           aggFilterList.add(null)
         }
         val aggregateFunc = aggExpr.aggregateFunction
+        val regrOverride = OmniRegrMeasureBuilder.getRegrReplacementOverride(aggregateFunc)
         val childrenNodes = aggExpr.mode match {
           case Partial | Complete =>
-            aggregateFunc.children.toList.map(
-              expr => {
-                ExpressionConverter
-                  .replaceWithExpressionTransformer(expr, originalInputAttributes)
-                  .doTransform(args)
-              })
+            regrOverride match {
+              case Some((_, Some(partialExprs))) =>
+                partialExprs.toList.map(
+                  expr =>
+                    ExpressionConverter
+                      .replaceWithExpressionTransformer(expr, originalInputAttributes)
+                      .doTransform(args))
+              case _ =>
+                if (aggregateFunc.isInstanceOf[RegrReplacement]) {
+                  val childExpr = aggregateFunc.children.head
+                  val valueExpr = childExpr match {
+                    case i: org.apache.spark.sql.catalyst.expressions.If => i.falseValue
+                    case _ =>
+                      throw new UnsupportedOperationException(
+                        s"RegrReplacement Partial expects If(cond, null, value) child, got ${childExpr.getClass.getSimpleName}")
+                  }
+                  List(
+                    ExpressionConverter
+                      .replaceWithExpressionTransformer(valueExpr, originalInputAttributes)
+                      .doTransform(args))
+                } else {
+                  aggregateFunc.children.toList.map(
+                    expr =>
+                      ExpressionConverter
+                        .replaceWithExpressionTransformer(expr, originalInputAttributes)
+                        .doTransform(args))
+                }
+            }
           case PartialMerge | Final =>
             aggregateFunc.inputAggBufferAttributes.toList.map(
               attr => {
@@ -316,7 +365,8 @@ abstract class HashAggregateExecTransformer(
           aggregateFunc,
           childrenNodes.asJava,
           aggExpr.mode,
-          aggregateFunctionList)
+          aggregateFunctionList,
+          regrOverride.map { case (name, _) => name })
       })
 
     val extensionNode = getAdvancedExtension(validation, originalInputAttributes)

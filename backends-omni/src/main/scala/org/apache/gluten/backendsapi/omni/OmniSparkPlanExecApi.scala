@@ -29,7 +29,7 @@ import org.apache.spark.shuffle.{GenShuffleWriterParameters, GlutenShuffleWriter
 import org.apache.spark.sql.catalyst.catalog.BucketSpec
 import org.apache.spark.sql.catalyst.catalog.CatalogTypes.TablePartitionSpec
 import org.apache.spark.sql.catalyst.expressions.{ArrayExists, ArrayFilter, ArrayForAll, ArrayTransform, Attribute, AttributeReference, BloomFilterMightContain, Cast, DateDiff, ElementAt, Expression, FromUnixTime, Generator, GetMapValue, GetStructField, HashExpression, LambdaFunction, Like, MapFilter, Md5, NamedExpression, PosExplode, PythonUDF, SortOrder, UnixTimestamp, Uuid}
-import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, ApproximatePercentile, CollectList, CollectSet, BloomFilterAggregate, MaxBy, MinBy, BitAndAgg, BitOrAgg, BitXorAgg, Skewness, Kurtosis}
+import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, ApproximatePercentile, CollectList, CollectSet, BloomFilterAggregate, MaxBy, MinBy, BitAndAgg, BitOrAgg, BitXorAgg, Skewness, Kurtosis, RegrCount, RegrSlope, RegrIntercept, RegrR2, RegrSXY, RegrReplacement}
 import org.apache.spark.sql.catalyst.optimizer.BuildSide
 import org.apache.spark.sql.catalyst.plans.JoinType
 import org.apache.spark.sql.catalyst.plans.physical.{AllTuples, BroadcastMode, Partitioning}
@@ -72,6 +72,12 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
       Sig[Skewness](ExpressionNames.SKEWNESS),
       Sig[Kurtosis](ExpressionNames.KURTOSIS),
       Sig[ApproximatePercentile](ExpressionNames.APPROX_PERCENTILE),
+      Sig[RegrCount](ExpressionNames.REGR_COUNT),
+      Sig[RegrSlope](ExpressionNames.REGR_SLOPE),
+      Sig[RegrIntercept](ExpressionNames.REGR_INTERCEPT),
+      Sig[RegrR2](ExpressionNames.REGR_R2),
+      Sig[RegrSXY](ExpressionNames.REGR_SXY),
+      Sig[RegrReplacement](ExpressionNames.REGR_REPLACEMENT),
     )
   }
 
@@ -339,7 +345,7 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
       expr: Expression): ExpressionTransformer = {
     GenericExpressionTransformer(substraitExprName, Seq(child), expr)
   }
- 	 
+
   override def genHashExpressionTransformer(
       substraitExprName: String,
       exprs: Seq[ExpressionTransformer],
