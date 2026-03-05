@@ -17,15 +17,9 @@
 package com.huawei.boostkit.spark.jni;
 
 import com.huawei.boostkit.spark.vectorized.SplitResult;
-
 import org.apache.gluten.vectorized.NativePartitioning;
 import org.apache.gluten.vectorized.JniByteInputStream;
 
-/**
- * SparkJniWrapper
- *
- * @since 2025/05/16
- */
 public class SparkJniWrapper {
   public SparkJniWrapper() {
   }
