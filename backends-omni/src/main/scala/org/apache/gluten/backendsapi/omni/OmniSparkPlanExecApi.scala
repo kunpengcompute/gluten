@@ -28,7 +28,7 @@ import org.apache.spark.serializer.Serializer
 import org.apache.spark.shuffle.{GenShuffleWriterParameters, GlutenShuffleWriterWrapper, OmniColumnarBatchSerializer, OmniColumnarShuffleWriter, OmniShuffleUtil}
 import org.apache.spark.sql.catalyst.catalog.BucketSpec
 import org.apache.spark.sql.catalyst.catalog.CatalogTypes.TablePartitionSpec
-import org.apache.spark.sql.catalyst.expressions.{ArrayExists, ArrayFilter, ArrayForAll, ArrayTransform, Attribute, AttributeReference, BloomFilterMightContain, Cast, DateDiff, ElementAt, Expression, FromUnixTime, Generator, GetMapValue, GetStructField, HashExpression, LambdaFunction, Like, MapFilter, Md5, NamedExpression, PosExplode, PythonUDF, SortOrder, UnixTimestamp, Uuid}
+import org.apache.spark.sql.catalyst.expressions.{ArrayExists, ArrayFilter, ArrayForAll, ArrayTransform, Attribute, AttributeReference, BloomFilterMightContain, Cast, DateDiff, ElementAt, Expression, FromUnixTime, Generator, GetMapValue, GetStructField, HashExpression, IsNotNull, LambdaFunction, Like, MapFilter, Md5, NamedExpression, PosExplode, PythonUDF, SortOrder, UnixTimestamp, Uuid}
 import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, ApproximatePercentile, CollectList, CollectSet, BloomFilterAggregate, MaxBy, MinBy, BitAndAgg, BitOrAgg, BitXorAgg, Skewness, Kurtosis, RegrCount, RegrSlope, RegrIntercept, RegrR2, RegrSXY, RegrReplacement}
 import org.apache.spark.sql.catalyst.optimizer.BuildSide
 import org.apache.spark.sql.catalyst.plans.JoinType
@@ -368,7 +368,12 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
       argument: ExpressionTransformer,
       function: ExpressionTransformer,
       expr: ArrayFilter): ExpressionTransformer = {
-    GenericExpressionTransformer(substraitExprName, Seq(argument, function), expr)
+    expr.function match {
+      case LambdaFunction(IsNotNull(_), arguments, _) if arguments.size == 1 =>
+        GenericExpressionTransformer("array_compact", Seq(argument), expr)
+      case _ =>
+        GenericExpressionTransformer(substraitExprName, Seq(argument, function), expr)
+    }
   }
 
   /** Transform array transform to Substrait. */
