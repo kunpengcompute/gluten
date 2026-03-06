@@ -171,14 +171,6 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved)
 
 void JNI_OnUnload(JavaVM* vm, void* reserved)
 {
-    JNIEnv* env;
-    vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION);
-
-    env->DeleteGlobalRef(runtimeExceptionClass);
-    env->DeleteGlobalRef(splitResultClass);
-    env->DeleteGlobalRef(jsonClass);
-    env->DeleteGlobalRef(arrayListClass);
-    env->DeleteGlobalRef(threadClass);
 }
 
 omniruntime::Runtime *GetRuntime(JNIEnv *env, jobject runtimeAware)

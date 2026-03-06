@@ -35,7 +35,7 @@ import org.apache.spark.rpc.{GlutenDriverEndpoint, GlutenExecutorEndpoint}
 import org.apache.spark.sql.execution.datasources.GlutenWriterColumnarRules
 import org.apache.spark.sql.execution.datasources.v1._
 import org.apache.spark.sql.utils.ExpressionUtil
-import org.apache.spark.util.SparkDirectoryUtil
+import org.apache.spark.util.{SparkDirectoryUtil, SparkShutdownManagerUtil}
 
 import org.apache.commons.lang3.StringUtils
 
@@ -79,10 +79,10 @@ class CHListenerApi extends ListenerApi with Logging {
         "Please set spark.gluten.sql.columnar.libpath to enable clickhouse backend")
     }
     if (isDriver) {
-      JniLibLoader.loadFromPath(libPath, true)
+      JniLibLoader.loadFromPath(libPath)
     } else {
       val executorLibPath = conf.get(GlutenConfig.GLUTEN_EXECUTOR_LIB_PATH, libPath)
-      JniLibLoader.loadFromPath(executorLibPath, true)
+      JniLibLoader.loadFromPath(executorLibPath)
     }
     // Add configs
     import org.apache.gluten.backendsapi.clickhouse.CHConf._
@@ -116,6 +116,13 @@ class CHListenerApi extends ListenerApi with Logging {
     GlutenFormatFactory.injectPostRuleFactory(
       session => GlutenWriterColumnarRules.NativeWritePostRule(session))
     GlutenFormatFactory.register(new CHRowSplitter())
+    SparkShutdownManagerUtil.addHookForLibUnloading(
+      () => {
+        // Due to the changes in the JNI OnUnLoad calling mechanism of the JDK17,
+        // it needs to manually call the destroy native function
+        // to release ch resources and avoid core dump
+        CHNativeExpressionEvaluator.destroyNative()
+      })
   }
 
   private def shutdown(): Unit = {

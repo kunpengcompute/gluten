@@ -25,23 +25,29 @@ import org.apache.gluten.execution.ColumnarNativeIterator;
  */
 public class ExpressionEvaluatorJniWrapper {
 
-  /** Call initNative to initialize native computing. */
-  static native void nativeInitNative(byte[] confAsPlan);
+    /**
+     * Call initNative to initialize native computing.
+     */
+    static native void nativeInitNative(byte[] confAsPlan);
 
-  /** Call finalizeNative to finalize native computing. */
-  static native void nativeFinalizeNative();
+    /**
+     * Call finalizeNative to finalize native computing.
+     */
+    static native void nativeFinalizeNative();
 
-  /**
-   * Create a native compute kernel and return a columnar result iterator.
-   *
-   * @return iterator instance id
-   */
-  public static native long nativeCreateKernelWithIterator(
-      byte[] wsPlan,
-      byte[][] splitInfo,
-      ColumnarNativeIterator[] batchItr,
-      byte[] confArray,
-      boolean materializeInput);
+    static native void nativeDestroyNative();
 
-  public static native void updateQueryRuntimeSettings(byte[] settings);
+    /**
+     * Create a native compute kernel and return a columnar result iterator.
+     *
+     * @return iterator instance id
+     */
+    public static native long nativeCreateKernelWithIterator(
+            byte[] wsPlan,
+            byte[][] splitInfo,
+            ColumnarNativeIterator[] batchItr,
+            byte[] confArray,
+            boolean materializeInput);
+
+    public static native void updateQueryRuntimeSettings(byte[] settings);
 }

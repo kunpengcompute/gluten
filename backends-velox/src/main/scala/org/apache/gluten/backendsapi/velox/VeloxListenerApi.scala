@@ -45,6 +45,7 @@ import org.apache.commons.lang3.StringUtils
 import java.util.concurrent.atomic.AtomicBoolean
 
 class VeloxListenerApi extends ListenerApi with Logging {
+
   import VeloxListenerApi._
 
   override def onDriverStart(sc: SparkContext, pc: PluginContext): Unit = {
@@ -165,11 +166,11 @@ class VeloxListenerApi extends ListenerApi with Logging {
     // Load backend libraries.
     val libPath = conf.get(GlutenConfig.GLUTEN_LIB_PATH, StringUtils.EMPTY)
     if (StringUtils.isNotBlank(libPath)) { // Path based load. Ignore all other loadees.
-      JniLibLoader.loadFromPath(libPath, false)
+      JniLibLoader.loadFromPath(libPath)
     } else {
       val baseLibName = conf.get(GlutenConfig.GLUTEN_LIB_NAME, "gluten")
-      loader.load(s"$platformLibDir/${System.mapLibraryName(baseLibName)}", false)
-      loader.load(s"$platformLibDir/${System.mapLibraryName(VeloxBackend.BACKEND_NAME)}", false)
+      loader.load(s"$platformLibDir/${System.mapLibraryName(baseLibName)}")
+      loader.load(s"$platformLibDir/${System.mapLibraryName(VeloxBackend.BACKEND_NAME)}")
     }
 
     // Initial native backend with configurations.
