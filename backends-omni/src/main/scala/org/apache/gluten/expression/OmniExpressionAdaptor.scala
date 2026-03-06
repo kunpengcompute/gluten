@@ -1000,6 +1000,7 @@ object OmniExpressionAdaptor extends Logging {
       exp => {
         val exprDataType = exp.dataType
         exprDataType match {
+          case ByteType =>
           case ShortType =>
           case IntegerType =>
           case LongType =>
@@ -1010,6 +1011,7 @@ object OmniExpressionAdaptor extends Logging {
           case DateType =>
           case dt: DecimalType =>
           case StringType =>
+          case BinaryType =>
           case _ =>
             throw new UnsupportedOperationException(
               s"First_value does not support datatype: $exprDataType")
@@ -1022,6 +1024,7 @@ object OmniExpressionAdaptor extends Logging {
       exp => {
         val exprDataType = exp.dataType
         exprDataType match {
+          case ByteType =>
           case ShortType =>
           case IntegerType =>
           case LongType =>
@@ -1032,6 +1035,7 @@ object OmniExpressionAdaptor extends Logging {
           case DateType =>
           case dt: DecimalType =>
           case StringType =>
+          case BinaryType =>
           case _ =>
             throw new UnsupportedOperationException(
               s"Last_value does not support datatype: $exprDataType")
