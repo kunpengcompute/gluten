@@ -281,7 +281,8 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::WindowGr
     const auto& partitions = windowGroupLimitRel.partition_expressions();
     for (const auto& partition : partitions) {
         auto expression = exprConverter->ToOmniExpr(partition, sourceDataTypes);
-        partitionKeys.emplace_back(expression);
+        auto fieldExpr = ExtractFieldExprFromPartitionOrSortKey(expression);
+        partitionKeys.emplace_back(fieldExpr != nullptr ? fieldExpr : expression);
     }
 
     auto [sortingKeys, sortingAscendings, sortNullFirsts] = ProcessSortFieldWithExpr(windowGroupLimitRel.sorts(), sourceDataTypes);
@@ -859,7 +860,8 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::SortRel 
     for (const auto &sort : sorts) {
         if (sort.has_expr()) {
             auto expression = exprConverter->ToOmniExpr(sort.expr(), childNode->OutputType());
-            sortExpressions.emplace_back(expression);
+            auto fieldExpr = ExtractFieldExprFromPartitionOrSortKey(expression);
+            sortExpressions.emplace_back(fieldExpr != nullptr ? fieldExpr : expression);
         }
     }
     auto [_, sortingOrders, sortNullFirsts] = ProcessSortFieldWithExpr(sortRel.sorts(), childNode->OutputType());
@@ -925,7 +927,8 @@ SortWithExprTuple SubstraitToOmniPlanConverter::ProcessSortFieldWithExpr(
     for (const auto &sort : sortFields) {
         OMNI_CHECK(sort.has_expr(), "Sort field must have expr");
         auto expression = exprConverter->ToOmniExpr(sort.expr(), inputType);
-        sortingKeys.emplace_back(expression);
+        auto fieldExpr = ExtractFieldExprFromPartitionOrSortKey(expression);
+        sortingKeys.emplace_back(fieldExpr != nullptr ? fieldExpr : expression);
         auto sortOrder = ToSortOrder(sort);
         sortingOrders.emplace_back(sortOrder.IsAscending());
         sortNullFirsts.emplace_back(sortOrder.IsNullsFirst());
