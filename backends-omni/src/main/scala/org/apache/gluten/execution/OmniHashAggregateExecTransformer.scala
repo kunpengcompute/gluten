@@ -247,6 +247,8 @@ abstract class HashAggregateExecTransformer(
            StringType | DateType | NullType | FloatType | BinaryType => true
       case _: DecimalType => true
       case _: ArrayType => true
+      case _: MapType => true
+      case _: StructType => true
       case _ => false
     }
   }
