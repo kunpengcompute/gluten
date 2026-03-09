@@ -547,7 +547,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"first_ignore_null", {FUNCTION_OMNI_EXPR_TYPE, "first_ignore_null"}},
     {"last_ignore_null", {FUNCTION_OMNI_EXPR_TYPE, "last_ignore_null"}},
     {"stddev_samp", {FUNCTION_OMNI_EXPR_TYPE, "stddev_samp"}},
-    {"stddev_pop", {FUNCTION_OMNI_EXPR_TYPE, "stddev_samp"}},
+    {"stddev_pop", {FUNCTION_OMNI_EXPR_TYPE, "stddev_pop"}},
     {"var_samp", {FUNCTION_OMNI_EXPR_TYPE, "var_samp"}},
     {"var_pop", {FUNCTION_OMNI_EXPR_TYPE, "var_pop"}},
     {"date_add", {FUNCTION_OMNI_EXPR_TYPE, "date_add"}},
