@@ -28,6 +28,8 @@ import org.apache.spark.sql.catalyst.expressions.SpecializedGetters
 import org.apache.spark.sql.execution.vectorized.WritableColumnVector
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types._
+import org.apache.spark.sql.catalyst.util.{ArrayData, MapData}
+import org.apache.spark.unsafe.types.{CalendarInterval, UTF8String}
 
 import scala.collection.mutable.ListBuffer
 
@@ -230,15 +232,24 @@ private object OmniRowToColumnConverter {
         offsets += totalLen
       }
 
-      val elementVector = new OmniColumnVector(totalLen, dataType.elementType, true)
-      for (row <- rows) {
-        val arrayData = if (row == null) null else row.getArray(column)
-        if (arrayData != null) {
-          val arrayLength = arrayData.numElements
-          for (i <- 0 until arrayLength) {
-            elementConverter.append(arrayData, i, elementVector)
+      val elementVector: WritableColumnVector = dataType.elementType match {
+        case innerArrayType: ArrayType =>
+          buildNestedArrayElementVector(rows, column, totalLen, innerArrayType)
+        case _: MapType | _: StructType =>
+          // Use add() instead of append loop - MapConverter/StructConverter.append not implemented
+          buildComplexArrayElementVector(rows, column, totalLen, dataType.elementType)
+        case _ =>
+          val ev = new OmniColumnVector(totalLen, dataType.elementType, true)
+          for (row <- rows) {
+            val arrayData = if (row == null) null else row.getArray(column)
+            if (arrayData != null) {
+              val arrayLength = arrayData.numElements
+              for (i <- 0 until arrayLength) {
+                elementConverter.append(arrayData, i, ev)
+              }
+            }
           }
-        }
+          ev
       }
 
       cv.setChild(elementVector, 0)
@@ -247,6 +258,241 @@ private object OmniRowToColumnConverter {
       cv.putNulls(0, nulls.toArray, size)
       cv
     }
+  }
+
+  /**
+   * Build element vector for Array<Map> or Array<Struct> by flattening elements and using add().
+   * Avoids MapConverter/StructConverter.append() which is not implemented.
+   */
+  private def buildComplexArrayElementVector(
+      rows: Seq[SpecializedGetters],
+      column: Int,
+      totalLen: Int,
+      elementType: DataType): OmniColumnVector = {
+    val elementRows = new ListBuffer[SpecializedGetters]()
+    for (row <- rows) {
+      val arrayData = if (row == null) null else row.getArray(column)
+      if (arrayData != null) {
+        for (i <- 0 until arrayData.numElements) {
+          elementRows += new ArrayElementGetter(arrayData, i)
+        }
+      }
+    }
+    val nullable = elementType match {
+      case m: MapType => m.valueContainsNull
+      case _ => true
+    }
+    val converter = getConverterForType(elementType, nullable)
+    converter.add(elementRows.toSeq, 0, elementRows.size).asInstanceOf[OmniColumnVector]
+  }
+
+  /** Wrapper to expose array element at index as SpecializedGetters for add(). */
+  private class ArrayElementGetter(arrayData: ArrayData, index: Int)
+      extends InternalRow with Serializable {
+    override def numFields: Int = 1
+    override def setNullAt(i: Int): Unit = throw new UnsupportedOperationException()
+    override def update(i: Int, value: Any): Unit = throw new UnsupportedOperationException()
+    override def copy(): InternalRow = throw new UnsupportedOperationException()
+    override def isNullAt(ordinal: Int): Boolean = arrayData.isNullAt(index)
+    override def getBoolean(ordinal: Int): Boolean = throw new UnsupportedOperationException()
+    override def getByte(ordinal: Int): Byte = throw new UnsupportedOperationException()
+    override def getShort(ordinal: Int): Short = throw new UnsupportedOperationException()
+    override def getInt(ordinal: Int): Int = throw new UnsupportedOperationException()
+    override def getLong(ordinal: Int): Long = throw new UnsupportedOperationException()
+    override def getFloat(ordinal: Int): Float = throw new UnsupportedOperationException()
+    override def getDouble(ordinal: Int): Double = throw new UnsupportedOperationException()
+    override def getDecimal(ordinal: Int, precision: Int, scale: Int): Decimal =
+      throw new UnsupportedOperationException()
+    override def getUTF8String(ordinal: Int): UTF8String = throw new UnsupportedOperationException()
+    override def getBinary(ordinal: Int): Array[Byte] = throw new UnsupportedOperationException()
+    override def getInterval(ordinal: Int): CalendarInterval =
+      throw new UnsupportedOperationException()
+    override def getStruct(ordinal: Int, numFields: Int): InternalRow =
+      if (ordinal == 0 && !arrayData.isNullAt(index)) arrayData.getStruct(index, numFields) else null
+    override def getArray(ordinal: Int): ArrayData = throw new UnsupportedOperationException()
+    override def getMap(ordinal: Int): MapData =
+      if (ordinal == 0 && !arrayData.isNullAt(index)) arrayData.getMap(index) else null
+    override def get(ordinal: Int, dataType: DataType): AnyRef =
+      throw new UnsupportedOperationException()
+  }
+
+  /** Build element vector for nested array (e.g. Array<Array<Long>>, Array<Array<Int>>, Array<Array<String>>). Only supports 2 levels. */
+  private def buildNestedArrayElementVector(
+      rows: Seq[SpecializedGetters],
+      column: Int,
+      innerArrayCount: Int,
+      innerArrayType: ArrayType): OmniColumnVector = {
+    val innerLengths = new ListBuffer[Int]
+    for (row <- rows) {
+      val arrayData = if (row == null) null else row.getArray(column)
+      if (arrayData != null) {
+        for (i <- 0 until arrayData.numElements) {
+          val inner = arrayData.getArray(i)
+          val len = if (inner == null) 0 else inner.numElements
+          innerLengths += len
+        }
+      }
+    }
+    val actualInnerCount = innerLengths.size
+    val innerOffsetsFinal = new Array[Int](actualInnerCount + 1)
+    innerOffsetsFinal(0) = 0
+    for (i <- 1 to actualInnerCount) {
+      innerOffsetsFinal(i) = innerOffsetsFinal(i - 1) + innerLengths(i - 1)
+    }
+    val totalLeaf = innerOffsetsFinal(actualInnerCount)
+    // Build leaf vector for Array<Array<Elem>> (supports Long, Int, Double, Float, Short, String, Timestamp, Boolean, Byte)
+    innerArrayType.elementType match {
+      case BooleanType =>
+        val boolVector = new OmniColumnVector(totalLeaf, BooleanType, true)
+        for (row <- rows) {
+          val arrayData = if (row == null) null else row.getArray(column)
+          if (arrayData != null) {
+            for (i <- 0 until arrayData.numElements) {
+              val inner = arrayData.getArray(i)
+              if (inner != null) {
+                for (j <- 0 until inner.numElements) {
+                  boolVector.appendBoolean(inner.getBoolean(j))
+                }
+              }
+            }
+          }
+        }
+        buildInnerArrayVector(innerArrayType, actualInnerCount, innerOffsetsFinal, boolVector)
+      case ByteType =>
+        val byteVector = new OmniColumnVector(totalLeaf, ByteType, true)
+        for (row <- rows) {
+          val arrayData = if (row == null) null else row.getArray(column)
+          if (arrayData != null) {
+            for (i <- 0 until arrayData.numElements) {
+              val inner = arrayData.getArray(i)
+              if (inner != null) {
+                for (j <- 0 until inner.numElements) {
+                  byteVector.appendByte(inner.getByte(j))
+                }
+              }
+            }
+          }
+        }
+        buildInnerArrayVector(innerArrayType, actualInnerCount, innerOffsetsFinal, byteVector)
+      case LongType | TimestampType =>
+        val longVector = new OmniColumnVector(totalLeaf, LongType, true)
+        for (row <- rows) {
+          val arrayData = if (row == null) null else row.getArray(column)
+          if (arrayData != null) {
+            for (i <- 0 until arrayData.numElements) {
+              val inner = arrayData.getArray(i)
+              if (inner != null) {
+                for (j <- 0 until inner.numElements) {
+                  longVector.appendLong(inner.getLong(j))
+                }
+              }
+            }
+          }
+        }
+        buildInnerArrayVector(innerArrayType, actualInnerCount, innerOffsetsFinal, longVector)
+      case IntegerType | DateType =>
+        val intVector = new OmniColumnVector(totalLeaf, IntegerType, true)
+        for (row <- rows) {
+          val arrayData = if (row == null) null else row.getArray(column)
+          if (arrayData != null) {
+            for (i <- 0 until arrayData.numElements) {
+              val inner = arrayData.getArray(i)
+              if (inner != null) {
+                for (j <- 0 until inner.numElements) {
+                  intVector.appendInt(inner.getInt(j))
+                }
+              }
+            }
+          }
+        }
+        buildInnerArrayVector(innerArrayType, actualInnerCount, innerOffsetsFinal, intVector)
+      case DoubleType =>
+        val doubleVector = new OmniColumnVector(totalLeaf, DoubleType, true)
+        for (row <- rows) {
+          val arrayData = if (row == null) null else row.getArray(column)
+          if (arrayData != null) {
+            for (i <- 0 until arrayData.numElements) {
+              val inner = arrayData.getArray(i)
+              if (inner != null) {
+                for (j <- 0 until inner.numElements) {
+                  doubleVector.appendDouble(inner.getDouble(j))
+                }
+              }
+            }
+          }
+        }
+        buildInnerArrayVector(innerArrayType, actualInnerCount, innerOffsetsFinal, doubleVector)
+      case FloatType =>
+        val floatVector = new OmniColumnVector(totalLeaf, FloatType, true)
+        for (row <- rows) {
+          val arrayData = if (row == null) null else row.getArray(column)
+          if (arrayData != null) {
+            for (i <- 0 until arrayData.numElements) {
+              val inner = arrayData.getArray(i)
+              if (inner != null) {
+                for (j <- 0 until inner.numElements) {
+                  floatVector.appendFloat(inner.getFloat(j))
+                }
+              }
+            }
+          }
+        }
+        buildInnerArrayVector(innerArrayType, actualInnerCount, innerOffsetsFinal, floatVector)
+      case ShortType =>
+        val shortVector = new OmniColumnVector(totalLeaf, ShortType, true)
+        for (row <- rows) {
+          val arrayData = if (row == null) null else row.getArray(column)
+          if (arrayData != null) {
+            for (i <- 0 until arrayData.numElements) {
+              val inner = arrayData.getArray(i)
+              if (inner != null) {
+                for (j <- 0 until inner.numElements) {
+                  shortVector.appendShort(inner.getShort(j))
+                }
+              }
+            }
+          }
+        }
+        buildInnerArrayVector(innerArrayType, actualInnerCount, innerOffsetsFinal, shortVector)
+      case StringType =>
+        val stringVector = new OmniColumnVector(totalLeaf, StringType, true)
+        for (row <- rows) {
+          val arrayData = if (row == null) null else row.getArray(column)
+          if (arrayData != null) {
+            for (i <- 0 until arrayData.numElements) {
+              val inner = arrayData.getArray(i)
+              if (inner != null) {
+                for (j <- 0 until inner.numElements) {
+                  if (inner.isNullAt(j)) {
+                    stringVector.appendNull
+                  } else {
+                    val s = inner.getUTF8String(j)
+                    val data = s.getBytes
+                    stringVector.asInstanceOf[OmniColumnVector].appendString(data.length, data, 0)
+                  }
+                }
+              }
+            }
+          }
+        }
+        buildInnerArrayVector(innerArrayType, actualInnerCount, innerOffsetsFinal, stringVector)
+      case _ =>
+        throw new UnsupportedOperationException(
+          s"buildNestedArrayElementVector only supports Array<Array<Boolean/Byte/Short/Int/Long/Float/Double/String/Date/Timestamp>>, got ${innerArrayType.elementType}")
+    }
+  }
+
+  private def buildInnerArrayVector(
+      innerArrayType: ArrayType,
+      actualInnerCount: Int,
+      innerOffsetsFinal: Array[Int],
+      leafVector: OmniColumnVector): OmniColumnVector = {
+    val vec = new OmniColumnVector(actualInnerCount, innerArrayType, true)
+    vec.setChild(leafVector, 0)
+    vec.setOffsets(innerOffsetsFinal)
+    vec.updateVec()
+    vec.putNulls(0, new Array[Byte](actualInnerCount), actualInnerCount)
+    vec
   }
 
   private case class StructConverter(childConverters: Array[TypeConverter], dataType: StructType)
