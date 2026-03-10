@@ -221,6 +221,35 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::WindowRe
                 op::OMNI_FRAME_BOUND_UNBOUNDED_PRECEDING, static_cast<int32_t>(leadLagOffset),
                 op::OMNI_FRAME_BOUND_UNBOUNDED_FOLLOWING, defaultEndChannel);
             windowFrameInfos.push_back(std::move(frame));
+        } else if (functionType == op::OMNI_WINDOW_TYPE_NTH_VALUE) {
+            if (!windowFunction.arguments().empty()) {
+                auto expression = exprConverter->ToOmniExpr(
+                    windowFunction.arguments(0).value(), childNode->OutputType());
+                argumentKeys.emplace_back(expression);
+            }
+            int32_t nthOffset = 1;
+            if (windowFunction.arguments_size() >= 2) {
+                const auto& offsetArg = windowFunction.arguments(1).value();
+                if (offsetArg.has_literal()) {
+                    nthOffset = SubstraitParser::GetLiteralValue<int32_t>(offsetArg.literal());
+                }
+            }
+            op::WindowFrameInfo frame(op::OMNI_FRAME_TYPE_ROWS,
+                op::OMNI_FRAME_BOUND_UNBOUNDED_PRECEDING, nthOffset,
+                op::OMNI_FRAME_BOUND_CURRENT_ROW, -1);
+            windowFrameInfos.push_back(std::move(frame));
+        } else if (functionType == op::OMNI_WINDOW_TYPE_NTILE) {
+            int32_t numBuckets = 1;
+            if (!windowFunction.arguments().empty()) {
+                const auto& bucketsArg = windowFunction.arguments(0).value();
+                if (bucketsArg.has_literal()) {
+                    numBuckets = SubstraitParser::GetLiteralValue<int32_t>(bucketsArg.literal());
+                }
+            }
+            op::WindowFrameInfo frame(op::OMNI_FRAME_TYPE_RANGE,
+                op::OMNI_FRAME_BOUND_UNBOUNDED_PRECEDING, numBuckets,
+                op::OMNI_FRAME_BOUND_UNBOUNDED_FOLLOWING, -1);
+            windowFrameInfos.push_back(std::move(frame));
         } else {
             for (const auto& arg : windowFunction.arguments()) {
                 auto expression = exprConverter->ToOmniExpr(arg.value(), childNode->OutputType());
@@ -234,7 +263,8 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::WindowRe
         auto type = windowFunction.window_type();
         auto lowerBound = windowFunction.lower_bound();
         auto upperBound = windowFunction.upper_bound();
-        if (functionType != op::OMNI_WINDOW_TYPE_LEAD && functionType != op::OMNI_WINDOW_TYPE_LAG) {
+        if (functionType != op::OMNI_WINDOW_TYPE_LEAD && functionType != op::OMNI_WINDOW_TYPE_LAG &&
+            functionType != op::OMNI_WINDOW_TYPE_NTH_VALUE && functionType != op::OMNI_WINDOW_TYPE_NTILE) {
             windowFrameInfos.push_back(std::move(createWindowFrameInfo(lowerBound, upperBound, type)));
         }
     }

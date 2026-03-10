@@ -409,6 +409,12 @@ op::FunctionType SubstraitParser::ParseFunctionType(
         return op::OMNI_WINDOW_TYPE_LEAD;
     } else if (funcName == "lag") {
         return op::OMNI_WINDOW_TYPE_LAG;
+    } else if (funcName == "nth_value") {
+        return op::OMNI_WINDOW_TYPE_NTH_VALUE;
+    } else if (funcName == "ntile") {
+        return op::OMNI_WINDOW_TYPE_NTILE;
+    } else if (funcName == "dense_rank") {
+        return op::OMNI_WINDOW_TYPE_DENSE_RANK;
     } else if (funcName == "bloom_filter_agg") {
         return op::OMNI_AGGREGATION_TYPE_BLOOM_FILTER;
     } else if (funcName == "bit_and") {
@@ -527,6 +533,9 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"row_number", {FUNCTION_OMNI_EXPR_TYPE, "row_number"}},
     {"lead", {FUNCTION_OMNI_EXPR_TYPE, "lead"}},
     {"lag", {FUNCTION_OMNI_EXPR_TYPE, "lag"}},
+    {"nth_value", {FUNCTION_OMNI_EXPR_TYPE, "nth_value"}},
+    {"ntile", {FUNCTION_OMNI_EXPR_TYPE, "ntile"}},
+    {"dense_rank", {FUNCTION_OMNI_EXPR_TYPE, "dense_rank"}},
     {"count", {FUNCTION_OMNI_EXPR_TYPE, "count"}},
     {"sum", {FUNCTION_OMNI_EXPR_TYPE, "sum"}},
     {"min", {FUNCTION_OMNI_EXPR_TYPE, "min"}},
