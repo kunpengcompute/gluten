@@ -1012,6 +1012,9 @@ object OmniExpressionAdaptor extends Logging {
           case dt: DecimalType =>
           case StringType =>
           case BinaryType =>
+          case _: ArrayType =>
+          case _: MapType =>
+          case _: StructType =>
           case _ =>
             throw new UnsupportedOperationException(
               s"First_value does not support datatype: $exprDataType")
@@ -1036,6 +1039,9 @@ object OmniExpressionAdaptor extends Logging {
           case dt: DecimalType =>
           case StringType =>
           case BinaryType =>
+          case _: ArrayType =>
+          case _: MapType =>
+          case _: StructType =>
           case _ =>
             throw new UnsupportedOperationException(
               s"Last_value does not support datatype: $exprDataType")
