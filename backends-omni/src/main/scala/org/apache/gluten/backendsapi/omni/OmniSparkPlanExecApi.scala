@@ -311,7 +311,12 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
   override def genCartesianProductExecTransformer(
       left: SparkPlan,
       right: SparkPlan,
-      condition: Option[Expression]): CartesianProductExecTransformer = null
+      condition: Option[Expression]): CartesianProductExecTransformer = {
+    CartesianProductExecTransformer(
+      ColumnarCartesianProductBridge(left),
+      ColumnarCartesianProductBridge(right),
+      condition)
+  }
 
   override def genBroadcastNestedLoopJoinExecTransformer(
       left: SparkPlan,
