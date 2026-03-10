@@ -233,6 +233,8 @@ object OmniBackendSettings extends BackendSettingsApi {
   override def supportSortExec(): Boolean = true
 
   override def supportExpandExec(): Boolean = true
+  
+  override def supportCartesianProductExec(): Boolean = true
 
   override def supportWindowExec(windowFunctions: Seq[NamedExpression]): Boolean = {
     var isSupport: Boolean  = true
