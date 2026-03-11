@@ -61,17 +61,31 @@ int Splitter::ComputeAndCountPartitionId(VectorBatch& vb) {
             partition_id_[i] = 0;
         }
     } else {
-        auto hash_vct = reinterpret_cast<Vector<int32_t> *>(vb.Get(0));
-        for (auto i = 0; i < num_rows; ++i) {
-            // positive mod
-            int32_t pid = hash_vct->GetValue(i);
-            if (pid >= num_partitions_) {
-                LogsError(" Illegal pid Value: %d >= partition number %d .", pid, num_partitions_);
+        auto pidVector = vb.Get(0);
+        if (pidVector->GetEncoding() == OMNI_ENCODING_CONST) {
+            int32_t constPid = reinterpret_cast<ConstVector<int32_t> *>(pidVector)->GetConstValue();
+            if (constPid >= num_partitions_) {
+                LogsError(" Illegal pid Value: %d >= partition number %d .", constPid, num_partitions_);
                 throw std::runtime_error("Shuffle pidVec Illegal pid Value!");
             }
-            partition_id_[i] = pid;
-            partition_id_cnt_cur_[pid]++;
-            partition_id_cnt_cache_[pid]++;
+            partition_id_cnt_cur_[constPid] += num_rows;
+            partition_id_cnt_cache_[constPid] += num_rows;
+            for (auto i = 0; i < num_rows; ++i) {
+                partition_id_[i] = constPid;
+            }
+        } else {
+            auto hash_vct = reinterpret_cast<Vector<int32_t> *>(pidVector);
+            for (auto i = 0; i < num_rows; ++i) {
+                // positive mod
+                int32_t pid = hash_vct->GetValue(i);
+                if (pid >= num_partitions_) {
+                    LogsError(" Illegal pid Value: %d >= partition number %d .", pid, num_partitions_);
+                    throw std::runtime_error("Shuffle pidVec Illegal pid Value!");
+                }
+                partition_id_[i] = pid;
+                partition_id_cnt_cur_[pid]++;
+                partition_id_cnt_cache_[pid]++;
+            }
         }
     }
     return 0;
@@ -155,7 +169,70 @@ int Splitter::SplitFixedWidthValueBuffer(VectorBatch& vb) {
         auto col_idx_vb = fixed_width_array_idx_[col];
         auto col_idx_schema = singlePartitionFlag ? col_idx_vb : (col_idx_vb - 1);
         const auto& dst_addrs =  partition_fixed_width_value_addrs_[col];
-        if (vb.Get(col_idx_vb)->GetEncoding() == OMNI_DICTIONARY) {
+        if (vb.Get(col_idx_vb)->GetEncoding() == OMNI_ENCODING_CONST) {
+            auto shuffleType = column_type_id_[col_idx_schema];
+            const auto shuffle_size = (1 << shuffleType);
+            uint8_t constValueBytes[16] = {}; // max size for Decimal128
+            auto typeId = vb.Get(col_idx_vb)->GetTypeId();
+            switch (typeId) {
+                case OMNI_BYTE:
+                case OMNI_BOOLEAN: {
+                    auto v = reinterpret_cast<ConstVector<int8_t> *>(vb.Get(col_idx_vb))->GetConstValue();
+                    memcpy(constValueBytes, &v, sizeof(v));
+                    break;
+                }
+                case OMNI_SHORT: {
+                    auto v = reinterpret_cast<ConstVector<int16_t> *>(vb.Get(col_idx_vb))->GetConstValue();
+                    memcpy(constValueBytes, &v, sizeof(v));
+                    break;
+                }
+                case OMNI_INT:
+                case OMNI_DATE32: {
+                    auto v = reinterpret_cast<ConstVector<int32_t> *>(vb.Get(col_idx_vb))->GetConstValue();
+                    memcpy(constValueBytes, &v, sizeof(v));
+                    break;
+                }
+                case OMNI_FLOAT: {
+                    auto v = reinterpret_cast<ConstVector<float> *>(vb.Get(col_idx_vb))->GetConstValue();
+                    memcpy(constValueBytes, &v, sizeof(v));
+                    break;
+                }
+                case OMNI_LONG:
+                case OMNI_TIMESTAMP:
+                case OMNI_DATE64:
+                case OMNI_DECIMAL64: {
+                    auto v = reinterpret_cast<ConstVector<int64_t> *>(vb.Get(col_idx_vb))->GetConstValue();
+                    memcpy(constValueBytes, &v, sizeof(v));
+                    break;
+                }
+                case OMNI_DOUBLE: {
+                    auto v = reinterpret_cast<ConstVector<double> *>(vb.Get(col_idx_vb))->GetConstValue();
+                    memcpy(constValueBytes, &v, sizeof(v));
+                    break;
+                }
+                case OMNI_DECIMAL128: {
+                    auto v = reinterpret_cast<ConstVector<Decimal128> *>(vb.Get(col_idx_vb))->GetConstValue();
+                    memcpy(constValueBytes, &v, sizeof(v));
+                    break;
+                }
+                default: {
+                    LogsError("SplitFixedWidthValueBuffer ConstVector unsupported DataTypeId: %d", typeId);
+                    throw std::runtime_error("SplitFixedWidthValueBuffer ConstVector unsupported DataTypeId");
+                }
+            }
+            for (auto &pid : partition_used_) {
+                auto dst_offset = partition_buffer_idx_base_[pid] + partition_buffer_idx_offset_[pid];
+                auto dstPidBase = dst_addrs[pid] + dst_offset * shuffle_size;
+                auto pos = partition_row_offset_base_[pid];
+                auto end = partition_row_offset_base_[pid + 1];
+                auto count = end - pos;
+                for (int32_t i = 0; i < count; ++i) {
+                    memcpy(dstPidBase + i * shuffle_size, constValueBytes, shuffle_size);
+                }
+                partition_fixed_width_buffers_[col][pid][1]->size_ += shuffle_size * count;
+                partition_buffer_idx_offset_[pid] += count;
+            }
+        } else if (vb.Get(col_idx_vb)->GetEncoding() == OMNI_DICTIONARY) {
             LogsDebug("Dictionary Columnar process!");
 
             auto ids_addr = static_cast<int32_t *>(VectorHelper::UnsafeGetValues(vb.Get(col_idx_vb)));
@@ -250,7 +327,44 @@ template<bool hasNull>
 void Splitter::SplitBinaryVector(BaseVector *varcharVector, int col_schema) {
     int32_t num_rows = varcharVector->GetSize();
     bool is_null = false;
-    if (varcharVector->GetEncoding() == OMNI_DICTIONARY) {
+    if (varcharVector->GetEncoding() == OMNI_ENCODING_CONST) {
+        auto constVec = reinterpret_cast<ConstVector<std::string_view> *>(varcharVector);
+        bool constIsNull = constVec->HasNull() && constVec->IsNull(0);
+        uint8_t *constDst = nullptr;
+        uint32_t constStrLen = 0;
+        if (!constIsNull) {
+            std::string_view constValue = constVec->GetConstValue();
+            constDst = reinterpret_cast<uint8_t *>(reinterpret_cast<int64_t>(constValue.data()));
+            constStrLen = static_cast<uint32_t>(constValue.length());
+        }
+        cached_vectorbatch_size_ += num_rows * (sizeof(bool) + sizeof(int32_t));
+        for (auto &pid : partition_used_) {
+            auto pos = partition_row_offset_base_[pid];
+            auto end = partition_row_offset_base_[pid + 1];
+            for (; pos < end; ++pos) {
+                cached_vectorbatch_size_ += constStrLen;
+                if ((vc_partition_array_buffers_[pid][col_schema].size() != 0) &&
+                    (vc_partition_array_buffers_[pid][col_schema].back().getVcList().size() <
+                        options_.spill_batch_row_num)) {
+                    if constexpr (hasNull) {
+                        HandleNull(vc_partition_array_buffers_[pid][col_schema].back(), constIsNull);
+                    }
+                    vc_partition_array_buffers_[pid][col_schema].back().getVcList().emplace_back(
+                        (uint64_t)constDst, constStrLen, constIsNull);
+                    vc_partition_array_buffers_[pid][col_schema].back().vcb_total_len += constStrLen;
+                } else {
+                    VCBatchInfo svc(options_.spill_batch_row_num);
+                    svc.getVcList().emplace_back((uint64_t)constDst, constStrLen, constIsNull);
+                    svc.vcb_total_len += constStrLen;
+                    if constexpr (hasNull) {
+                        HandleNull(svc, constIsNull);
+                    }
+                    vc_partition_array_buffers_[pid][col_schema].emplace_back(svc);
+                }
+            }
+        }
+        return;
+    } else if (varcharVector->GetEncoding() == OMNI_DICTIONARY) {
         auto vc = reinterpret_cast<Vector<DictionaryContainer<std::string_view, LargeStringContainer>> *>(
                 varcharVector);
 	    cached_vectorbatch_size_ += num_rows * (sizeof(bool) + sizeof(int32_t));
@@ -411,10 +525,6 @@ void Splitter::SerializeColumn(BaseVector *vector, std::vector<uint32_t> row_ids
 template<typename T>
 void Splitter::SerializeFlatVector(BaseVector *vector, std::vector<uint32_t> row_ids, spark::Vec &vec, DataTypeId typeId)
 {
-    auto* typedVec = static_cast<Vector<T>*>(vector);
-    if (!typedVec) {
-        throw std::runtime_error("SerializeFlatVector: vector is not Vector<T>!");
-    }
     int num_rows = row_ids.size();
 
     // set the type and size of Vec
@@ -432,13 +542,31 @@ void Splitter::SerializeFlatVector(BaseVector *vector, std::vector<uint32_t> row
     valuesStr.resize(num_rows * sizeof(T));
     auto* valuesData = reinterpret_cast<T*>(valuesStr.data());
 
-    for (int32_t i = 0; i < num_rows; ++i) {
-        auto rowId = row_ids[i];
-        if (typedVec->IsNull(rowId)) {
-            nullsData[i] = 1;
-            valuesData[i] = T{}; // default value
-        } else {
-            valuesData[i] = typedVec->GetValue(rowId);
+    if (vector->GetEncoding() == OMNI_ENCODING_CONST) {
+        auto constVec = reinterpret_cast<ConstVector<T> *>(vector);
+        bool constIsNull = constVec->HasNull() && constVec->IsNull(0);
+        T constValue = constIsNull ? T{} : constVec->GetConstValue();
+        for (int32_t i = 0; i < num_rows; ++i) {
+            if (constIsNull) {
+                nullsData[i] = 1;
+                valuesData[i] = T{};
+            } else {
+                valuesData[i] = constValue;
+            }
+        }
+    } else {
+        auto* typedVec = static_cast<Vector<T>*>(vector);
+        if (!typedVec) {
+            throw std::runtime_error("SerializeFlatVector: vector is not Vector<T>!");
+        }
+        for (int32_t i = 0; i < num_rows; ++i) {
+            auto rowId = row_ids[i];
+            if (typedVec->IsNull(rowId)) {
+                nullsData[i] = 1;
+                valuesData[i] = T{}; // default value
+            } else {
+                valuesData[i] = typedVec->GetValue(rowId);
+            }
         }
     }
 
@@ -448,7 +576,6 @@ void Splitter::SerializeFlatVector(BaseVector *vector, std::vector<uint32_t> row
 
 void Splitter::SerializeStringVector(BaseVector *vector, std::vector<uint32_t> row_ids, spark::Vec &vec, DataTypeId typeId)
 {
-    auto stringVec = reinterpret_cast<Vector<LargeStringContainer<std::string_view>> *>(vector);
     int num_rows = row_ids.size();
 
     spark::VecType *vt = vec.mutable_vectype();
@@ -467,28 +594,54 @@ void Splitter::SerializeStringVector(BaseVector *vector, std::vector<uint32_t> r
     int32_t currentOffset = 0;
     offsetsData[0] = 0;
 
-    // calculate total size of strings
-    int64_t totalSize = 0;
-    for (int32_t i = 0; i < num_rows; ++i) {
-        auto rowId = row_ids[i];
-        if (!stringVec->IsNull(rowId)) {
-            auto strValue = stringVec->GetValue(rowId);
-            totalSize += strValue.size();
+    if (vector->GetEncoding() == OMNI_ENCODING_CONST) {
+        auto constVec = reinterpret_cast<ConstVector<std::string_view> *>(vector);
+        bool constIsNull = constVec->HasNull() && constVec->IsNull(0);
+        std::string_view constValue;
+        if (!constIsNull) {
+            constValue = constVec->GetConstValue();
         }
-    }
-    valuesStr.resize(totalSize);
 
-    char* valuesDataPtr = valuesStr.data();
-    for (int32_t i = 0; i < num_rows; ++i) {
-        auto rowId = row_ids[i];
-        if (stringVec->IsNull(rowId)) {
-            nullsData[i] = 1;
-            offsetsData[i + 1] = currentOffset;
-        } else {
-            auto strValue = stringVec->GetValue(rowId);
-            memcpy(valuesDataPtr + currentOffset, strValue.data(), strValue.size());
-            currentOffset += strValue.size();
-            offsetsData[i + 1] = currentOffset;
+        int64_t totalSize = constIsNull ? 0 : (int64_t)constValue.size() * num_rows;
+        valuesStr.resize(totalSize);
+        char* valuesDataPtr = valuesStr.data();
+
+        for (int32_t i = 0; i < num_rows; ++i) {
+            if (constIsNull) {
+                nullsData[i] = 1;
+                offsetsData[i + 1] = currentOffset;
+            } else {
+                memcpy(valuesDataPtr + currentOffset, constValue.data(), constValue.size());
+                currentOffset += constValue.size();
+                offsetsData[i + 1] = currentOffset;
+            }
+        }
+    } else {
+        auto stringVec = reinterpret_cast<Vector<LargeStringContainer<std::string_view>> *>(vector);
+
+        // calculate total size of strings
+        int64_t totalSize = 0;
+        for (int32_t i = 0; i < num_rows; ++i) {
+            auto rowId = row_ids[i];
+            if (!stringVec->IsNull(rowId)) {
+                auto strValue = stringVec->GetValue(rowId);
+                totalSize += strValue.size();
+            }
+        }
+        valuesStr.resize(totalSize);
+
+        char* valuesDataPtr = valuesStr.data();
+        for (int32_t i = 0; i < num_rows; ++i) {
+            auto rowId = row_ids[i];
+            if (stringVec->IsNull(rowId)) {
+                nullsData[i] = 1;
+                offsetsData[i + 1] = currentOffset;
+            } else {
+                auto strValue = stringVec->GetValue(rowId);
+                memcpy(valuesDataPtr + currentOffset, strValue.data(), strValue.size());
+                currentOffset += strValue.size();
+                offsetsData[i + 1] = currentOffset;
+            }
         }
     }
 
@@ -713,14 +866,26 @@ int Splitter::SplitFixedWidthValidityBuffer(VectorBatch& vb){
                 }
             }
 
-            auto src_addr = unsafe::UnsafeBaseVector::GetNulls(vb.Get(col_idx));
-            for (auto &pid: partition_used_) {
-                auto dstPidBase = dst_addrs[pid] + partition_buffer_idx_base_[pid];
-                auto pos = partition_row_offset_base_[pid];
-                auto end = partition_row_offset_base_[pid + 1];
-                for (; pos < end; ++pos) {
-                    auto rowId = row_offset_row_id_[pos];
-                    *dstPidBase++ = omniruntime::BitUtil::IsBitSet(src_addr, rowId);
+            if (vb.Get(col_idx)->GetEncoding() == OMNI_ENCODING_CONST) {
+                uint8_t constNullVal = vb.Get(col_idx)->IsNull(0) ? 1 : 0;
+                for (auto &pid : partition_used_) {
+                    auto dstPidBase = dst_addrs[pid] + partition_buffer_idx_base_[pid];
+                    auto pos = partition_row_offset_base_[pid];
+                    auto end = partition_row_offset_base_[pid + 1];
+                    for (; pos < end; ++pos) {
+                        *dstPidBase++ = constNullVal;
+                    }
+                }
+            } else {
+                auto src_addr = unsafe::UnsafeBaseVector::GetNulls(vb.Get(col_idx));
+                for (auto &pid: partition_used_) {
+                    auto dstPidBase = dst_addrs[pid] + partition_buffer_idx_base_[pid];
+                    auto pos = partition_row_offset_base_[pid];
+                    auto end = partition_row_offset_base_[pid + 1];
+                    for (; pos < end; ++pos) {
+                        auto rowId = row_offset_row_id_[pos];
+                        *dstPidBase++ = omniruntime::BitUtil::IsBitSet(src_addr, rowId);
+                    }
                 }
             }
         }
@@ -1034,18 +1199,30 @@ int Splitter::SplitByRow(VectorBatch *vecBatch) {
             total_input_size += rowInfo->length;
         }
     } else {
-        auto pidVec = reinterpret_cast<Vector<int32_t> *>(vecBatch->Get(0));
         auto tmpVectorBatch = new VectorBatch(rowCount);
         partition_id_.resize(rowCount);
         memset(partition_id_cnt_cur_, 0, num_partitions_ * sizeof(int32_t));
-        for (int i = 0; i < rowCount; ++i) {
-            auto pid = pidVec->GetValue(i);
-            if (pid >= num_partitions_) {
-                LogsError(" Illegal pid Value: %d >= partition number %d .", pid, num_partitions_);
+        if (vecBatch->Get(0)->GetEncoding() == OMNI_ENCODING_CONST) {
+            int32_t constPid = reinterpret_cast<ConstVector<int32_t> *>(vecBatch->Get(0))->GetConstValue();
+            if (constPid >= num_partitions_) {
+                LogsError(" Illegal pid Value: %d >= partition number %d .", constPid, num_partitions_);
                 throw std::runtime_error("Shuffle pidVec Illegal pid Value!");
             }
-            partition_id_[i] = pid;
-            partition_id_cnt_cur_[pid]++;
+            partition_id_cnt_cur_[constPid] += rowCount;
+            for (int i = 0; i < rowCount; ++i) {
+                partition_id_[i] = constPid;
+            }
+        } else {
+            auto pidVec = reinterpret_cast<Vector<int32_t> *>(vecBatch->Get(0));
+            for (int i = 0; i < rowCount; ++i) {
+                auto pid = pidVec->GetValue(i);
+                if (pid >= num_partitions_) {
+                    LogsError(" Illegal pid Value: %d >= partition number %d .", pid, num_partitions_);
+                    throw std::runtime_error("Shuffle pidVec Illegal pid Value!");
+                }
+                partition_id_[i] = pid;
+                partition_id_cnt_cur_[pid]++;
+            }
         }
         BuildPartition2Row(rowCount);
         for (int i = 1; i < vecBatch->GetVectorCount(); ++i) {
