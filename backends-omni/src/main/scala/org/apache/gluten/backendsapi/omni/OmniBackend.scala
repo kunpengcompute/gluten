@@ -34,7 +34,7 @@ import org.apache.gluten.vectorized.OmniNativePlanEvaluator
 import org.apache.spark.shuffle.OmniShuffleUtil
 import org.apache.spark.sql.catalyst.catalog.BucketSpec
 import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, Average, Count, First, Last, Max, Min, StddevSamp, StddevPop, VarianceSamp, VariancePop, Sum}
-import org.apache.spark.sql.catalyst.expressions.{Alias, Attribute, CurrentRow, Lag, Lead, Literal, NamedExpression, Rank, PercentRank, RowNumber, SpecifiedWindowFrame, UnboundedFollowing, UnboundedPreceding, WindowExpression}
+import org.apache.spark.sql.catalyst.expressions.{Alias, Attribute, CurrentRow, CumeDist, Lag, Lead, Literal, NamedExpression, Rank, PercentRank, RowNumber, SpecifiedWindowFrame, UnboundedFollowing, UnboundedPreceding, WindowExpression}
 import org.apache.spark.sql.catalyst.plans.physical.Partitioning
 import org.apache.spark.sql.connector.read.Scan
 import org.apache.spark.sql.execution.SparkPlan
@@ -242,7 +242,7 @@ object OmniBackendSettings extends BackendSettingsApi {
         aliasExpr.child match {
           case wExpression: WindowExpression =>
             val isOffsetFunc = wExpression.windowFunction match {
-              case RowNumber() | Rank(_) | PercentRank(_) =>
+              case RowNumber() | Rank(_) | PercentRank(_) | CumeDist() =>
                 false
               case _: Lead | _: Lag =>
                 true

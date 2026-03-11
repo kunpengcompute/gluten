@@ -1100,6 +1100,7 @@ object OmniExpressionAdaptor extends Logging {
       case Rank(_) => OMNI_WINDOW_TYPE_RANK
       case RowNumber() => OMNI_WINDOW_TYPE_ROW_NUMBER
       case PercentRank(_) => OMNI_WINDOW_TYPE_PERCENT_RANK
+      case CumeDist() => OMNI_WINDOW_TYPE_CUME_DIST
       case _ => throw new UnsupportedOperationException(s"Unsupported window function: $window")
     }
   }
