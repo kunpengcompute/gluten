@@ -724,5 +724,6 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"regr_syy", {FUNCTION_OMNI_EXPR_TYPE, "regr_syy"}},
     {"regr_replacement", {FUNCTION_OMNI_EXPR_TYPE, "regr_replacement"}},
     {"soundex", {FUNCTION_OMNI_EXPR_TYPE, "soundex"}},
+    {"array_append", {FUNCTION_OMNI_EXPR_TYPE, "array_append"}},
 };
 } // namespace omniruntime
