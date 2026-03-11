@@ -401,6 +401,8 @@ op::FunctionType SubstraitParser::ParseFunctionType(
         return op::OMNI_WINDOW_TYPE_RANK;
     } else if (funcName == "percent_rank") {
         return op::OMNI_WINDOW_TYPE_PERCENT_RANK;
+    } else if (funcName == "cume_dist") {
+        return op::OMNI_WINDOW_TYPE_CUME_DIST;
     } else if (funcName == "row_number") {
         return op::OMNI_WINDOW_TYPE_ROW_NUMBER;
     } else if (funcName == "lead") {
@@ -521,6 +523,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"murmur3hash", {FUNCTION_OMNI_EXPR_TYPE, "mm3hash"}},
     {"rank", {FUNCTION_OMNI_EXPR_TYPE, "rank"}},
     {"percent_rank", {FUNCTION_OMNI_EXPR_TYPE, "percent_rank"}},
+    {"cume_dist", {FUNCTION_OMNI_EXPR_TYPE, "cume_dist"}},
     {"row_number", {FUNCTION_OMNI_EXPR_TYPE, "row_number"}},
     {"lead", {FUNCTION_OMNI_EXPR_TYPE, "lead"}},
     {"lag", {FUNCTION_OMNI_EXPR_TYPE, "lag"}},
