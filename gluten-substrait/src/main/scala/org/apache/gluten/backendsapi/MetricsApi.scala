@@ -130,6 +130,8 @@ trait MetricsApi extends Serializable {
 
   def genUnionTransformerMetricsUpdater(metrics: Map[String, SQLMetric]): MetricsUpdater
 
+  def genBatchWriteMetrics(sparkContext: SparkContext): Map[String, SQLMetric] = Map.empty
+
   def genColumnarInMemoryTableMetrics(sparkContext: SparkContext): Map[String, SQLMetric] =
     Map("numOutputRows" -> SQLMetrics.createMetric(sparkContext, "number of output rows"))
 }
