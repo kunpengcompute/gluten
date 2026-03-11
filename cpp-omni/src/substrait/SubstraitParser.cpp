@@ -710,5 +710,6 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"soundex", {FUNCTION_OMNI_EXPR_TYPE, "soundex"}},
     {"array_compact", {FUNCTION_OMNI_EXPR_TYPE, "array_compact"}},
     {"array_contains", {FUNCTION_OMNI_EXPR_TYPE, "array_contains"}},
+    {"arrays_overlap", {FUNCTION_OMNI_EXPR_TYPE, "arrays_overlap"}},
 };
 } // namespace omniruntime
