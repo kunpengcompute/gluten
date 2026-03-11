@@ -230,6 +230,9 @@ object OmniBackendSettings extends BackendSettingsApi {
     )
   }
 
+  /** Omni supports AppendDataExec (Iceberg append write uses columnar offload). */
+  override def supportAppendDataExec(): Boolean = true
+
   override def supportSortExec(): Boolean = true
 
   override def supportExpandExec(): Boolean = true

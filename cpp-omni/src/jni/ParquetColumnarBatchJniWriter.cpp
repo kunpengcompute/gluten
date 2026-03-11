@@ -370,7 +370,9 @@ JNIEXPORT void JNICALL Java_com_huawei_boostkit_write_jni_ParquetColumnarBatchJn
         env->ThrowNew(runtimeExceptionClass, "delete nullptr error for writer");
         return;
     }
-    pWriter->arrow_writer->Close();
+    if (pWriter->arrow_writer != nullptr) {
+        pWriter->arrow_writer->Close();
+    }
     delete pWriter;
     JNI_FUNC_END_VOID(runtimeExceptionClass)
 }

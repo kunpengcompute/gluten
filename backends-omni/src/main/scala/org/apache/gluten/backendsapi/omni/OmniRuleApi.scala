@@ -21,6 +21,7 @@ import org.apache.gluten.columnarbatch.OmniBatch
 import org.apache.gluten.config.GlutenConfig
 import org.apache.gluten.extension.columnar._
 import org.apache.gluten.extension.columnar.MiscColumnarRules.{RemoveGlutenTableCacheColumnarToRow, RemoveTopmostColumnarToRow}
+import org.apache.gluten.extension.columnar.V2WritePostRule
 import org.apache.gluten.extension.columnar.heuristic.{ExpandFallbackPolicy, HeuristicTransform}
 import org.apache.gluten.extension.columnar.offload.{OffloadExchange, OffloadJoin, OffloadOthers, OffloadWrite}
 import org.apache.gluten.extension.columnar.rewrite._
@@ -78,7 +79,7 @@ object OmniRuleApi {
 //    injector.injectPreTransform(c => ArrowScanReplaceRule.apply(c.session))
 
     // Legacy: The legacy transform rule.
-    val offloads = Seq(OffloadOthers(), OffloadExchange(), OffloadJoin(), OffloadWrite())
+    val offloads = Seq(OffloadOthers(), OffloadExchange(), OffloadJoin(), OffloadWrite()) ++ IcebergOffloadRegistry.offloads
     val validatorBuilder: GlutenConfig => Validator = conf =>
       Validators.newValidator(conf, offloads)
     val rewrites =
@@ -92,6 +93,7 @@ object OmniRuleApi {
       c => HeuristicTransform.WithRewrites(validatorBuilder(c.glutenConf), rewrites, offloads))
 
     // Legacy: Post-transform rules.
+    injector.injectPostTransform(_ => V2WritePostRule())
     injector.injectPostTransform(_ => UnionTransformerRule())
 //    injector.injectPostTransform(c => PartialProjectRule.apply(c.session))
     injector.injectPostTransform(_ => RemoveNativeWriteFilesSortAndProject())
