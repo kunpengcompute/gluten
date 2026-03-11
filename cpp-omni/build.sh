@@ -113,8 +113,8 @@ if [ $# != 0 ] ; then
   cmake .. $options -DBUILD_CPP_TESTS=ON
 else
   echo "-- Enable Release"
-#  install_fmt
-#  install_folly
+  install_fmt
+  install_folly
   cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_CPP_TESTS=OFF
 fi
 
