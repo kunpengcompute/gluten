@@ -380,7 +380,7 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::FetchRel &fetchRe
         }
     }
 
-    if (fetchRel.offset() != 0 || fetchRel.count() < 0) {
+    if (fetchRel.offset() < 0 || fetchRel.count() < 0) {
         LOG_VALIDATION_MSG("Offset and count should be valid in FetchRel.");
         return false;
     }
