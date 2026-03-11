@@ -264,6 +264,9 @@ bool SubstraitToOmniPlanValidator::IsAllowedCast(const DataTypePtr &fromType, co
     }
 
     // Limited support for Complex types.
+    if (fromType->GetId() == OMNI_ARRAY && toType->GetId() == OMNI_ARRAY) {
+        return true;
+    }
     if (fromType->GetId() == OMNI_ARRAY || fromType->GetId() == OMNI_MAP || fromType->GetId() == OMNI_ROW) {
         return false;
     }
