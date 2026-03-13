@@ -587,6 +587,7 @@ std::unordered_map<std::string, std::string> SubstraitOmniExprConverter::extract
     {"MONTH", "month"},
     {"QUARTER", "quarter"},
     {"YEAR", "year"},
+    {"YEAR_OF_WEEK", "year_of_week"},
 };
 
 CoalesceExpr* SubstraitOmniExprConverter::BuildNestedCoalesceExpr(const std::vector<Expr*>& args) {
