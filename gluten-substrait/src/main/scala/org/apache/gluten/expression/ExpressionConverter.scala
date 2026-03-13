@@ -163,6 +163,20 @@ object ExpressionConverter extends SQLConfHelper with Logging {
                 child.map(replaceWithExpressionTransformer0(_, attributeSeq, expressionsMap)),
                 i)
           }
+        } else if (objectName.endsWith("Base64")) {
+          val child = i.arguments.head
+          i.functionName match {
+            case "encode" =>
+              return GenericExpressionTransformer(
+                ExpressionNames.BASE64,
+                child.map(replaceWithExpressionTransformer0(_, attributeSeq, expressionsMap)),
+                i)
+            case "decode" =>
+              return GenericExpressionTransformer(
+                ExpressionNames.UNBASE64,
+                child.map(replaceWithExpressionTransformer0(_, attributeSeq, expressionsMap)),
+                i)
+          }
         }
       case _ =>
     }
