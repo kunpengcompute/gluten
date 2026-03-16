@@ -678,6 +678,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"unix_micros", {FUNCTION_OMNI_EXPR_TYPE, "unix_micros"}},
     {"unix_date", {FUNCTION_OMNI_EXPR_TYPE, "unix_date"}},
     {"date_from_unix_date", {FUNCTION_OMNI_EXPR_TYPE, "date_from_unix_date"}},
+    {"sort_array", {FUNCTION_OMNI_EXPR_TYPE, "sort_array"}},
     {"array_max", {FUNCTION_OMNI_EXPR_TYPE, "array_max"}},
     {"array_min", {FUNCTION_OMNI_EXPR_TYPE, "array_min"}},
     {"array_repeat", {FUNCTION_OMNI_EXPR_TYPE, "array_repeat"}},
