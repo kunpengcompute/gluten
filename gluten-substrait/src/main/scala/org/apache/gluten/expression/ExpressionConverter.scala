@@ -178,6 +178,27 @@ object ExpressionConverter extends SQLConfHelper with Logging {
                 i)
           }
         }
+        def genStaticInvokeTransformer(expressionName: String): ExpressionTransformer = {
+          var arg0 = i.arguments.head
+          if (i.arguments.head.nodeName == "AnsiCast") {
+            arg0 = i.arguments.head.children.head
+          }
+          val arg1 = i.arguments.last
+          GenericExpressionTransformer(
+            expressionName,
+            Seq(replaceWithExpressionTransformer0(arg0, attributeSeq, expressionsMap),
+              replaceWithExpressionTransformer0(arg1, attributeSeq, expressionsMap)),
+            i)
+        }
+        i.functionName match {
+          case "charTypeWriteSideCheck" =>
+            return genStaticInvokeTransformer("StaticInvokeCharTypeWriteSideCheck")
+          case "varcharTypeWriteSideCheck" =>
+            return genStaticInvokeTransformer("StaticInvokeVarcharTypeWriteSideCheck")
+          case "readSidePadding" =>
+            return genStaticInvokeTransformer("StaticInvokeCharReadPadding")
+          case _ =>
+        }
       case _ =>
     }
 
