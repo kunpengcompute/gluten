@@ -136,6 +136,8 @@ class Splitter {
 
     void WriteSplitByRow();
 
+    void InitVecType(spark::VecType *vt, DataTypePtr dataType);
+
     // Common structures for row formats and col formats
     bool isSpill = false;
     int64_t total_bytes_written_ = 0;
@@ -203,6 +205,8 @@ class Splitter {
     uint32_t expansion = 2; // expansion coefficient
     spark::ProtoRowBatch *protoRowBatch = new ProtoRowBatch();
 
+    std::vector<DataTypePtr> inputDataTypes_;
+
 private:
     void BuildPartition2Row(int32_t row_count);
 
@@ -232,6 +236,8 @@ private:
         vb->ClearVectors();
         delete vb;
     }
+
+
 
     // Data structures required to handle col formats
     std::set<BaseVector *> varcharVectorCache;
@@ -316,6 +322,11 @@ public:
     void SetInputVecBatch(omniruntime::vec::VectorBatch *inVecBatch)
     {
         inputVecBatch = inVecBatch;
+    }
+
+    void SetInputDataTypes(std::vector<DataTypePtr>& inputDataTypes)
+    {
+        inputDataTypes_ = inputDataTypes;
     }
 
     // no need to clear memory when exception, so we have to reset

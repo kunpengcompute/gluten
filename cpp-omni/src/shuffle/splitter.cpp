@@ -1606,6 +1606,52 @@ int32_t Splitter::ProtoWritePartition(int32_t partition_id, std::unique_ptr<Buff
     return 0;
 }
 
+void Splitter::InitVecType(spark::VecType *vt, DataTypePtr dataType)
+{
+    if (dataType->GetId() == OMNI_DECIMAL64 || dataType->GetId() == OMNI_DECIMAL128) {
+        vt->set_precision(std::dynamic_pointer_cast<omniruntime::type::DecimalDataType>(dataType)->GetPrecision());
+        vt->set_scale(std::dynamic_pointer_cast<omniruntime::type::DecimalDataType>(dataType)->GetScale());
+    }
+    vt->set_typeid_(CastOmniTypeIdToProtoVecType(dataType->GetId()));
+
+    switch (dataType->GetId()) {
+        case OMNI_ARRAY: {
+            spark::VecType* elementVt = vt->add_children();
+            auto elementType = std::dynamic_pointer_cast<omniruntime::type::ArrayType>(dataType)->ElementType();
+            spark::VecType::VecTypeId childProtoType = CastOmniTypeIdToProtoVecType(elementType->GetId()); 
+            elementVt->set_typeid_(childProtoType);
+            InitVecType(elementVt, elementType);
+            break;
+        }
+        case OMNI_MAP: {
+            spark::VecType* keyVt = vt->add_children();
+            spark::VecType* valueVt = vt->add_children();
+            auto keyType = std::dynamic_pointer_cast<omniruntime::type::MapType>(dataType)->Key();
+            auto valueType = std::dynamic_pointer_cast<omniruntime::type::MapType>(dataType)->Value();
+            spark::VecType::VecTypeId keyProtoType = CastOmniTypeIdToProtoVecType(keyType->GetId());
+            spark::VecType::VecTypeId valueProtoType = CastOmniTypeIdToProtoVecType(valueType->GetId());
+            keyVt->set_typeid_(keyProtoType);
+            valueVt->set_typeid_(valueProtoType);
+            InitVecType(keyVt, keyType);
+            InitVecType(valueVt, valueType);
+            break;
+        }
+        case OMNI_ROW: {
+            auto rowType = std::dynamic_pointer_cast<omniruntime::type::RowType>(dataType);
+            for (auto i = 0; i < rowType->size(); i++) {
+                spark::VecType* childVt = vt->add_children();
+                auto childType = rowType->childAt(i);
+                spark::VecType::VecTypeId childProtoType = CastOmniTypeIdToProtoVecType(childType->GetId());
+                childVt->set_typeid_(childProtoType);
+                InitVecType(childVt, childType);
+            }
+            break;
+        }
+        default:
+            break;
+    }
+}
+
 int32_t Splitter::ProtoWritePartitionByRow(int32_t partition_id, std::unique_ptr<BufferedOutputStream> &bufferStream, void *bufferOut, int32_t &sizeOut) {
     uint64_t rowCount = partition_rows[partition_id].size();
     uint64_t onceCopyRow = 0;
@@ -1621,14 +1667,7 @@ int32_t Splitter::ProtoWritePartitionByRow(int32_t partition_id, std::unique_ptr
         protoRowBatch->set_veccnt(proto_col_types_.size());
         for (uint32_t i = 0; i < proto_col_types_.size(); ++i) {
             spark::VecType *vt = protoRowBatch->add_vectypes();
-            vt->set_typeid_(proto_col_types_[i]);
-            if(vt->typeid_() == spark::VecType::VEC_TYPE_DECIMAL128 || vt->typeid_() == spark::VecType::VEC_TYPE_DECIMAL64){
-                vt->set_precision(input_col_types.inputDataPrecisions[i]);
-                vt->set_scale(input_col_types.inputDataScales[i]);
-                LogsDebug("precision[indexSchema %d]: %d , scale[indexSchema %d]: %d ",
-                          i, input_col_types.inputDataPrecisions[i],
-                          i, input_col_types.inputDataScales[i]);
-            }
+            InitVecType(vt, inputDataTypes_[i]);
         }
 
         int64_t offset = batchCount * options_.spill_batch_row_num;
@@ -1778,14 +1817,7 @@ int Splitter::protoSpillPartitionByRow(int32_t partition_id, std::unique_ptr<Buf
         protoRowBatch->set_veccnt(proto_col_types_.size());
         for (uint32_t i = 0; i < proto_col_types_.size(); ++i) {
             spark::VecType *vt = protoRowBatch->add_vectypes();
-            vt->set_typeid_(proto_col_types_[i]);
-            if(vt->typeid_() == spark::VecType::VEC_TYPE_DECIMAL128 || vt->typeid_() == spark::VecType::VEC_TYPE_DECIMAL64){
-                vt->set_precision(input_col_types.inputDataPrecisions[i]);
-                vt->set_scale(input_col_types.inputDataScales[i]);
-                LogsDebug("precision[indexSchema %d]: %d , scale[indexSchema %d]: %d ",
-                          i, input_col_types.inputDataPrecisions[i],
-                          i, input_col_types.inputDataScales[i]);
-            }
+            InitVecType(vt, inputDataTypes_[i]);
         }
 
         int64_t offset = batchCount * options_.spill_batch_row_num;
