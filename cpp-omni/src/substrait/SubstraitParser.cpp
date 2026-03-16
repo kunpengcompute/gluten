@@ -525,6 +525,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"ascii", {FUNCTION_OMNI_EXPR_TYPE, "ascii"}},
     {"chr", {FUNCTION_OMNI_EXPR_TYPE, "chr"}},
     {"char", {FUNCTION_OMNI_EXPR_TYPE, "char"}},
+    {"base64", {FUNCTION_OMNI_EXPR_TYPE, "base64"}},
     {"unbase64", {FUNCTION_OMNI_EXPR_TYPE, "unbase64"}},
     {"murmur3hash", {FUNCTION_OMNI_EXPR_TYPE, "mm3hash"}},
     {"rank", {FUNCTION_OMNI_EXPR_TYPE, "rank"}},
