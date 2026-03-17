@@ -221,13 +221,22 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
             // only use first arg in func MakeDecimal
             return new FuncExpr(funcName, {args[0]}, std::move(outputType));
         }
-        if ((funcName == "RLike") && args.size() == RLIKE_INPUT) {
-            auto secondArg = args[1];
-            if (secondArg->GetType() != ExprType::LITERAL_E) {
-                Expr::DeleteExprs(args);
-                OMNI_THROW("SUBSTRAIT_ERROR:", "The type of args[1] is not equal to LITERAL_E");
+        if (funcName == "Greatest" || funcName == "Least") {
+            if (args.size() < 2) {
+                OMNI_THROW("SUBSTRAIT_ERROR:", funcName + " expression requires at least two input parameters");
             }
-            auto literalExpr = static_cast<LiteralExpr *>(secondArg);
+            if (args.size() == 2) {
+                return new FuncExpr(funcName, args, std::move(outputType));
+            } else {
+                std::vector<Expr*> expr = {args[0], args[1]};
+                auto func = new FuncExpr(funcName, expr, std::move(outputType));
+                for (int i = 2; i < args.size(); i++) {
+                    expr[0] = func;
+                    expr[1] = args[i];
+                    func = new FuncExpr(funcName, expr, std::move(outputType));
+                }
+                return func;
+            }
         }
         if (funcName == "mm3hash" || funcName == "xxhash64") {
             auto *func = new FuncExpr(funcName, {args[0], args[args.size() - 1]}, outputType);

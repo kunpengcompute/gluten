@@ -70,8 +70,6 @@ bool ValidatePattern(const std::string &pattern, std::string &error)
     LogValidateMsg(Format("Validation failed at file:{}, line:{}, function:{}, reason:{}", ExtractFileName(__FILE__),  \
         __LINE__, __FUNCTION__, reason))
 
-const std::unordered_set<std::string> kRegexFunctions = {"rlike", "like"};
-
 const std::unordered_set<std::string> kBlackList = {"get_struct_field"};
 } // namespace
 
@@ -192,13 +190,6 @@ bool SubstraitToOmniPlanValidator::ValidateScalarFunction(
     if (it != kBlackList.end()) {
         LOG_VALIDATION_MSG("Function is not support: " + funcName);
         return false;
-    }
-    if (kRegexFunctions.find(funcName) != kRegexFunctions.end()) {
-        // LIKE:  OmniOperator supports both literal and non-literal pattern (column/expr); skip strict literal check
-        if (funcName == "like") {
-            return true;
-        }
-        return ValidateRegexExpr(funcName, scalarFunction);
     }
     return true;
 }

@@ -55,8 +55,7 @@ const char* extractFileName(const char* file) {
 const std::unordered_set<std::string> kRegexFunctions = {
     "regexp_extract",
     "regexp_extract_all",
-    "regexp_replace",
-    "rlike"};
+    "regexp_replace"};
 
 const std::unordered_set<std::string> kBlackList = {
     "split_part",
