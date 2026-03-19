@@ -225,19 +225,9 @@ int32_t DecompressionStream::rowShuffleParseBatch(JNIEnv *env, spark::ProtoRowBa
 
         // create native vector
         auto vectorDataTypeId = static_cast<omniruntime::type::DataTypeId>(protoTypeId.typeid_());
-        if (vectorDataTypeId == OMNI_ARRAY) {
-            if (protoTypeId.children_size() <= 0) {
-                throw std::runtime_error("columnarShuffleParseBatch: Array type must have child type information");
-            }
-            const spark::VecType& childProtoType = protoTypeId.children(0);
-            auto elementDataTypeId = static_cast<omniruntime::type::DataTypeId>(childProtoType.typeid_());
-            std::shared_ptr<DataType> elementDataType = std::make_shared<DataType>(elementDataTypeId);
-
-            auto arrayType = std::make_shared<type::ArrayType>(elementDataType);
-            vecs[i] = VectorHelper::CreateEmptyComplexVector(arrayType.get(), rowCount);
-            BaseVector* elementVector = VectorHelper::CreateVector(OMNI_FLAT, elementDataTypeId, 0);
-            auto arrayVec =  reinterpret_cast<ArrayVector *>(vecs[i]);
-            arrayVec->SetElementVector(std::shared_ptr<BaseVector>(elementVector));
+        if (vectorDataTypeId == OMNI_ARRAY || vectorDataTypeId == OMNI_MAP || vectorDataTypeId == OMNI_ROW) {
+            auto dataType = Splitter::ProtoTypeToOmniType(protoTypeId);
+            vecs[i] = VectorHelper::CreateComplexVector(dataType.get(), rowCount);
         } else {
             vecs[i] = VectorHelper::CreateVector(OMNI_FLAT, vectorDataTypeId, rowCount);
         }
