@@ -2628,7 +2628,7 @@ object GlutenConfig {
     .internal()
     .doc("enable vectorized predicate filtering")
     .booleanConf
-    .createWithDefault(false)
+    .createWithDefault(true)
 
   val COLUMNAR_OMNI_EXCLUDE_SCAN = buildConf("spark.gluten.sql.columnar.backend.omni.excludeScanExecFromCollapsedStage")
     .internal()
