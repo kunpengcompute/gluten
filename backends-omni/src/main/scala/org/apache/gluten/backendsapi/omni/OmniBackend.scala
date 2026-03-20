@@ -83,7 +83,7 @@ object DataTypeUtils {
 }
 
 object OmniBackendSettings extends BackendSettingsApi {
-  val SHUFFLE_SUPPORTED_CODEC = Set("lz4", "zstd")
+  val SHUFFLE_SUPPORTED_CODEC = Set("lz4", "zstd", "snappy", "zlib")
   val GLUTEN_OMNI_UDF_LIB_PATHS = OmniBackend.CONF_PREFIX + ".udfLibraryPaths"
   val GLUTEN_OMNI_DRIVER_UDF_LIB_PATHS = OmniBackend.CONF_PREFIX + ".driver.udfLibraryPaths"
   val GLUTEN_OMNI_INTERNAL_UDF_LIB_PATHS = OmniBackend.CONF_PREFIX + ".internal.udfLibraryPaths"

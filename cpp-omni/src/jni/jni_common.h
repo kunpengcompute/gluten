@@ -182,6 +182,7 @@ extern jclass vecBatchCls;
 extern jclass infoCls;
 extern jclass runtimeAwareClass;
 extern jclass metricsBuilderClass;
+extern jclass metaInfoClass;
 
 extern jmethodID jsonMethodInt;
 extern jmethodID jsonMethodLong;
@@ -200,4 +201,13 @@ extern jmethodID vecBatchInitMethodId;
 extern jmethodID method;
 extern jmethodID runtimeAwareCtxHandle;
 extern jmethodID metricsBuilderConstructor;
+extern jmethodID readByteMethod;
+
+extern jmethodID ctor;
+extern jfieldID fidTypeIds;
+extern jfieldID fidPrec;
+extern jfieldID fidScales;
+extern jfieldID fidVecIds;
+extern jfieldID fidRowCount;
+extern jfieldID fidVecCount;
 #endif //THESTRAL_PLUGIN_MASTER_JNI_COMMON_H

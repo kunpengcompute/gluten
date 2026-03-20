@@ -22,6 +22,8 @@
 
 #include "io/SparkFile.hh"
 #include "io/ColumnWriter.hh"
+#include "io/Decompression.hh"
+#include "common/common.h"
 #include "jni_common.h"
 #include "compute/OmniPlanConverter.h"
 #include "substrait/SubstraitToOmniPlanValidator.h"
@@ -544,4 +546,62 @@ JNIEXPORT void JNICALL Java_org_apache_gluten_udf_UdfJniWrapper_registerFunction
     JNI_FUNC_START
         gluten::jniRegisterFunctionSignatures(env);
     JNI_FUNC_END_VOID(runtimeExceptionClass)
+}
+
+std::unique_ptr<omniruntime::ColumnarBatchIterator> createDeserializer(JNIEnv *env, jobject jniIn, jstring codec_jstr,
+    int64_t shuffleCompressBlockSize, jboolean isRowShuffle)
+{
+    auto codec = GetCompressionType(env, codec_jstr);
+    return std::make_unique<ShuffleReaderDeserializer>(env, jniIn, codec, shuffleCompressBlockSize, isRowShuffle);
+}
+
+JNIEXPORT jlong JNICALL Java_com_huawei_boostkit_spark_jni_SparkJniWrapper_makeNativeDeserializer(JNIEnv *env, jobject obj,
+    jobject jniIn, jstring codec_jstr, int64_t shuffleCompressBlockSize, jboolean isRowShuffle)
+{
+    JNI_FUNC_START
+    auto handler = std::make_unique<omniruntime::ResultIterator>(createDeserializer(env, jniIn, codec_jstr, shuffleCompressBlockSize, isRowShuffle));
+    return reinterpret_cast<long>(static_cast<void*>(handler.release()));
+    JNI_FUNC_END(runtimeExceptionClass)
+}
+
+JNIEXPORT void JNICALL Java_com_huawei_boostkit_spark_jni_SparkJniWrapper_closeDeserializer(JNIEnv *env, jobject obj, jlong handler)
+{
+    JNI_FUNC_START
+    auto iter = reinterpret_cast<omniruntime::ResultIterator*>(handler);
+    delete iter;
+    JNI_FUNC_END_VOID(runtimeExceptionClass)
+}
+
+JNIEXPORT jlong JNICALL Java_org_apache_gluten_vectorized_ShuffleColumnarBatchOutIterator_nativeNext(JNIEnv *env,
+    jobject wrapper, jlong iterHandle)
+{
+    JNI_FUNC_START
+    const auto iter = reinterpret_cast<omniruntime::ResultIterator*>(iterHandle);
+    if (!iter->HasNext()) {
+        return -1;
+    }
+
+    VectorBatch *batch = iter->Next();
+    if (batch == nullptr) {
+        return -1;
+    }
+    return 1;
+    JNI_FUNC_END(runtimeExceptionClass)
+}
+
+JNIEXPORT jobject JNICALL Java_org_apache_gluten_vectorized_ShuffleColumnarBatchOutIterator_nativeMetaInfo(JNIEnv *env,
+    jobject wrapper, jlong iterHandle)
+{
+    JNI_FUNC_START
+    auto* resultIter = reinterpret_cast<omniruntime::ResultIterator*>(iterHandle);
+    auto* innerIter = *reinterpret_cast<ColumnarBatchIterator**>(resultIter);
+
+    if (!innerIter) {
+        env->ThrowNew(env->FindClass("java/lang/IllegalStateException"),
+            "Inner iterator is null");
+        return nullptr;
+    }
+    auto* shuffleIter = static_cast<spark::ShuffleReaderDeserializer*>(innerIter);
+    return shuffleIter->getMetaInfo(env);
+    JNI_FUNC_END(runtimeExceptionClass)
 }
