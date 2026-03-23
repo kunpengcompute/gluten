@@ -56,12 +56,29 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /** OmniColumnVector */
 public class OmniColumnVector extends WritableColumnVector {
     private static final boolean BIG_ENDIAN_PLATFORM =
             ByteOrder.nativeOrder().equals(ByteOrder.BIG_ENDIAN);
+
+    private static String resolveDuplicateFieldName(String fieldName, Set<String> usedFieldNames) {
+        if (!usedFieldNames.contains(fieldName)) {
+            usedFieldNames.add(fieldName);
+            return fieldName;
+        }
+        int suffix = 1;
+        String newFieldName;
+        do {
+            newFieldName = fieldName + "_" + suffix;
+            suffix++;
+        } while (usedFieldNames.contains(newFieldName));
+        usedFieldNames.add(newFieldName);
+        return newFieldName;
+    }
 
     /**
      * Allocates columns to store elements of each field of the schema on heap. Capacity is the
@@ -164,11 +181,12 @@ public class OmniColumnVector extends WritableColumnVector {
                     fieldDataTypes.add(populateVec(fieldTypeNode));
                 }
                 List<StructField> structFields = new ArrayList<>();
+                Set<String> usedFieldNames = new HashSet<>();
                 boolean isNullable = structNode.getNullable() != null ? structNode.getNullable() : true;
                 for (int i = 0; i < fieldDataTypes.size(); i++) {
                     String fieldName;
                     if (structNode.getNames() != null && i < structNode.getNames().size()) {
-                        fieldName = structNode.getNames().get(i);
+                        fieldName = resolveDuplicateFieldName(structNode.getNames().get(i), usedFieldNames);
                     } else {
                         fieldName = "field_" + i;
                     }
