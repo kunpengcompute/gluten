@@ -100,34 +100,68 @@ public class OrcColumnarBatchWriter {
 
     public void initializeSchemaTypeJava(StructType dataSchema) {
         List<Integer> flatTypes = new ArrayList<>();
+        List<Integer> flatChildCounts = new ArrayList<>();
+        List<String> flatFieldNames = new ArrayList<>();
+        List<int[]> flatDecimalParams = new ArrayList<>();
         for (StructField field : dataSchema.fields()) {
-            addTypeRecursive(field.dataType(), flatTypes);
+            addTypeRecursive(field.name(), field.dataType(), flatTypes, flatChildCounts, flatFieldNames, flatDecimalParams);
         }
 
         //convert list to array so it can be transfered by jni
         int[] orcTypeIds = flatTypes.stream().mapToInt(i -> i).toArray();
+        int[] childCounts = flatChildCounts.stream().mapToInt(i -> i).toArray();
+        String[] fieldNames = flatFieldNames.toArray(new String[0]);
+        int[][] decimalParams = flatDecimalParams.toArray(new int[0][0]);
 
         schemaType = jniWriter.initializeSchemaType(
                 orcTypeIds,
-                extractSchemaName(dataSchema),
-                extractDecimalParam(dataSchema)
+                childCounts,
+                fieldNames,
+                decimalParams,
+                dataSchema.length()
         );
     }
 
-    private void addTypeRecursive(DataType dataType, List<Integer> result) {
+    private void addTypeRecursive(String fieldName,
+                                  DataType dataType,
+                                  List<Integer> result,
+                                  List<Integer> childCounts,
+                                  List<String> fieldNames,
+                                  List<int[]> decimalParams) {
         if (dataType instanceof ArrayType) {
             result.add(OrcLibTypeKind.LIST.ordinal());
+            childCounts.add(1);
+            fieldNames.add(fieldName);
+            decimalParams.add(new int[] {0, 0});
             ArrayType arrayType = (ArrayType) dataType;
-            //OrcColumnarBatchJniWriter_initializeSchemaType typeOffset += 1
-            addTypeRecursive(arrayType.elementType(), result);
+            addTypeRecursive("element", arrayType.elementType(), result, childCounts, fieldNames, decimalParams);
         } else if (dataType instanceof MapType) {
             result.add(OrcLibTypeKind.MAP.ordinal());
+            childCounts.add(2);
+            fieldNames.add(fieldName);
+            decimalParams.add(new int[] {0, 0});
             MapType mapType = (MapType) dataType;
-            //OrcColumnarBatchJniWriter_initializeSchemaType typeOffset += 2
-            addTypeRecursive(mapType.keyType(), result);
-            addTypeRecursive(mapType.valueType(), result);
+            addTypeRecursive("key", mapType.keyType(), result, childCounts, fieldNames, decimalParams);
+            addTypeRecursive("value", mapType.valueType(), result, childCounts, fieldNames, decimalParams);
+        } else if (dataType instanceof StructType) {
+            result.add(OrcLibTypeKind.STRUCT.ordinal());
+            StructType structType = (StructType) dataType;
+            childCounts.add(structType.fields().length);
+            fieldNames.add(fieldName);
+            decimalParams.add(new int[] {0, 0});
+            for (StructField field : structType.fields()) {
+                addTypeRecursive(field.name(), field.dataType(), result, childCounts, fieldNames, decimalParams);
+            }
         } else {
             result.add(sparkTypeToOrcLibType(dataType));
+            childCounts.add(0);
+            fieldNames.add(fieldName);
+            if (dataType instanceof DecimalType) {
+                DecimalType decimal = (DecimalType) dataType;
+                decimalParams.add(new int[] {decimal.precision(), decimal.scale()});
+            } else {
+                decimalParams.add(new int[] {0, 0});
+            }
         }
     }
 
@@ -211,6 +245,8 @@ public class OrcColumnarBatchWriter {
             return OrcLibTypeKind.BYTE.ordinal();
         } else if (dataType instanceof TimestampType) {
             return OrcLibTypeKind.TIMESTAMP.ordinal();
+        } else if (dataType instanceof StructType) {
+            return OrcLibTypeKind.STRUCT.ordinal();
         } else {
             throw new RuntimeException(
                     "UnSupport type convert  spark type " + dataType.simpleString() + " to orc lib type");
