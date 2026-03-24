@@ -20,7 +20,7 @@ import org.apache.gluten.expression.ExpressionNames.REGR_SXX
 import org.apache.gluten.expression.ExpressionNames.REGR_SYY
 
 import org.apache.spark.sql.catalyst.expressions.aggregate.RegrReplacement
-import org.apache.spark.sql.catalyst.expressions.{Expression, If, IsNull, Literal, Or}
+import org.apache.spark.sql.catalyst.expressions.{AttributeReference, Cast, Expression, If, IsNull, Literal, Or}
 import org.apache.spark.sql.types.DoubleType
 
 /**
@@ -30,8 +30,34 @@ import org.apache.spark.sql.types.DoubleType
  *
  * Spark sends RegrReplacement(If(Or(IsNull(y), IsNull(x)), null, x_or_y)).
  * We parse the If to get (y, x) and determine regr_sxx (variance of x) vs regr_syy (variance of y).
+ * When y and x are the same column (e.g. regr_sxx(c, c)), the optimizer may collapse the If to a bare
+ * [[AttributeReference]]; we then treat (y, x) as (attr, attr) and map to regr_sxx.
  */
 object OmniRegrMeasureBuilder {
+
+  /**
+   * Spark may wrap the RegrReplacement child `If(Or(IsNull(y), IsNull(x)), null, value)` in one or
+   * more [[Cast]] nodes for type coercion (e.g. BIGINT to DOUBLE). Strip those before matching.
+   */
+  def unwrapLeadingCasts(expr: Expression): Expression = expr match {
+    case c: Cast => unwrapLeadingCasts(c.child)
+    case e => e
+  }
+
+  /**
+   * Partial aggregate child is expected as `If(cond, null, value)`, optionally wrapped in Cast(s).
+   * Returns the value branch (fed to the single-column partial aggregate input).
+   */
+  def extractRegrReplacementPartialValueExpr(childExpr: Expression): Expression = {
+    unwrapLeadingCasts(childExpr) match {
+      case i: If => i.falseValue
+      case ar: AttributeReference => ar
+      case other =>
+        throw new UnsupportedOperationException(
+          s"RegrReplacement Partial expects If(cond, null, value) or a bare column ref (optionally wrapped " +
+            s"in Cast), got ${other.getClass.getSimpleName}")
+    }
+  }
 
   /**
    * If the aggregate is RegrReplacement used for regr_sxx/regr_syy, return the substrait name
@@ -59,10 +85,10 @@ object OmniRegrMeasureBuilder {
    * ref1 = left of Or, ref2 = right; (y, x) = (ref1, ref2); name = regr_sxx if value is ref2 else regr_syy.
    */
   private def parseRegrReplacementChild(child: Expression): Option[(String, Seq[Expression])] = {
-    child match {
+    unwrapLeadingCasts(child) match {
       case ifExpr: If if (ifExpr.trueValue match { case Literal(null, _) => true; case _ => false }) =>
         val cond = ifExpr.predicate
-        val falseValue = ifExpr.falseValue
+        val falseValue = unwrapLeadingCasts(ifExpr.falseValue)
         cond match {
           case or: Or =>
             (or.left, or.right) match {
@@ -78,6 +104,9 @@ object OmniRegrMeasureBuilder {
           case _ =>
             None
         }
+      case attr: AttributeReference =>
+        // Same column for y and x: IF/OR folds away; partial child is just the value column.
+        Some((REGR_SXX, Seq(attr, attr)))
       case _ =>
         None
     }

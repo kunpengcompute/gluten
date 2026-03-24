@@ -333,13 +333,9 @@ abstract class HashAggregateExecTransformer(
                       .doTransform(args))
               case _ =>
                 if (aggregateFunc.isInstanceOf[RegrReplacement]) {
-                  val childExpr = aggregateFunc.children.head
-                  val valueExpr = childExpr match {
-                    case i: org.apache.spark.sql.catalyst.expressions.If => i.falseValue
-                    case _ =>
-                      throw new UnsupportedOperationException(
-                        s"RegrReplacement Partial expects If(cond, null, value) child, got ${childExpr.getClass.getSimpleName}")
-                  }
+                  val valueExpr =
+                    OmniRegrMeasureBuilder.extractRegrReplacementPartialValueExpr(
+                      aggregateFunc.children.head)
                   List(
                     ExpressionConverter
                       .replaceWithExpressionTransformer(valueExpr, originalInputAttributes)
