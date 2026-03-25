@@ -447,6 +447,8 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(const ::substrait::Expressio
                 auto precision = std::dynamic_pointer_cast<DecimalDataType>(dataType)->GetPrecision();
                 auto scale = std::dynamic_pointer_cast<DecimalDataType>(dataType)->GetScale();
                 expr = ParserHelper::GetDefaultValueForType(dataType->GetId(), precision, scale);
+            } else if (dataType->GetId() == OMNI_ROW || dataType->GetId() == OMNI_ARRAY || dataType->GetId() == OMNI_MAP) {
+                expr = ParserHelper::GetDefaultValueForComplexType(dataType);
             } else {
                 expr = ParserHelper::GetDefaultValueForType(dataType->GetId());
             }
