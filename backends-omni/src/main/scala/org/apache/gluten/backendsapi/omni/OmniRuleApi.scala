@@ -79,7 +79,7 @@ object OmniRuleApi {
 //    injector.injectPreTransform(c => ArrowScanReplaceRule.apply(c.session))
 
     // Legacy: The legacy transform rule.
-    val offloads = Seq(OffloadOthers(), OffloadExchange(), OffloadJoin(), OffloadWrite()) ++ IcebergOffloadRegistry.offloads
+    val offloads = Seq(OffloadOthers(), OffloadExchange(), OffloadJoin(), OffloadWrite()) ++ IcebergOffloadRegistry.offloads ++ HudiOffloadRegistry.offloads
     val validatorBuilder: GlutenConfig => Validator = conf =>
       Validators.newValidator(conf, offloads)
     val rewrites =
