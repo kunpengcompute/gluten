@@ -70,6 +70,16 @@
           <groupId>org.apache.gluten</groupId>
           <artifactId>backends-omni</artifactId>
           <version>${project.version}</version>
+          <exclusions>
+            <exclusion>
+              <groupId>io.delta</groupId>
+              <artifactId>${delta.package.name}_${scala.binary.version}</artifactId>
+            </exclusion>
+            <exclusion>
+              <groupId>io.delta</groupId>
+              <artifactId>delta-storage</artifactId>
+            </exclusion>
+          </exclusions>
         </dependency>
       </dependencies>
     </profile>
@@ -141,6 +151,11 @@
             </goals>
             <configuration>
               <createSourcesJar>true</createSourcesJar>
+              <artifactSet>
+                <excludes>
+                  <exclude>io.delta:*</exclude>
+                </excludes>
+              </artifactSet>
               <relocations>
                 <relocation>
                   <pattern>com.google.protobuf</pattern>

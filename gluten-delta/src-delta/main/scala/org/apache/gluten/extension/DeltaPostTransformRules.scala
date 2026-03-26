@@ -16,7 +16,13 @@
  */
 package org.apache.gluten.extension
 
-import org.apache.gluten.execution.{DeltaFilterExecTransformer, DeltaProjectExecTransformer, DeltaScanTransformer, ProjectExecTransformer}
+import org.apache.gluten.execution.{
+  DeltaFilterExecTransformer,
+  DeltaProjectExecTransformer,
+  DeltaScanTransformer,
+  FilterExecTransformerBase,
+  ProjectExecTransformer
+}
 import org.apache.gluten.extension.columnar.transition.RemoveTransitions
 
 import org.apache.spark.sql.SparkSession
@@ -60,17 +66,28 @@ object DeltaPostTransformRules {
     plan.transformUp {
       case FilterExec(condition, child) if containsIncrementMetricExpr(condition) =>
         DeltaFilterExecTransformer(condition, child)
+      case f: FilterExecTransformerBase
+          if containsIncrementMetricExpr(f.cond) &&
+            !f.isInstanceOf[DeltaFilterExecTransformer] &&
+            !isChFilterExecTransformer(f) =>
+        DeltaFilterExecTransformer(f.cond, f.input)
     }
 
   val projectRule: Rule[SparkPlan] = (plan: SparkPlan) =>
     plan.transformUp {
       case ProjectExec(projectList, child) if projectList.exists(containsIncrementMetricExpr) =>
         DeltaProjectExecTransformer(projectList, child)
+      case p: ProjectExecTransformer
+          if p.projectList.exists(containsIncrementMetricExpr) =>
+        DeltaProjectExecTransformer(p.projectList, p.child)
     }
 
   val pushDownInputFileExprRule: Rule[SparkPlan] = (plan: SparkPlan) =>
     plan.transformUp {
       case p @ ProjectExec(projectList, child: DeltaScanTransformer)
+          if projectList.exists(containsInputFileRelatedExpr) =>
+        child.copy(output = p.output)
+      case p @ ProjectExecTransformer(projectList, child: DeltaScanTransformer)
           if projectList.exists(containsInputFileRelatedExpr) =>
         child.copy(output = p.output)
     }
@@ -94,6 +111,11 @@ object DeltaPostTransformRules {
       case e if e.prettyName == "increment_metric" => true
       case _ => expr.children.exists(containsIncrementMetricExpr)
     }
+  }
+
+  /** CH filter transformer overrides remaining-condition logic; do not replace with Delta variant. */
+  private def isChFilterExecTransformer(f: FilterExecTransformerBase): Boolean = {
+    f.getClass.getSimpleName == "CHFilterExecTransformer"
   }
 
   /**

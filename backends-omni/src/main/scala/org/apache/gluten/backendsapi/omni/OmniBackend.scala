@@ -128,6 +128,10 @@ object OmniBackendSettings extends BackendSettingsApi {
       case "ParquetFileFormat" => ReadFileFormat.ParquetReadFormat
       case "OmniOrcFileFormat" => ReadFileFormat.OrcReadFormat
       case "OmniParquetFileFormat" => ReadFileFormat.ParquetReadFormat
+      // Delta Lake and other workflows scan JSON (e.g. _delta_log); Omni has no native JSON scan —
+      // map to a concrete ReadFileFormat so validation fails cleanly and the scan falls back to JVM.
+      case "JsonFileFormat" | "JSONFileFormat" => ReadFileFormat.JsonReadFormat
+      case "CSVFileFormat" => ReadFileFormat.TextReadFormat
       case _ => ReadFileFormat.UnknownFormat
     }
   }
