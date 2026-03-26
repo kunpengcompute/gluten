@@ -109,6 +109,9 @@ object OmniFileFormatWriter extends Logging {
       "true" == sparkSession.sparkContext.getLocalProperty("isNativeApplicable")
 
     if (writeFilesOpt.isEmpty && nativeEnabled && !(plan.isInstanceOf[TransformSupport] || plan.isInstanceOf[FakeRowAdaptor])) {
+      logInfo(
+        s"[Omni-Proof][WriteExec] native write disabled before file write because " +
+          s"plan is neither TransformSupport nor FakeRowAdaptor; plan=${plan.nodeName}")
       sparkSession.sparkContext.setLocalProperty("isNativeApplicable", "false");
       nativeEnabled = false
     }
@@ -280,6 +283,9 @@ object OmniFileFormatWriter extends Logging {
 
       val rdd = planToExecute match {
         case glutenPlan: TransformSupport =>
+          logInfo(
+            s"[Omni-Proof][WriteExec] executing native write through TransformSupport; " +
+              s"plan=${glutenPlan.nodeName}")
           FakeRowAdaptor(glutenPlan).execute()
         case p => p.execute()
       }

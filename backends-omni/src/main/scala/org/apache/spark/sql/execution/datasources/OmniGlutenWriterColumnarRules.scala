@@ -20,16 +20,17 @@ import org.apache.gluten.backendsapi.BackendsApiManager
 import org.apache.gluten.execution.{ColumnarToRowExecBase}
 import org.apache.gluten.execution.datasource.GlutenFormatFactory
 
+import org.apache.spark.internal.Logging
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.catalyst.rules.Rule
 import org.apache.spark.sql.execution._
 import org.apache.spark.sql.execution.adaptive.AdaptiveSparkPlanExec
 import org.apache.spark.sql.execution.command.{CreateDataSourceTableAsSelectCommand, DataWritingCommand, DataWritingCommandExec}
-import org.apache.spark.sql.execution.datasources.v2.{AppendDataExec, OverwriteByExpressionExec}
+import org.apache.spark.sql.execution.datasources.v2.{AppendDataExec, AppendDataExecV1, OverwriteByExpressionExec, OverwriteByExpressionExecV1}
 import org.apache.spark.sql.hive.execution.{CreateHiveTableAsSelectCommand, InsertIntoHiveDirCommand, InsertIntoHiveTable, OmniInsertIntoHiveTable}
 import org.apache.spark.sql.sources.DataSourceRegister
 
-object OmniGlutenWriterColumnarRules {
+object OmniGlutenWriterColumnarRules extends Logging {
   // TODO: support ctas in Spark3.4, see https://github.com/apache/spark/pull/39220
   // TODO: support dynamic partition and bucket write
   //  1. pull out `Empty2Null` and required ordering to `WriteFilesExec`, see Spark3.4 `V1Writes`
@@ -84,18 +85,63 @@ object OmniGlutenWriterColumnarRules {
     }
   }
 
+  private def isDeltaV1FallbackWrite(write: Any): Boolean = {
+    write.getClass.getName.startsWith("org.apache.spark.sql.delta.catalog.WriteIntoDeltaBuilder")
+  }
+
+  private def resolveClassSource(className: String): String = {
+    try {
+      val clazz = Class.forName(className)
+      Option(clazz.getProtectionDomain)
+        .flatMap(domain => Option(domain.getCodeSource))
+        .flatMap(source => Option(source.getLocation))
+        .map(_.toString)
+        .getOrElse("<unknown>")
+    } catch {
+      case _: Throwable => "<not-found>"
+    }
+  }
+
   case class NativeWritePostRule(session: SparkSession) extends Rule[SparkPlan] {
 
     private val NOOP_WRITE = "org.apache.spark.sql.execution.datasources.noop.NoopWrite$"
 
     override def apply(p: SparkPlan): SparkPlan = p match {
+      case rc: AppendDataExecV1 =>
+        if (isDeltaV1FallbackWrite(rc.write)) {
+          logInfo(
+            s"[Omni-Proof][WriteRule] AppendDataExecV1 detected for Delta V1 fallback write; " +
+              s"final native offload is decided in DeltaLog.startTransaction / " +
+              s"OmniOptimisticTransaction, not by NativeWritePostRule. " +
+              s"write=${rc.write.getClass.getName}, " +
+              s"deltaLogSource=${resolveClassSource("org.apache.spark.sql.delta.DeltaLog")}, " +
+              s"omniTxnSource=${resolveClassSource("org.apache.spark.sql.delta.OmniOptimisticTransaction")}")
+        } else {
+          logInfo(
+            s"[Omni-Proof][WriteRule] AppendDataExecV1 detected; " +
+              s"this V1 fallback write path is not rewritten to Omni native write " +
+              s"in the current build. write=${rc.write.getClass.getName}")
+        }
+        rc
+      case rc: OverwriteByExpressionExecV1 =>
+        logInfo(
+          s"[Omni-Proof][WriteRule] OverwriteByExpressionExecV1 detected; " +
+            s"this V1 fallback write path is not rewritten to Omni native write " +
+            s"in the current build. write=${rc.write.getClass.getName}")
+        rc
       case rc @ AppendDataExec(_, _, write)
         if write.getClass.getName == NOOP_WRITE &&
           BackendsApiManager.getSettings.enableNativeWriteFiles() =>
+        logInfo(
+          s"[Omni-Proof][WriteRule] append uses NOOP writer; injecting FakeRowAdaptor " +
+            s"for child=${rc.child.nodeName}")
         injectFakeRowAdaptor(rc, rc.child)
       case rc @ OverwriteByExpressionExec(_, _, write)
         if write.getClass.getName == NOOP_WRITE &&
           BackendsApiManager.getSettings.enableNativeWriteFiles() =>
+        logInfo(
+          s"[Omni-Proof][WriteRule] overwrite uses NOOP writer; injecting FakeRowAdaptor " +
+            s"for child=${rc.child.nodeName}")
         injectFakeRowAdaptor(rc, rc.child)
       case rc @ DataWritingCommandExec(cmd, child) =>
         // The same thread can set these properties in the last query submission.
@@ -109,6 +155,10 @@ object OmniGlutenWriterColumnarRules {
         injectSparkLocalProperty(session, format)
         format match {
           case Some(_) =>
+            logInfo(
+              s"[Omni-Proof][WriteRule] native write applicable; " +
+                s"command=${cmd.getClass.getSimpleName}, child=${child.nodeName}, " +
+                s"format=${format.get}, columns=${child.output.map(_.name).mkString("[", ",", "]")}")
             injectFakeRowAdaptor(rc, child)
           case None =>
             rc.withNewChildren(rc.children.map(apply))
@@ -149,6 +199,10 @@ object OmniGlutenWriterColumnarRules {
       spark.sparkContext.setLocalProperty(
         "staticPartitionWriteOnly",
         BackendsApiManager.getSettings.staticPartitionWriteOnly().toString)
+      logInfo(
+        s"[Omni-Proof][WriteRule] set Spark local properties: " +
+          s"isNativeApplicable=true, nativeFormat=${format.get}, " +
+          s"staticPartitionWriteOnly=${BackendsApiManager.getSettings.staticPartitionWriteOnly()}")
     } else {
       spark.sparkContext.setLocalProperty("isNativeApplicable", null)
       spark.sparkContext.setLocalProperty("nativeFormat", null)

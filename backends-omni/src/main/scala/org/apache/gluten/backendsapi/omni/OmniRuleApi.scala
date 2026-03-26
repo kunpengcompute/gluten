@@ -33,7 +33,11 @@ import org.apache.gluten.extension.{OmniHLLRewriteRule, RewriteAQEShuffleRead}
 import org.apache.spark.sql.catalyst.optimizer.{CombineJoinedAggregates, DedupLeftSemiJoin, MergeSubqueryFilters, PushOrderedLimitThroughAgg, ReorderJoinEnhances, RewriteSelfJoinInInPredicate, RollupOptimization, ShuffleJoinStrategy, RewriteTopNSort, CombineWindowSort, OmniRewriteSubqueryBroadcast, CombineProject}
 import org.apache.gluten.extension.{FallbackBroadcastHashJoin, FallbackBroadcastHashJoinPrepQueryStage, PushDownFilterToOmniScan, OmniRewriteCollectFuncRule, RewriteAQEShuffleRead, OmniRewriteJoin, AdaptiveHashAggregateRule}
 import org.apache.gluten.sql.shims.SparkShimLoader
-import org.apache.spark.sql.execution.{ColumnarCollapseTransformStages, GlutenAutoAdjustStageResourceProfile, GlutenFallbackReporter}
+import org.apache.spark.internal.Logging
+import org.apache.spark.sql.catalyst.rules.Rule
+import org.apache.spark.sql.execution.{ColumnarCollapseTransformStages, FileSourceScanExec, GlutenAutoAdjustStageResourceProfile, GlutenFallbackReporter, RDDScanExec, SparkPlan}
+import org.apache.spark.sql.execution.adaptive.AdaptiveSparkPlanHelper
+import org.apache.spark.sql.types.StructType
 
 class OmniRuleApi extends RuleApi {
 
@@ -90,7 +94,7 @@ object OmniRuleApi {
         PullOutPostProject,
         ProjectColumnPruning)
     injector.injectTransform(
-      c => HeuristicTransform.WithRewrites(validatorBuilder(c.glutenConf), rewrites, offloads))
+      c => intercept(HeuristicTransform.WithRewrites(validatorBuilder(c.glutenConf), rewrites, offloads)))
 
     // Legacy: Post-transform rules.
     injector.injectPostTransform(_ => V2WritePostRule())
@@ -201,6 +205,85 @@ object OmniRuleApi {
 //    injector.injectPostTransform(c => RemoveGlutenTableCacheColumnarToRow(c.session))
 //    injector.injectPostTransform(c => GlutenFallbackReporter(c.glutenConf, c.session))
 //    injector.injectPostTransform(_ => RemoveFallbackTagRule())
+  }
+
+  /**
+   * Delta metadata reconstruction currently reads `_delta_log` JSON and builds state rows with
+   * nested structs/maps. Omni native scan/shuffle does not support that path yet, and forcing
+   * Gluten transform on those internal plans leads to:
+   *   1. JsonReadFormat validation warnings
+   *   2. anonymous ScalaUDF validation failures
+   *   3. rowSplit native errors on complex action rows
+   *
+   * Keep those internal metadata plans on Spark row execution while leaving normal Delta data-file
+   * scans available for the usual Omni offload path.
+   */
+  private class OmniSparkRuleInterceptor(delegate: Rule[SparkPlan])
+    extends Rule[SparkPlan]
+    with AdaptiveSparkPlanHelper
+    with Logging {
+
+    override val ruleName: String = delegate.ruleName
+
+    override def apply(plan: SparkPlan): SparkPlan = {
+      findSkipReason(plan) match {
+        case Some(reason) =>
+          logWarning(
+            s"[Omni-Proof][DeltaRead] skipping Omni transform for Delta metadata plan; " +
+              s"rule=${delegate.ruleName}, reason=$reason")
+          plan
+        case None =>
+          delegate(plan)
+      }
+    }
+
+    private def findSkipReason(plan: SparkPlan): Option[String] = {
+      collect(plan) {
+        case rddScanExec: RDDScanExec if rddScanExec.nodeName.contains("Delta Table State") =>
+          s"RDD scan '${rddScanExec.nodeName}' is Delta Table State"
+        case scanExec: FileSourceScanExec if isDeltaLogFileScan(scanExec) =>
+          s"File scan '${scanExec.nodeName}' reads Delta log files"
+        case sparkPlan if isDeltaMetadataStatePlan(sparkPlan) =>
+          val output = sparkPlan.output.map(_.name).mkString("[", ",", "]")
+          s"plan '${sparkPlan.nodeName}' has Delta metadata action schema output=$output"
+      }.headOption
+    }
+
+    private def isDeltaLogFileScan(scanExec: FileSourceScanExec): Boolean = {
+      val location = scanExec.relation.location
+      val className = Option(location).map(_.getClass.getName).getOrElse("")
+      val containsDeltaLogPath = Option(location)
+        .map(
+          _.inputFiles.exists(path =>
+            path.contains("/_delta_log/") || path.contains("\\_delta_log\\")))
+        .getOrElse(false)
+
+      className == "org.apache.spark.sql.delta.DeltaLogFileIndex" ||
+      className == "org.apache.spark.sql.delta.files.DeltaLogFileIndex" ||
+      className.endsWith(".DeltaLogFileIndex") ||
+      containsDeltaLogPath
+    }
+
+    private def isDeltaMetadataStatePlan(plan: SparkPlan): Boolean = {
+      val deltaActionStructColumns =
+        Set("add", "remove", "metaData", "protocol", "txn", "commitInfo", "cdc", "domainMetadata")
+      val deltaAuxColumns =
+        Set("version", "inCommitTimestamp", "add_path_canonical", "remove_path_canonical")
+
+      val structActionColumns = plan.output.collect {
+        case attr
+          if deltaActionStructColumns.contains(attr.name) &&
+            attr.dataType.isInstanceOf[StructType] =>
+          attr.name
+      }.toSet
+      val auxColumns = plan.output.map(_.name).toSet.intersect(deltaAuxColumns)
+
+      structActionColumns.size >= 2 && auxColumns.nonEmpty
+    }
+  }
+
+  private def intercept(delegate: Rule[SparkPlan]): Rule[SparkPlan] = {
+    new OmniSparkRuleInterceptor(delegate)
   }
 
 }
