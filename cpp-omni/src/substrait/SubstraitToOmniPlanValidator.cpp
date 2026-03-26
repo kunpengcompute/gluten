@@ -217,55 +217,37 @@ bool SubstraitToOmniPlanValidator::ValidateLiteral(
 
 bool SubstraitToOmniPlanValidator::IsAllowedCast(const DataTypePtr &fromType, const DataTypePtr &toType)
 {
-    // Currently cast is not allowed for various categories, code has a bunch of rules
-    // which define the cast categories and if we should offload to velox. Currently,
-    // the following categories are denied.
-    //
-    // 1. from/to isIntervalYearMonth is not allowed.
-    // 2. Date to most categories except few supported types is not allowed.
-    // 3. Timestamp to most categories except few supported types is not allowed.
-    // 4. Certain complex types are not allowed.
-
-    // Limited support for DATE to X.
-    if (fromType->GetId() == OMNI_DATE32 && !toType->GetId() == OMNI_TIMESTAMP && !toType->GetId() == OMNI_VARCHAR) {
-        return false;
+    auto fromTypeId = fromType->GetId();
+    auto toTypeId = toType->GetId();
+    switch (toTypeId) {
+        case OMNI_BOOLEAN:
+        case OMNI_BYTE:
+        case OMNI_SHORT:
+        case OMNI_INT:
+        case OMNI_LONG:
+        case OMNI_FLOAT:
+        case OMNI_DOUBLE:
+            if (fromTypeId == OMNI_DATE32 || fromTypeId == OMNI_TIMESTAMP) {
+                return false;
+            }
+            break;
+        case OMNI_VARCHAR:
+            if (fromTypeId == OMNI_ARRAY || fromTypeId == OMNI_MAP || fromTypeId == OMNI_ROW) {
+                return false;
+            }
+            break;
+        case OMNI_TIMESTAMP:
+            if (fromTypeId != OMNI_DATE32) {
+                return false;
+            }
+            break;
+        case OMNI_DECIMAL64:
+        case OMNI_DECIMAL128:
+            if (fromTypeId == OMNI_DATE32 || fromTypeId == OMNI_TIMESTAMP) {
+                return false;
+            }
+            break;
     }
-
-    // Limited support for Timestamp to X.
-    if (fromType->GetId() == OMNI_TIMESTAMP && !(toType->GetId() == OMNI_DATE32 || toType->GetId() == OMNI_VARCHAR)) {
-        return false;
-    }
-
-    // Limited support for X to Timestamp.
-    if (toType->GetId() == OMNI_TIMESTAMP) {
-        if (fromType->isDecimal()) {
-            return false;
-        }
-        if (fromType->GetId() == OMNI_DATE32) {
-            return true;
-        }
-        if (fromType->GetId() == OMNI_VARCHAR) {
-            return true;
-        }
-        if (fromType->GetId() == OMNI_BYTE || fromType->GetId() == OMNI_SHORT || fromType->GetId() == OMNI_INT ||
-            fromType->GetId() == OMNI_LONG || fromType->GetId() == OMNI_DOUBLE || fromType->GetId() == OMNI_FLOAT) {
-            return true;
-        }
-        return false;
-    }
-
-    // Limited support for Complex types.
-    if (fromType->GetId() == OMNI_ARRAY && toType->GetId() == OMNI_ARRAY) {
-        return true;
-    }
-    if (fromType->GetId() == OMNI_ARRAY || fromType->GetId() == OMNI_MAP || fromType->GetId() == OMNI_ROW) {
-        return false;
-    }
-
-    if (fromType->GetId() == OMNI_VARBINARY && !toType->GetId() == OMNI_VARCHAR) {
-        return false;
-    }
-
     return true;
 }
 
