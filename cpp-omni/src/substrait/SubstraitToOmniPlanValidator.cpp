@@ -775,6 +775,7 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::SortRel &sortRel)
             case OMNI_DOUBLE:
             case OMNI_CHAR:
             case OMNI_VARCHAR:
+            case OMNI_VARBINARY:
             case OMNI_BOOLEAN:
             case OMNI_DECIMAL64:
             case OMNI_DECIMAL128:
