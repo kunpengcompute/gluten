@@ -149,7 +149,7 @@ object OmniBackendSettings extends BackendSettingsApi {
     fields.map {
       field =>
         field.dataType match {
-          case _: StructType | _: YearMonthIntervalType => return false
+          case _: YearMonthIntervalType => return false
           case _ =>
         }
     }
@@ -192,8 +192,6 @@ object OmniBackendSettings extends BackendSettingsApi {
           fields.flatMap {
             case StructField(_, _: YearMonthIntervalType, _, _) =>
               Some("YearMonthIntervalType")
-            case StructField(_, _: StructType, _, _) =>
-              Some("StructType")
             case _ => None
           }
         case _ => Seq.empty

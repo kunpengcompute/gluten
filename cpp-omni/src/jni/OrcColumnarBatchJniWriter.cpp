@@ -19,6 +19,7 @@
 
 #include <memory>
 #include <string>
+#include <functional>
 #include <json/json.h>
 #include <orc/Type.hh>
 #include "jni_common.h"
@@ -62,52 +63,105 @@ JNIEXPORT jlong JNICALL Java_com_huawei_boostkit_write_jni_OrcColumnarBatchJniWr
 }
 
 JNIEXPORT jlong JNICALL Java_com_huawei_boostkit_write_jni_OrcColumnarBatchJniWriter_initializeSchemaType(
-        JNIEnv *env, jobject jObj, jintArray orcTypeIds, jobjectArray schemaNames, jobjectArray decimalParam)
+        JNIEnv *env,
+        jobject jObj,
+        jintArray orcTypeIds,
+        jintArray childCounts,
+        jobjectArray fieldNames,
+        jobjectArray decimalParam,
+        jint topLevelFieldCount)
 {
     JNI_FUNC_START
     auto orcTypeIdPtr = env->GetIntArrayElements(orcTypeIds, JNI_FALSE);
+    auto childCountPtr = env->GetIntArrayElements(childCounts, JNI_FALSE);
     if (orcTypeIdPtr == NULL) {
         env->ThrowNew(runtimeExceptionClass, "Orc type ids should not be null.");
     }
-    // 获取列名长度，orcTypeIds长度已经不确定，包含嵌套子列
-    auto schemaNamesLength = (int32_t)env->GetArrayLength(schemaNames);
-    auto writeType = createPrimitiveType(::orc::TypeKind::STRUCT);
-
-    int typeOffset = 0;  //用来给嵌套类型做偏移
-
-    for (int i = 0; i < schemaNamesLength; ++i) {
-        jint orcType = orcTypeIdPtr[i + typeOffset];
-        jstring schemaName = (jstring)env->GetObjectArrayElement(schemaNames, i);
-        const char *cSchemaName = env->GetStringUTFChars(schemaName, nullptr);
-        std::unique_ptr<::orc::Type> writeOrcType;
-
-        // 遇到LIST类型，取出紧随其后的子类型，并让偏移量+1，map类型则偏移量+2
-        if (static_cast<::orc::TypeKind>(orcType) == ::orc::TypeKind::LIST) {
-            jint elementTypeId = orcTypeIdPtr[i + typeOffset + 1];
-            writeOrcType = createListType(createPrimitiveType(static_cast<::orc::TypeKind>(elementTypeId)));
-            typeOffset += 1;
-        }else if (static_cast<::orc::TypeKind>(orcType) == ::orc::TypeKind::MAP) {
-            jint keyTypeId = orcTypeIdPtr[i + typeOffset + 1];
-            jint valueTypeId = orcTypeIdPtr[i + typeOffset + 2];
-            writeOrcType = createMapType(
-                    createPrimitiveType(static_cast<::orc::TypeKind>(keyTypeId)),
-                    createPrimitiveType(static_cast<::orc::TypeKind>(valueTypeId)));
-            typeOffset += 2;
-        }
-        else if (static_cast<::orc::TypeKind>(orcType) == ::orc::TypeKind::DECIMAL) {
-            auto decimalParamArray = (jintArray)env->GetObjectArrayElement(decimalParam, i);
-            auto decimalParamArrayPtr = env->GetIntArrayElements(decimalParamArray, JNI_FALSE);
-            auto precision = decimalParamArrayPtr[DECIMAL_PRECISION_INDEX];
-            auto scale = decimalParamArrayPtr[DECIMAL_SCALE_INDEX];
-            writeOrcType = ::orc::createDecimalType(precision, scale);
-            env->ReleaseIntArrayElements(decimalParamArray, decimalParamArrayPtr, JNI_ABORT);
-        } else {
-            writeOrcType = createPrimitiveType(static_cast<::orc::TypeKind>(orcType));
-        }
-        writeType->addStructField(std::string(cSchemaName), std::move(writeOrcType));
-        env->ReleaseStringUTFChars(schemaName, cSchemaName);
+    if (childCountPtr == NULL) {
+        env->ThrowNew(runtimeExceptionClass, "Child counts should not be null.");
     }
 
+    auto nodeCount = static_cast<int32_t>(env->GetArrayLength(orcTypeIds));
+    if (nodeCount != static_cast<int32_t>(env->GetArrayLength(childCounts)) ||
+        nodeCount != static_cast<int32_t>(env->GetArrayLength(fieldNames)) ||
+        nodeCount != static_cast<int32_t>(env->GetArrayLength(decimalParam))) {
+        env->ThrowNew(runtimeExceptionClass, "Schema node arrays must have the same length.");
+    }
+    auto writeType = createPrimitiveType(::orc::TypeKind::STRUCT);
+
+    struct ParsedNode {
+        std::string name;
+        std::unique_ptr<::orc::Type> type;
+    };
+
+    std::function<ParsedNode(int32_t&)> parseNode = [&](int32_t& cursor) -> ParsedNode {
+        if (cursor >= nodeCount) {
+            env->ThrowNew(runtimeExceptionClass, "Schema node cursor out of bounds.");
+            return ParsedNode{"", createPrimitiveType(::orc::TypeKind::STRING)};
+        }
+
+        const int32_t currentIndex = cursor;
+        const auto typeKind = static_cast<::orc::TypeKind>(orcTypeIdPtr[currentIndex]);
+        const int32_t childCount = childCountPtr[currentIndex];
+        jstring fieldNameObj = (jstring)env->GetObjectArrayElement(fieldNames, currentIndex);
+        const char *fieldNameChars = env->GetStringUTFChars(fieldNameObj, nullptr);
+        std::string currentFieldName(fieldNameChars == nullptr ? "" : fieldNameChars);
+        env->ReleaseStringUTFChars(fieldNameObj, fieldNameChars);
+        env->DeleteLocalRef(fieldNameObj);
+        cursor += 1;
+
+        switch (typeKind) {
+            case ::orc::TypeKind::LIST: {
+                if (childCount != 1) {
+                    env->ThrowNew(runtimeExceptionClass, "LIST type must have exactly one child.");
+                }
+                auto childNode = parseNode(cursor);
+                return ParsedNode{currentFieldName, createListType(std::move(childNode.type))};
+            }
+            case ::orc::TypeKind::MAP: {
+                if (childCount != 2) {
+                    env->ThrowNew(runtimeExceptionClass, "MAP type must have exactly two children.");
+                }
+                auto keyNode = parseNode(cursor);
+                auto valueNode = parseNode(cursor);
+                return ParsedNode{
+                    currentFieldName,
+                    createMapType(std::move(keyNode.type), std::move(valueNode.type))
+                };
+            }
+            case ::orc::TypeKind::STRUCT: {
+                auto structType = createPrimitiveType(::orc::TypeKind::STRUCT);
+                for (int32_t i = 0; i < childCount; ++i) {
+                    auto childNode = parseNode(cursor);
+                    const std::string childName = childNode.name.empty() ?
+                        ("field_" + std::to_string(i)) : childNode.name;
+                    structType->addStructField(childName, std::move(childNode.type));
+                }
+                return ParsedNode{currentFieldName, std::move(structType)};
+            }
+            case ::orc::TypeKind::DECIMAL: {
+                auto decimalParamArray = (jintArray)env->GetObjectArrayElement(decimalParam, currentIndex);
+                auto decimalParamArrayPtr = env->GetIntArrayElements(decimalParamArray, JNI_FALSE);
+                const auto precision = decimalParamArrayPtr[DECIMAL_PRECISION_INDEX];
+                const auto scale = decimalParamArrayPtr[DECIMAL_SCALE_INDEX];
+                env->ReleaseIntArrayElements(decimalParamArray, decimalParamArrayPtr, JNI_ABORT);
+                env->DeleteLocalRef(decimalParamArray);
+                return ParsedNode{currentFieldName, ::orc::createDecimalType(precision, scale)};
+            }
+            default: {
+                return ParsedNode{currentFieldName, createPrimitiveType(typeKind)};
+            }
+        }
+    };
+
+    int32_t cursor = 0;
+    for (int32_t i = 0; i < topLevelFieldCount; ++i) {
+        auto topNode = parseNode(cursor);
+        const std::string topName = topNode.name.empty() ? ("col_" + std::to_string(i)) : topNode.name;
+        writeType->addStructField(topName, std::move(topNode.type));
+    }
+
+    env->ReleaseIntArrayElements(childCounts, childCountPtr, JNI_ABORT);
     env->ReleaseIntArrayElements(orcTypeIds, orcTypeIdPtr, JNI_ABORT);
     ::orc::Type *writerTypeNew = writeType.release();
     return (jlong)(writerTypeNew);

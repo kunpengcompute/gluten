@@ -40,7 +40,13 @@ JNIEXPORT jlong JNICALL Java_com_huawei_boostkit_write_jni_OrcColumnarBatchJniWr
  * Signature:
  */
 JNIEXPORT jlong JNICALL Java_com_huawei_boostkit_write_jni_OrcColumnarBatchJniWriter_initializeSchemaType(
-    JNIEnv *env, jobject jObj, jintArray orcTypeIds, jobjectArray schemaNames, jobjectArray decimalParam);
+    JNIEnv *env,
+    jobject jObj,
+    jintArray orcTypeIds,
+    jintArray childCounts,
+    jobjectArray fieldNames,
+    jobjectArray decimalParam,
+    jint topLevelFieldCount);
 
 /*
  * Class:       com_huawei_boostkit_writer_jni_OrcColumnarBatchJniWriter
