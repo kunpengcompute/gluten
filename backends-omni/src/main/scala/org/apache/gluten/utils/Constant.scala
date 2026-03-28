@@ -30,6 +30,7 @@ object Constant {
   val OMNI_INTEGER_TYPE: String = DataTypeId.OMNI_INT.ordinal().toString
   val OMNI_LONG_TYPE: String = DataTypeId.OMNI_LONG.ordinal().toString
   val OMNI_DOUBLE_TYPE: String = DataTypeId.OMNI_DOUBLE.ordinal().toString
+  val OMNI_FLOAT_TYPE: String = DataTypeId.OMNI_FLOAT.ordinal().toString
   val OMNI_BOOLEAN_TYPE: String = DataTypeId.OMNI_BOOLEAN.ordinal().toString
   val OMNI_DATE_TYPE: String = DataTypeId.OMNI_DATE32.ordinal().toString
   val IS_CHECK_OMNI_EXP: Boolean = GlutenConfig.get.enableOmniExpCheck
