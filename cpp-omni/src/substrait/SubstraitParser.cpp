@@ -443,6 +443,10 @@ op::FunctionType SubstraitParser::ParseFunctionType(
         return op::OMNI_AGGREGATION_TYPE_REGR_SXY;
     } else if (funcName == "regr_syy") {
         return op::OMNI_AGGREGATION_TYPE_REGR_SYY;
+    } else if (funcName == "regr_avgx") {
+        return op::OMNI_AGGREGATION_TYPE_REGR_AVGX;
+    } else if (funcName == "regr_avgy") {
+        return op::OMNI_AGGREGATION_TYPE_REGR_AVGY;
     } else if (funcName == "regr_replacement") {
         return op::OMNI_AGGREGATION_TYPE_REGR_REPLACEMENT;
  	} else if (funcName == "min_by") {
@@ -740,6 +744,8 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"regr_sxx", {FUNCTION_OMNI_EXPR_TYPE, "regr_sxx"}},
     {"regr_sxy", {FUNCTION_OMNI_EXPR_TYPE, "regr_sxy"}},
     {"regr_syy", {FUNCTION_OMNI_EXPR_TYPE, "regr_syy"}},
+    {"regr_avgx", {FUNCTION_OMNI_EXPR_TYPE, "regr_avgx"}},
+    {"regr_avgy", {FUNCTION_OMNI_EXPR_TYPE, "regr_avgy"}},
     {"regr_replacement", {FUNCTION_OMNI_EXPR_TYPE, "regr_replacement"}},
     {"soundex", {FUNCTION_OMNI_EXPR_TYPE, "soundex"}},
     {"array_append", {FUNCTION_OMNI_EXPR_TYPE, "array_append"}},

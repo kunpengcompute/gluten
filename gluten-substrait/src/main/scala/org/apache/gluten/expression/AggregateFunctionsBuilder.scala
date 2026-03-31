@@ -123,6 +123,10 @@ object AggregateFunctionsBuilder {
               ExpressionNames.REGR_SXX
             case "org.apache.spark.sql.catalyst.expressions.aggregate.RegrSYY" =>
               ExpressionNames.REGR_SYY
+            case "org.apache.spark.sql.catalyst.expressions.aggregate.RegrAvgX" =>
+              ExpressionNames.REGR_AVGX
+            case "org.apache.spark.sql.catalyst.expressions.aggregate.RegrAvgY" =>
+              ExpressionNames.REGR_AVGY
             case _ =>
               throw new GlutenNotSupportException(
                 s"Could not find a valid substrait mapping name for $aggregateFunc.")
