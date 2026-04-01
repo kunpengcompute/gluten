@@ -48,6 +48,7 @@ import org.apache.spark.sql.sources.LessThanOrEqual;
 import org.apache.spark.sql.sources.Not;
 import org.apache.spark.sql.sources.Or;
 import org.apache.spark.sql.types.BooleanType;
+import org.apache.spark.sql.types.ByteType;
 import org.apache.spark.sql.types.DateType;
 import org.apache.spark.sql.types.DecimalType;
 import org.apache.spark.sql.types.DoubleType;
@@ -334,7 +335,8 @@ public class ParquetPushFilterBuilder {
 
     private ParquetPredicateDataType getParquetType(StructField field) {
         org.apache.spark.sql.types.DataType dataType = field.dataType();
-        if (dataType instanceof ShortType || dataType instanceof IntegerType || dataType instanceof LongType) {
+        if (dataType instanceof ByteType || dataType instanceof ShortType || dataType instanceof IntegerType
+                || dataType instanceof LongType) {
             return ParquetPredicateDataType.LONG;
         } else if (dataType instanceof DoubleType) {
             return ParquetPredicateDataType.FLOAT;
@@ -499,7 +501,8 @@ public class ParquetPushFilterBuilder {
         }
 
         if (literal instanceof String || literal instanceof Integer || literal instanceof Long
-                || literal instanceof Boolean || literal instanceof Short || literal instanceof Double) {
+                || literal instanceof Boolean || literal instanceof Byte || literal instanceof Short
+                || literal instanceof Double) {
             return literal.toString();
         }
 
@@ -571,7 +574,9 @@ public class ParquetPushFilterBuilder {
     private DataType.DataTypeId getSupportPredicateDataType(String attribute) {
         StructField field = requiredSchema.apply(attribute);
         org.apache.spark.sql.types.DataType dataType = field.dataType();
-        if (dataType instanceof ShortType) {
+        if (dataType instanceof ByteType) {
+            return DataType.DataTypeId.OMNI_BYTE;
+        } else if (dataType instanceof ShortType) {
             return DataType.DataTypeId.OMNI_SHORT;
         } else if (dataType instanceof IntegerType) {
             return DataType.DataTypeId.OMNI_INT;
