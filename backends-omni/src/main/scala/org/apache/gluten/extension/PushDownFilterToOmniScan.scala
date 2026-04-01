@@ -23,7 +23,7 @@ import org.apache.gluten.execution.{OmniFileSourceScanExecTransformer, FilterExe
 import org.apache.spark.sql.catalyst.expressions.{And, Attribute, EqualTo, Expression, GreaterThan, GreaterThanOrEqual, IsNotNull, IsNull, LessThan, LessThanOrEqual, Literal, Not, Or, PredicateHelper}
 import org.apache.spark.sql.catalyst.rules.Rule
 import org.apache.spark.sql.execution.SparkPlan
-import org.apache.spark.sql.types.{BooleanType, DateType, DoubleType, IntegerType, LongType, ShortType}
+import org.apache.spark.sql.types.{BooleanType, ByteType, DateType, DoubleType, IntegerType, LongType, ShortType}
 
 
 object PushDownFilterToOmniScan extends Rule[SparkPlan] with PredicateHelper {
@@ -31,17 +31,14 @@ object PushDownFilterToOmniScan extends Rule[SparkPlan] with PredicateHelper {
   private def enableVecPredicateFilter: Boolean =
     GlutenConfig.get.enabledVecPredicateFilter
 
-  private def excludeScanExecFromCollapsedStage: Boolean =
-    GlutenConfig.get.omniExcludeScanExecFromCollapsedStage
-
-  private val SUPPORTED_DATA_TYPES = Set(ShortType, IntegerType, LongType, DoubleType, BooleanType, DateType)
+  private val SUPPORTED_DATA_TYPES = Set(ByteType, ShortType, IntegerType, LongType, DoubleType, BooleanType, DateType)
 
   override def apply(plan: SparkPlan): SparkPlan = plan.transformUp {
     case filter: FilterExecTransformer if enableVecPredicateFilter =>
       filter.child match {
         case fileScan: OmniFileSourceScanExecTransformer
           if fileScan.relation.fileFormat.isInstanceOf[OmniOrcFileFormat] ||
-            (fileScan.relation.fileFormat.isInstanceOf[OmniParquetFileFormat] && !excludeScanExecFromCollapsedStage)=>
+            fileScan.relation.fileFormat.isInstanceOf[OmniParquetFileFormat] =>
           val pushDownFilters = getPushedFilter(fileScan.dataFilters)
           val newScan = fileScan.copy(output = filter.output, dataFilters = pushDownFilters)
           newScan.relation.fileFormat match {

@@ -50,6 +50,7 @@ import org.apache.spark.sql.sources.LessThanOrEqual;
 import org.apache.spark.sql.sources.Not;
 import org.apache.spark.sql.sources.Or;
 import org.apache.spark.sql.types.BooleanType;
+import org.apache.spark.sql.types.ByteType;
 import org.apache.spark.sql.types.DateType;
 import org.apache.spark.sql.types.DecimalType;
 import org.apache.spark.sql.types.DoubleType;
@@ -370,7 +371,7 @@ public class OrcPushFilterBuilder {
 
     private OrcPredicateDataType getType(StructField field) {
         org.apache.spark.sql.types.DataType dataType = field.dataType();
-        if (dataType instanceof ShortType || dataType instanceof IntegerType
+        if (dataType instanceof ByteType || dataType instanceof ShortType || dataType instanceof IntegerType
                 || dataType instanceof LongType) {
             return OrcPredicateDataType.LONG;
         } else if (dataType instanceof DoubleType) {
@@ -564,10 +565,10 @@ public class OrcPushFilterBuilder {
             return (String) literal;
         }
         if (literal instanceof Integer || literal instanceof Long || literal instanceof Boolean
-                || literal instanceof Short || literal instanceof Double) {
+                || literal instanceof Byte || literal instanceof Short || literal instanceof Double) {
             return literal.toString();
         }
-        throw new UnsupportedOperationException("Unsupported orc push down filter date type: "
+        throw new UnsupportedOperationException("Unsupported orc push down filter data type: "
                 + literal.getClass().getSimpleName());
     }
 
@@ -633,7 +634,9 @@ public class OrcPushFilterBuilder {
     private DataType.DataTypeId getSupportPredicateDataType(String attribute) {
         StructField field = requiredSchema.apply(attribute);
         org.apache.spark.sql.types.DataType dataType = field.dataType();
-        if (dataType instanceof ShortType) {
+        if (dataType instanceof ByteType) {
+            return DataType.DataTypeId.OMNI_BYTE;
+        } else if (dataType instanceof ShortType) {
             return DataType.DataTypeId.OMNI_SHORT;
         } else if (dataType instanceof IntegerType) {
             return DataType.DataTypeId.OMNI_INT;
