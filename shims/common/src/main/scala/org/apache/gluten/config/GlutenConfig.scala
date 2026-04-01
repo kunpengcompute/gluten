@@ -571,8 +571,6 @@ class GlutenConfig(conf: SQLConf) extends Logging {
 
   def columnarSortSpillRowThreshold: Int = conf.getConf(COLUMNAR_SORT_SPILL_ROW_THRESHOLD)
 
-  def omniExcludeScanExecFromCollapsedStage: Boolean = conf.getConf(COLUMNAR_OMNI_EXCLUDE_SCAN)
-
   def omniColumnarEnableDelayCartesianProduct: Boolean = conf.getConf(COLUMNAR_OMNI_ENABLE_DELAY_CARTESIAN_PRODUCT)
 
   def columnarPreferShuffledHashJoin: Boolean = conf.getConf(COLUMNAR_OMNI_PREFER_SHUFFLED_HASH_JOIN)
@@ -2629,12 +2627,6 @@ object GlutenConfig {
     .doc("enable vectorized predicate filtering")
     .booleanConf
     .createWithDefault(true)
-
-  val COLUMNAR_OMNI_EXCLUDE_SCAN = buildConf("spark.gluten.sql.columnar.backend.omni.excludeScanExecFromCollapsedStage")
-    .internal()
-    .doc("exclude scan exec from collapsed stage")
-    .booleanConf
-    .createWithDefault(false)
 
   val COLUMNAR_OMNI_ENABLE_DELAY_CARTESIAN_PRODUCT = buildConf("spark.gluten.sql.columnar.backend.omni.enableDelayCartesianProduct.enabled")
     .internal()

@@ -306,10 +306,6 @@ object OmniBackendSettings extends BackendSettingsApi {
   }
 
   override def transformCheckOverflow: Boolean = false
-
-  override def excludeScanExecFromCollapsedStage(): Boolean = {
-    GlutenConfig.get.omniExcludeScanExecFromCollapsedStage
-  }
 }
 
 class OmniValidatorApi extends ValidatorApi {
