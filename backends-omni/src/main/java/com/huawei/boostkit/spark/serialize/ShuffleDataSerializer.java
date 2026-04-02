@@ -22,6 +22,7 @@ package com.huawei.boostkit.spark.serialize;
 import nova.hetu.omniruntime.type.DataType.DataTypeId;
 import nova.hetu.omniruntime.utils.OmniRuntimeException;
 import nova.hetu.omniruntime.type.ArrayDataType;
+import nova.hetu.omniruntime.type.DecimalDataType;
 import nova.hetu.omniruntime.type.MapDataType;
 import nova.hetu.omniruntime.type.StructDataType;
 import nova.hetu.omniruntime.vector.BooleanVec;
@@ -246,6 +247,10 @@ public class ShuffleDataSerializer {
             case OMNI_DATE64:
                 return DataTypes.DateType;
             case OMNI_DECIMAL64:
+                if (omniDataType instanceof DecimalDataType) {
+                    DecimalDataType dec64Type = (DecimalDataType) omniDataType;
+                    return DataTypes.createDecimalType(dec64Type.getPrecision(), dec64Type.getScale());
+                }
                 return DataTypes.createDecimalType(precision, scale);
             case OMNI_SHORT:
                 return DataTypes.ShortType;
@@ -260,6 +265,10 @@ public class ShuffleDataSerializer {
             case OMNI_CHAR:
                 return DataTypes.StringType;
             case OMNI_DECIMAL128:
+                if (omniDataType instanceof DecimalDataType) {
+                    DecimalDataType dec128Type = (DecimalDataType) omniDataType;
+                    return DataTypes.createDecimalType(dec128Type.getPrecision(), dec128Type.getScale());
+                }
                 return DataTypes.createDecimalType(precision, scale);
             case OMNI_BYTE:
                 return DataTypes.ByteType;

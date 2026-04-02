@@ -74,13 +74,14 @@ class Splitter {
 
     void SerializeColumn(BaseVector *vector,
                          std::vector<uint32_t> rows,
-                         spark::Vec &vec);
+                         spark::Vec &vec,
+                         DataTypePtr dataType = nullptr);
 
     template<typename T>
     void SerializeFlatVector(BaseVector *vector,
                              std::vector<uint32_t> row_ids,
                              spark::Vec &vec,
-                             DataTypeId typeId);
+                             DataTypePtr dataType = nullptr);
 
     void SerializeStringVector(BaseVector *vector,
                                std::vector<uint32_t> row_ids,
@@ -89,15 +90,18 @@ class Splitter {
 
     void SerializeArrayVector(BaseVector *vector,
                               std::vector<uint32_t> row_ids,
-                              spark::Vec &vec);
+                              spark::Vec &vec,
+                              DataTypePtr dataType = nullptr);
 
     void SerializeMapVector(BaseVector *vector,
                             std::vector<uint32_t> row_ids,
-                            spark::Vec &vec);
+                            spark::Vec &vec,
+                            DataTypePtr dataType = nullptr);
 
     void SerializeRowVector(BaseVector *vector,
                             std::vector<uint32_t> row_ids,
-                            spark::Vec &vec);
+                            spark::Vec &vec,
+                            DataTypePtr dataType = nullptr);
 
     int SplitComplexColumns(VectorBatch& vb);
 

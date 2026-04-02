@@ -459,7 +459,7 @@ void Splitter::SplitBinaryVector(BaseVector *varcharVector, int col_schema) {
     }
 }
 
-void Splitter::SerializeColumn(BaseVector *vector, std::vector<uint32_t> row_ids, spark::Vec &vec)
+void Splitter::SerializeColumn(BaseVector *vector, std::vector<uint32_t> row_ids, spark::Vec &vec, DataTypePtr dataType)
 {
     if (vector == nullptr) {
         throw std::runtime_error("Splitter::SerializeColumn: vector is nullptr");
@@ -469,35 +469,35 @@ void Splitter::SerializeColumn(BaseVector *vector, std::vector<uint32_t> row_ids
     switch (typeId) {
         case OMNI_BYTE:
         case OMNI_BOOLEAN: {
-            SerializeFlatVector<uint8_t>(vector, row_ids, vec, typeId);
+            SerializeFlatVector<uint8_t>(vector, row_ids, vec, dataType);
             break;
         }
         case OMNI_SHORT: {
-            SerializeFlatVector<uint16_t>(vector, row_ids, vec, typeId);
+            SerializeFlatVector<uint16_t>(vector, row_ids, vec, dataType);
             break;
         }
         case OMNI_INT:
         case OMNI_DATE32: {
-            SerializeFlatVector<uint32_t>(vector, row_ids, vec, typeId);
+            SerializeFlatVector<uint32_t>(vector, row_ids, vec, dataType);
             break;
         }
         case OMNI_FLOAT: {
-            SerializeFlatVector<float>(vector, row_ids, vec, typeId);
+            SerializeFlatVector<float>(vector, row_ids, vec, dataType);
             break;
         }
         case OMNI_DOUBLE: {
-            SerializeFlatVector<double>(vector, row_ids, vec, typeId);
+            SerializeFlatVector<double>(vector, row_ids, vec, dataType);
             break;
         }
         case OMNI_LONG:
         case OMNI_TIMESTAMP:
         case OMNI_DATE64:
         case OMNI_DECIMAL64: {
-            SerializeFlatVector<uint64_t>(vector, row_ids, vec, typeId);
+            SerializeFlatVector<uint64_t>(vector, row_ids, vec, dataType);
             break;
         }
         case OMNI_DECIMAL128: {
-            SerializeFlatVector<uint128_t>(vector, row_ids, vec, typeId);
+            SerializeFlatVector<uint128_t>(vector, row_ids, vec, dataType);
             break;
         }
         case OMNI_VARBINARY:
@@ -507,15 +507,15 @@ void Splitter::SerializeColumn(BaseVector *vector, std::vector<uint32_t> row_ids
             break;
         }
         case OMNI_ARRAY: {
-            SerializeArrayVector(vector, row_ids, vec);
+            SerializeArrayVector(vector, row_ids, vec, dataType);
             break;
         }
         case OMNI_MAP: {
-            SerializeMapVector(vector, row_ids, vec);
+            SerializeMapVector(vector, row_ids, vec, dataType);
             break;
         }
         case OMNI_ROW: {
-            SerializeRowVector(vector, row_ids, vec);
+            SerializeRowVector(vector, row_ids, vec, dataType);
             break;
         }
         default: throw std::runtime_error("Unsupported DataTypeId: " + typeId);
@@ -523,14 +523,25 @@ void Splitter::SerializeColumn(BaseVector *vector, std::vector<uint32_t> row_ids
 }
 
 template<typename T>
-void Splitter::SerializeFlatVector(BaseVector *vector, std::vector<uint32_t> row_ids, spark::Vec &vec, DataTypeId typeId)
+void Splitter::SerializeFlatVector(BaseVector *vector, std::vector<uint32_t> row_ids, spark::Vec &vec, DataTypePtr dataType)
 {
     int num_rows = row_ids.size();
+    auto typeId = dataType != nullptr ? dataType->GetId() : vector->GetTypeId();
 
     // set the type and size of Vec
     spark::VecType *vt = vec.mutable_vectype();
     vt->set_typeid_(CastOmniTypeIdToProtoVecType(typeId));
     vec.set_size(num_rows);
+
+    // set the precision and scale for DECIMAL64 and DECIMAL128
+    if (typeId == OMNI_DECIMAL64 || typeId == OMNI_DECIMAL128) {
+        auto decimalType = std::dynamic_pointer_cast<omniruntime::type::DecimalDataType>(dataType);
+        if (decimalType == nullptr) {
+            throw std::runtime_error("DecimalDataType dynamic cast failed in SerializeFlatVector()");
+        }
+        vt->set_precision(decimalType->GetPrecision());
+        vt->set_scale(decimalType->GetScale());
+    }
 
     // initialize nulls of spark::Vec
     std::string nullsStr;
@@ -650,8 +661,12 @@ void Splitter::SerializeStringVector(BaseVector *vector, std::vector<uint32_t> r
     vec.set_values(std::move(valuesStr));
 }
 
-void Splitter::SerializeArrayVector(BaseVector *vector, std::vector<uint32_t> row_ids, spark::Vec &vec)
+void Splitter::SerializeArrayVector(BaseVector *vector, std::vector<uint32_t> row_ids, spark::Vec &vec, DataTypePtr dataType)
 {
+    if (dataType == nullptr) {
+        throw runtime_error("dataType is nullptr in SerializeArrayVector()!");
+    }
+
     auto arrayVec = reinterpret_cast<ArrayVector *>(vector);
     int num_rows = row_ids.size();
 
@@ -690,17 +705,24 @@ void Splitter::SerializeArrayVector(BaseVector *vector, std::vector<uint32_t> ro
     vec.set_offsets(std::move(offsetsStr));
     vec.set_nulls(std::move(nullsStr));
 
+    auto arrayType = std::dynamic_pointer_cast<omniruntime::type::ArrayType>(dataType);
+    DataTypePtr elementType = arrayType->ElementType();
+
     // serialize elementVector
     auto* subVec = vec.add_subvectors();
     auto* elementsVec = arrayVec->GetElementVector().get();
-    SerializeColumn(elementsVec, elementPositions, *subVec);
+    SerializeColumn(elementsVec, elementPositions, *subVec, elementType);
 
     spark::VecType* childType = vt->add_children();
     childType->CopyFrom(subVec->vectype());
 }
 
-void Splitter::SerializeMapVector(BaseVector *vector, std::vector<uint32_t> row_ids, spark::Vec &vec)
+void Splitter::SerializeMapVector(BaseVector *vector, std::vector<uint32_t> row_ids, spark::Vec &vec, DataTypePtr dataType)
 {
+    if (dataType == nullptr) {
+        throw runtime_error("dataType is nullptr in SerializeArrayVector()!");
+    }
+
     auto mapVec =  reinterpret_cast<MapVector *>(vector);
     int num_rows = row_ids.size();
 
@@ -737,16 +759,19 @@ void Splitter::SerializeMapVector(BaseVector *vector, std::vector<uint32_t> row_
     vec.set_offsets(std::move(offsetsStr));
     vec.set_nulls(std::move(nullsStr));
 
+    auto mapType = std::dynamic_pointer_cast<omniruntime::type::MapType>(dataType);
+    DataTypePtr keyDataType = mapType->Key();
+    DataTypePtr valueDataType = mapType->Value();
 
     // serialize keys
     auto* keysChildVec = vec.add_subvectors();
     auto* keysVec = mapVec->GetKeyVector().get();
-    SerializeColumn(keysVec, keyValuePositions, *keysChildVec);
+    SerializeColumn(keysVec, keyValuePositions, *keysChildVec, keyDataType);
 
     // serialize values
     auto* valuesChildVec = vec.add_subvectors();
     auto* valuesVec = mapVec->GetValueVector().get();
-    SerializeColumn(valuesVec, keyValuePositions, *valuesChildVec);
+    SerializeColumn(valuesVec, keyValuePositions, *valuesChildVec, valueDataType);
 
     // set the children of VecType
     spark::VecType* keyType = vt->add_children();
@@ -757,8 +782,12 @@ void Splitter::SerializeMapVector(BaseVector *vector, std::vector<uint32_t> row_
 
 }
 
-void Splitter::SerializeRowVector(BaseVector *vector, std::vector<uint32_t> row_ids, spark::Vec &vec)
+void Splitter::SerializeRowVector(BaseVector *vector, std::vector<uint32_t> row_ids, spark::Vec &vec, DataTypePtr dataType)
 {
+    if (dataType == nullptr) {
+        throw runtime_error("dataType is nullptr in SerializeArrayVector()!");
+    }
+
     auto rowVec = reinterpret_cast<RowVector *>(vector);
     int num_rows = row_ids.size();
 
@@ -780,9 +809,12 @@ void Splitter::SerializeRowVector(BaseVector *vector, std::vector<uint32_t> row_
     vec.set_nulls(std::move(nullsStr));
 
     auto& children = rowVec->Children();
+    auto rowType = std::dynamic_pointer_cast<omniruntime::type::RowType>(dataType);
+
     for (size_t childIdx = 0; childIdx < children.size(); ++childIdx) {
         auto* childVec = vec.add_subvectors();
-        SerializeColumn(children[childIdx].get(), row_ids, *childVec);
+        DataTypePtr childDataType = rowType->childAt(childIdx);
+        SerializeColumn(children[childIdx].get(), row_ids, *childVec, childDataType);
 
         spark::VecType* childType = vt->add_children();
         childType->CopyFrom(childVec->vectype());
@@ -807,7 +839,9 @@ int Splitter::SplitComplexColumns(VectorBatch& vb)
             spark::Vec* proto_vec = new spark::Vec(); // initialize proto vec
             partition_complex_type_proto_vecs_[pid][complex_col_idx] = proto_vec;
 
-            SerializeColumn(vector, row_ids, *proto_vec);
+            int32_t col_idx_schema = singlePartitionFlag ? col_idx_vb : (col_idx_vb - 1);
+            DataTypePtr dataType = inputDataTypes_[col_idx_schema];
+            SerializeColumn(vector, row_ids, *proto_vec, dataType);
         }
     }
 
@@ -1357,6 +1391,10 @@ std::shared_ptr<omniruntime::type::DataType> Splitter::ProtoTypeToOmniType(const
             return Time64DataType::Instance();
         case OMNI_TIMESTAMP:
             return TimestampDataType::Instance();
+        case OMNI_DECIMAL64:
+            return std::make_shared<Decimal64DataType>(protoType.precision(), protoType.scale());
+        case OMNI_DECIMAL128:
+            return std::make_shared<Decimal128DataType>(protoType.precision(), protoType.scale());
         case OMNI_VARCHAR:
             return VarcharDataType::Instance();
         case OMNI_CHAR:

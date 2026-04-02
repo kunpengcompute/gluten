@@ -77,8 +77,8 @@ JNIEXPORT jlong JNICALL Java_com_huawei_boostkit_spark_jni_SparkJniWrapper_nativ
                 auto elementType = std::dynamic_pointer_cast<type::ArrayType>(inputDataTypes[i])->ElementType();
                 elementTypIds[i] = elementType->GetId();
                 if (elementType->GetId() == OMNI_DECIMAL64 || elementType->GetId() == OMNI_DECIMAL128) {
-                    elementPrecisions[i] = std::dynamic_pointer_cast<DecimalDataType>(inputDataTypes[i])->GetPrecision();
-                    elementScales[i] = std::dynamic_pointer_cast<DecimalDataType>(inputDataTypes[i])->GetScale();
+                    elementPrecisions[i] = std::dynamic_pointer_cast<DecimalDataType>(elementType)->GetPrecision();
+                    elementScales[i] = std::dynamic_pointer_cast<DecimalDataType>(elementType)->GetScale();
                 }
             }
         }
