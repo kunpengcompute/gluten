@@ -96,6 +96,8 @@ class Spark34Shims extends SparkShims {
       Sig[RegrSXY](ExpressionNames.REGR_SXY),
       Sig[RegrSXX](ExpressionNames.REGR_SXX),
       Sig[RegrSYY](ExpressionNames.REGR_SYY),
+      Sig[RegrAvgX](ExpressionNames.REGR_AVGX),
+      Sig[RegrAvgY](ExpressionNames.REGR_AVGY),
       Sig[RegrReplacement](ExpressionNames.REGR_REPLACEMENT)
     )
   }

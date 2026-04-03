@@ -97,6 +97,8 @@ class Spark35Shims extends SparkShims {
       Sig[RegrSlope](ExpressionNames.REGR_SLOPE),
       Sig[RegrIntercept](ExpressionNames.REGR_INTERCEPT),
       Sig[RegrSXY](ExpressionNames.REGR_SXY),
+      Sig[RegrAvgX](ExpressionNames.REGR_AVGX),
+      Sig[RegrAvgY](ExpressionNames.REGR_AVGY),
       Sig[RegrReplacement](ExpressionNames.REGR_REPLACEMENT)
     )
   }

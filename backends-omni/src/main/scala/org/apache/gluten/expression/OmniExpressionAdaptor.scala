@@ -1049,10 +1049,12 @@ object OmniExpressionAdaptor extends Logging {
       })
   }
 
-  /** Class names for regr aggregates that may be absent in some Spark versions (e.g. RegrSXX/RegrSYY in 3.5). */
+  /** Class names for regr aggregates resolved by name (version / shim differences). */
   private val REGR_AGG_CLASS_NAMES = Set(
     "org.apache.spark.sql.catalyst.expressions.aggregate.RegrSXX",
-    "org.apache.spark.sql.catalyst.expressions.aggregate.RegrSYY"
+    "org.apache.spark.sql.catalyst.expressions.aggregate.RegrSYY",
+    "org.apache.spark.sql.catalyst.expressions.aggregate.RegrAvgX",
+    "org.apache.spark.sql.catalyst.expressions.aggregate.RegrAvgY"
   )
 
   def isRegrAggregateByClassName(aggregateFunction: AggregateFunction): Boolean =
@@ -1064,6 +1066,10 @@ object OmniExpressionAdaptor extends Logging {
         Some(OMNI_AGGREGATION_TYPE_REGR_SXX)
       case "org.apache.spark.sql.catalyst.expressions.aggregate.RegrSYY" =>
         Some(OMNI_AGGREGATION_TYPE_REGR_SYY)
+      case "org.apache.spark.sql.catalyst.expressions.aggregate.RegrAvgX" =>
+        Some(OMNI_AGGREGATION_TYPE_REGR_AVGX)
+      case "org.apache.spark.sql.catalyst.expressions.aggregate.RegrAvgY" =>
+        Some(OMNI_AGGREGATION_TYPE_REGR_AVGY)
       case _ => None
     }
 
