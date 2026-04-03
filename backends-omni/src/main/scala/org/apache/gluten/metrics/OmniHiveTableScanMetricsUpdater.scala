@@ -25,18 +25,22 @@ class OmniHiveTableScanMetricsUpdater(@transient val metrics: Map[String, SQLMet
   val outputRows: SQLMetric = metrics("numOutputRows")
   val outputVectors: SQLMetric = metrics("outputVectors")
   val outputBytes: SQLMetric = metrics("outputBytes")
-  val scanTime: SQLMetric = metrics("scanTime")
+  val numInputBytes: SQLMetric = metrics("numInputBytes")
+  val totalScanTime: SQLMetric = metrics("totalScanTime")
 
   override def updateInputMetrics(inputMetrics: InputMetricsWrapper): Unit = {
+    inputMetrics.bridgeIncBytesRead(numInputBytes.value)
+    inputMetrics.bridgeIncRecordsRead(outputRows.value)
   }
 
   override def updateNativeMetrics(opMetrics: IOperatorMetrics): Unit = {
     if (opMetrics != null) {
-      val operatorMetrics = opMetrics.asInstanceOf[OperatorMetrics]
-      outputRows += operatorMetrics.getNumOutputRows
-      outputVectors += operatorMetrics.getNumOutputVecBatches
-      outputBytes += operatorMetrics.getNumOutputBytes
-      scanTime += operatorMetrics.getScanTime
+      val m = opMetrics.asInstanceOf[OperatorMetrics]
+      outputRows += m.getNumOutputRows
+      outputVectors += m.getNumOutputVecBatches
+      outputBytes += m.getNumOutputBytes
+      numInputBytes += m.getNumInputBytes
+      totalScanTime += m.getScanTime
     }
   }
 }

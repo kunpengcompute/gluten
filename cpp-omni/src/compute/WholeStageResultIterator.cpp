@@ -280,7 +280,7 @@ void WholeStageResultIterator::buildMetricsForNative(
         metrics_->get(omniruntime::OmniMetrics::kInputBytes)[metricIndex] = second->inputBytes;
 
         metrics_->get(omniruntime::OmniMetrics::kRawInputRows)[metricIndex] = second->rawInputRows;
-        metrics_->get(omniruntime::OmniMetrics::kRawInputBytes)[metricIndex] = second->rawInputBytes;
+        metrics_->get(omniruntime::OmniMetrics::kRawInputBytes)[metricIndex] = 0;
 
         metrics_->get(omniruntime::OmniMetrics::kOutputRows)[metricIndex] = second->outputRows;
         metrics_->get(omniruntime::OmniMetrics::kNumOutputVecBatches)[metricIndex] = second->numOutputVecBatches;
@@ -291,6 +291,8 @@ void WholeStageResultIterator::buildMetricsForNative(
         metrics_->get(omniruntime::OmniMetrics::kSpilledPartitions)[metricIndex] = second->spilledPartitions;
         metrics_->get(omniruntime::OmniMetrics::kCpuCount)[metricIndex] = second->cpuWallTiming.count;
         metrics_->get(omniruntime::OmniMetrics::kSpilledFiles)[metricIndex] = second->spilledFiles;
+        metrics_->get(omniruntime::OmniMetrics::kScanTime)[metricIndex] =
+            static_cast<long>(second->totalScanWallNanos);
         metrics_->get(omniruntime::OmniMetrics::kAddInputTime)[metricIndex] = second->addInputTime.cpuNanos;
         metrics_->get(omniruntime::OmniMetrics::kGetOutputTime)[metricIndex] = second->getOutputTime.cpuNanos;
         metrics_->get(omniruntime::OmniMetrics::kAddInputCpuCount)[metricIndex] = second->addInputTime.count;

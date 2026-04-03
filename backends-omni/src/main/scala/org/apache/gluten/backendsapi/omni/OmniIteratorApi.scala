@@ -232,10 +232,13 @@ class OmniIteratorApiImpl extends IteratorApi with Logging {
         typeNodes
       )
 
+    val itrMetrics = OmniIteratorMetricsJniWrapper.create()
     Iterators
       .wrap(resIter.asScala)
       .protectInvocationFlow()
       .recycleIterator {
+        updateNativeMetrics(itrMetrics.fetch(resIter))
+        updateInputMetrics(TaskContext.get().taskMetrics().inputMetrics)
         resIter.close()
       }
       //.recyclePayload(batch => batch.close())

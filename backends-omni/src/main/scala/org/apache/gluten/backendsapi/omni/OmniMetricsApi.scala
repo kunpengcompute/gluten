@@ -62,7 +62,9 @@ class OmniMetricsApiImpl extends MetricsApi with Logging {
       "outputVectors" -> SQLMetrics.createMetric(sparkContext, "number of output vectors"),
       "outputBytes" -> SQLMetrics.createSizeMetric(sparkContext, "number of output bytes"),
       "scanTime" -> SQLMetrics.createNanoTimingMetric(sparkContext, "time of scan"),
-      "numOutputRows" -> SQLMetrics.createMetric(sparkContext, "number of output rows")
+      "numOutputRows" -> SQLMetrics.createMetric(sparkContext, "number of output rows"),
+      "numInputBytes" -> SQLMetrics.createSizeMetric(sparkContext, "inputBytes"),
+      "totalScanTime" -> SQLMetrics.createNanoTimingMetric(sparkContext, "total scan time")
     )
 
   // Reuse OmniFileSourceScanMetricsUpdater for HiveTableScanTransformer
@@ -104,12 +106,15 @@ class OmniMetricsApiImpl extends MetricsApi with Logging {
       "ioWaitTime" -> SQLMetrics.createNanoTimingMetric(sparkContext, "io wait time"),
       "storageReadBytes" -> SQLMetrics.createSizeMetric(sparkContext, "storage read bytes"),
       "localReadBytes" -> SQLMetrics.createSizeMetric(sparkContext, "local ssd read bytes"),
-      "ramReadBytes" -> SQLMetrics.createSizeMetric(sparkContext, "ram read bytes")
+      "ramReadBytes" -> SQLMetrics.createSizeMetric(sparkContext, "ram read bytes"),
+      "numInputBytes" -> SQLMetrics.createSizeMetric(sparkContext, "inputBytes"),
+      "totalScanTime" -> SQLMetrics.createNanoTimingMetric(sparkContext, "total scan time")
     )
 
 
   override def genFileSourceScanTransformerMetricsUpdater(
-      metrics: Map[String, SQLMetric]): MetricsUpdater = new MockMetricsUpdater()
+      metrics: Map[String, SQLMetric]): MetricsUpdater =
+    new OmniFileSourceScanMetricsUpdater(metrics)
 
   override def genFilterTransformerMetrics(sparkContext: SparkContext): Map[String, SQLMetric] =
     Map(
