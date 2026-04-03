@@ -46,7 +46,6 @@ import scala.collection.JavaConverters._
  * would be transformed to `ValueStreamNode` at native side.
  */
 case class InputIteratorTransformer(child: SparkPlan) extends UnaryTransformSupport {
-  assert(child.isInstanceOf[ColumnarInputAdapter])
 
   @transient
   override lazy val metrics: Map[String, SQLMetric] =
@@ -71,6 +70,15 @@ case class InputIteratorTransformer(child: SparkPlan) extends UnaryTransformSupp
     child.doExecuteBroadcast()
   }
 
+  /**
+   * [[GlutenPlan]] sets `supportsColumnar = true`; Spark's default [[SparkPlan#doExecuteColumnar]]
+   * throws "column support mismatch". [[ColumnarInputAdapter]] and AQE paths call
+   * `child.executeColumnar()` on this node — forward like a unary passthrough (same output schema).
+   */
+  override protected def doExecuteColumnar(): RDD[ColumnarBatch] = {
+    child.executeColumnar()
+  }
+
   override protected def doTransform(context: SubstraitContext): TransformContext = {
     val operatorId = context.nextOperatorId(nodeName)
     val readRel = RelBuilder.makeReadRelForInputIterator(child.output.asJava, context, operatorId)
@@ -78,7 +86,13 @@ case class InputIteratorTransformer(child: SparkPlan) extends UnaryTransformSupp
   }
 
   override protected def withNewChildInternal(newChild: SparkPlan): SparkPlan = {
-    copy(child = newChild)
+    // [[ColumnarCollapseTransformStages.insertInputIteratorTransformer]] may replace the direct
+    // child with another [[InputIteratorTransformer]] (nested IIT) or an unwrapped stage; always
+    // keep a [[ColumnarInputAdapter]] under this node for columnar execution.
+    newChild match {
+      case _: ColumnarInputAdapter => copy(child = newChild)
+      case _ => copy(child = ColumnarInputAdapter(newChild))
+    }
   }
 
   private def forBroadcast(): Boolean = {

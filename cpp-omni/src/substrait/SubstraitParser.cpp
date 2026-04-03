@@ -116,14 +116,21 @@ void SubstraitParser::ParseColumnTypes(
     std::vector<ColumnType>& columnTypes)
 {
     const auto& columnsTypes = namedStruct.column_types();
+    const int nameCount = static_cast<int>(namedStruct.names().size());
+    columnTypes.clear();
+    columnTypes.reserve(nameCount);
     if (columnsTypes.size() == 0) {
         // Regard all columns as regular columns.
-        columnTypes.resize(namedStruct.names().size(), ColumnType::kRegular);
+        columnTypes.resize(nameCount, ColumnType::kRegular);
         return;
     }
 
-    columnTypes.reserve(columnsTypes.size());
-    for (const auto& columnType : columnsTypes) {
+    for (int i = 0; i < nameCount; ++i) {
+        if (i >= columnsTypes.size()) {
+            columnTypes.push_back(ColumnType::kRegular);
+            continue;
+        }
+        const auto columnType = columnsTypes.Get(i);
         switch (columnType) {
             case ::substrait::NamedStruct::NORMAL_COL:
                 columnTypes.push_back(ColumnType::kRegular);
@@ -138,10 +145,10 @@ void SubstraitParser::ParseColumnTypes(
                 columnTypes.push_back(ColumnType::kRowIndex);
                 break;
             default:
-                std::cout << "Thread.currentThread() parseColumnTypes" ;
+                columnTypes.push_back(ColumnType::kRegular);
+                break;
         }
     }
-    return;
 }
 
 std::pair<SubstraitToOmniExprType, std::string> SubstraitParser::FindOmniFunction(
@@ -443,6 +450,10 @@ op::FunctionType SubstraitParser::ParseFunctionType(
         return op::OMNI_AGGREGATION_TYPE_REGR_SXY;
     } else if (funcName == "regr_syy") {
         return op::OMNI_AGGREGATION_TYPE_REGR_SYY;
+    } else if (funcName == "regr_avgx") {
+        return op::OMNI_AGGREGATION_TYPE_REGR_AVGX;
+    } else if (funcName == "regr_avgy") {
+        return op::OMNI_AGGREGATION_TYPE_REGR_AVGY;
     } else if (funcName == "regr_replacement") {
         return op::OMNI_AGGREGATION_TYPE_REGR_REPLACEMENT;
  	} else if (funcName == "min_by") {
@@ -740,6 +751,8 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"regr_sxx", {FUNCTION_OMNI_EXPR_TYPE, "regr_sxx"}},
     {"regr_sxy", {FUNCTION_OMNI_EXPR_TYPE, "regr_sxy"}},
     {"regr_syy", {FUNCTION_OMNI_EXPR_TYPE, "regr_syy"}},
+    {"regr_avgx", {FUNCTION_OMNI_EXPR_TYPE, "regr_avgx"}},
+    {"regr_avgy", {FUNCTION_OMNI_EXPR_TYPE, "regr_avgy"}},
     {"regr_replacement", {FUNCTION_OMNI_EXPR_TYPE, "regr_replacement"}},
     {"soundex", {FUNCTION_OMNI_EXPR_TYPE, "soundex"}},
     {"array_append", {FUNCTION_OMNI_EXPR_TYPE, "array_append"}},

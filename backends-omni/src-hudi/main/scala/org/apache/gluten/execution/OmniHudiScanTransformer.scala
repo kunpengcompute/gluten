@@ -17,6 +17,7 @@
 package org.apache.gluten.execution
 
 import org.apache.gluten.extension.ValidationResult
+import org.apache.gluten.substrait.SubstraitContext
 import org.apache.gluten.substrait.rel.LocalFilesNode.ReadFileFormat
 
 import org.apache.spark.sql.catalyst.TableIdentifier
@@ -29,7 +30,13 @@ import org.apache.spark.sql.execution.datasources.HadoopFsRelation
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.util.collection.BitSet
 
-case class HudiScanTransformer(
+/**
+ * Hudi base-file scan for Omni: uses [[OmniFileSourceScanTransformHelper]] so Substrait ReadRel
+ * carries Parquet enhancement JSON. [[HudiScanTransformer]] inherits
+ * [[BasicScanExecTransformer]]'s read node only and leaves native enhancement empty, which makes
+ * `ParseEnhanceJson` fail on an empty input.
+ */
+case class OmniHudiScanTransformer(
     @transient override val relation: HadoopFsRelation,
     override val output: Seq[Attribute],
     override val requiredSchema: StructType,
@@ -48,13 +55,13 @@ case class HudiScanTransformer(
     optionalNumCoalescedBuckets,
     dataFilters,
     tableIdentifier,
-    disableBucketedScan
-  ) {
+    disableBucketedScan) {
 
   /**
-   * Hudi `_hoodie_*` attributes are not
-   * [[org.apache.spark.sql.catalyst.expressions.FileSourceGeneratedMetadataAttribute]], so they
-   * must be merged into [[getMetadataColumns]] for per-split metadata maps on native scan paths.
+   * Spark's [[metadataColumns]] only collects FileSource* metadata attributes; Hudi exposes
+   * `_hoodie_*` as plain [[AttributeReference]] in [[output]]. Without listing them here,
+   * [[BasicScanExecTransformer.getSplitInfosFromPartitions]] passes no `_hoodie_` names to native
+   * split info and [[org.apache.gluten.backendsapi.omni.HudiSplitMetadataColumns]] never runs.
    */
   override def getMetadataColumns(): Seq[AttributeReference] = {
     val fromSpark = metadataColumns
@@ -81,8 +88,12 @@ case class HudiScanTransformer(
     super.doValidateInternal()
   }
 
-  override def doCanonicalize(): HudiScanTransformer = {
-    HudiScanTransformer(
+  override protected def doTransform(context: SubstraitContext): TransformContext = {
+    OmniFileSourceScanTransformHelper.doTransform(this, context, ReadFileFormat.ParquetReadFormat)
+  }
+
+  override def doCanonicalize(): OmniHudiScanTransformer = {
+    OmniHudiScanTransformer(
       relation,
       output.map(QueryPlan.normalizeExpressions(_, output)),
       requiredSchema,
@@ -98,10 +109,10 @@ case class HudiScanTransformer(
   }
 }
 
-object HudiScanTransformer {
+object OmniHudiScanTransformer {
 
-  def apply(scanExec: FileSourceScanExec): HudiScanTransformer = {
-    new HudiScanTransformer(
+  def apply(scanExec: FileSourceScanExec): OmniHudiScanTransformer =
+    OmniHudiScanTransformer(
       scanExec.relation,
       scanExec.output,
       scanExec.requiredSchema,
@@ -112,5 +123,4 @@ object HudiScanTransformer {
       scanExec.tableIdentifier,
       scanExec.disableBucketedScan
     )
-  }
 }

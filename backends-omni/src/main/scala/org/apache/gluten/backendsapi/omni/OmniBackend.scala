@@ -306,6 +306,9 @@ object OmniBackendSettings extends BackendSettingsApi {
   }
 
   override def transformCheckOverflow: Boolean = false
+
+  /** Enable synthetic / metadata columns (Spark file metadata + Hudi _hoodie_* via split info). */
+  override def supportNativeMetadataColumns(): Boolean = true
 }
 
 class OmniValidatorApi extends ValidatorApi {

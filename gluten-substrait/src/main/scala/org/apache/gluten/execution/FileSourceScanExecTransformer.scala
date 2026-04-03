@@ -171,7 +171,7 @@ abstract class FileSourceScanExecTransformerBase(
   }
 
   override def getProperties: Map[String, String] = {
-    this.fileFormat match {
+    val base: Map[String, String] = this.fileFormat match {
       case ReadFileFormat.TextReadFormat =>
         var options: Map[String, String] = Map()
         relation.options.foreach {
@@ -185,12 +185,22 @@ abstract class FileSourceScanExecTransformerBase(
           case (_, _) =>
         }
         options
-      case _ => Map.empty
+      case _ => Map.empty[String, String]
+    }
+    if (HudiDatasourceDetection.isHudiSparkFileFormat(relation.fileFormat)) {
+      base + (GlutenScanExtensionProperties.HudiDataSourceProperty -> "true")
+    } else {
+      base
     }
   }
 
   @transient override lazy val fileFormat: ReadFileFormat =
     BackendsApiManager.getSettings.getSubstraitReadFileFormatV1(relation.fileFormat)
+
+  /** Exposes [[pushedDownFilters]] for [[org.apache.gluten.execution.OmniFileSourceScanTransformHelper]]
+    * (not a [[org.apache.spark.sql.execution.FileSourceScanLike]] subclass). */
+  private[execution] def omniPushedDownDataSourceFilters: Seq[org.apache.spark.sql.sources.Filter] =
+    pushedDownFilters
 
   override def simpleString(maxFields: Int): String = {
     val metadataEntries = metadata.toSeq.sorted.map {

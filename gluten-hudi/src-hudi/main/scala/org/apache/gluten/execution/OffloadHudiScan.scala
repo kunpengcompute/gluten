@@ -17,19 +17,37 @@
 
 package org.apache.gluten.execution
 
+import org.apache.gluten.backendsapi.BackendsApiManager
 import org.apache.gluten.extension.columnar.offload.OffloadSingleNode
 
-import org.apache.spark.sql.execution.SparkPlan
+import org.apache.spark.sql.execution.{FileSourceScanExec, SparkPlan}
 
 /** Since https://github.com/apache/incubator-gluten/pull/6049. */
 case class OffloadHudiScan() extends OffloadSingleNode {
   override def offload(plan: SparkPlan): SparkPlan = {
     plan match {
       // Hudi has multiple file format definitions whose names end with "HoodieParquetFileFormat".
-      case scan: org.apache.spark.sql.execution.FileSourceScanExec
+      case scan: FileSourceScanExec
           if scan.relation.fileFormat.getClass.getName.endsWith("HoodieParquetFileFormat") =>
-        HudiScanTransformer(scan)
+        if (BackendsApiManager.getBackendName.equalsIgnoreCase("omni")) {
+          tryBuildOmniHudiScanTransformer(scan).getOrElse(HudiScanTransformer(scan))
+        } else {
+          HudiScanTransformer(scan)
+        }
       case other => other
+    }
+  }
+
+  /** `OmniHudiScanTransformer` lives in backends-omni `src-hudi` (Omni + `-Phudi` builds only). */
+  private def tryBuildOmniHudiScanTransformer(
+      scan: FileSourceScanExec): Option[FileSourceScanExecTransformerBase] = {
+    try {
+      val clazz = Class.forName("org.apache.gluten.execution.OmniHudiScanTransformer$")
+      val module = clazz.getField("MODULE$").get(null)
+      val m = clazz.getMethod("apply", classOf[FileSourceScanExec])
+      Some(m.invoke(module, scan).asInstanceOf[FileSourceScanExecTransformerBase])
+    } catch {
+      case _: Throwable => None
     }
   }
 }

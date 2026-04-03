@@ -19,7 +19,7 @@ package org.apache.gluten.expression
 import org.apache.gluten.expression.ExpressionNames.REGR_SXX
 import org.apache.gluten.expression.ExpressionNames.REGR_SYY
 
-import org.apache.spark.sql.catalyst.expressions.aggregate.RegrReplacement
+import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateFunction, RegrReplacement}
 import org.apache.spark.sql.catalyst.expressions.{AttributeReference, Cast, Expression, If, IsNull, Literal, Or}
 import org.apache.spark.sql.types.DoubleType
 
@@ -28,8 +28,10 @@ import org.apache.spark.sql.types.DoubleType
  * when the Spark plan uses RegrReplacement (single-column variance). We treat them as
  * two-argument aggregates (y, x) so Omni can filter by (x,y) pair non-nullity.
  *
- * Spark sends RegrReplacement(If(Or(IsNull(y), IsNull(x)), null, x_or_y)).
- * We parse the If to get (y, x) and determine regr_sxx (variance of x) vs regr_syy (variance of y).
+ * Spark sends RegrReplacement(If(Or(IsNull(left), IsNull(right)), null, value)) where for regr_sxx
+ * value is the independent variable (right / x), and for regr_syy value is the dependent variable
+ * (left / y). The optimizer may commute Or, so we must not assume Or's left/right match (y, x);
+ * we pair [[falseValue]] with the other ref from the Or to build Omni's (y, x) order.
  * When y and x are the same column (e.g. regr_sxx(c, c)), the optimizer may collapse the If to a bare
  * [[AttributeReference]]; we then treat (y, x) as (attr, attr) and map to regr_sxx.
  */
@@ -67,11 +69,10 @@ object OmniRegrMeasureBuilder {
    * @return Some((substraitName, partialChildExprs)) where partialChildExprs is Some([y, x])
    *         for Partial/Complete; substraitName is "regr_sxx" or "regr_syy".
    */
-  def getRegrReplacementOverride(aggregateFunc: org.apache.spark.sql.catalyst.expressions.aggregate.AggregateFunction)
-    : Option[(String, Option[Seq[Expression]])] = {
+  def getRegrReplacementOverride(aggregateFunc: AggregateFunction): Option[(String, Option[Seq[Expression]])] = {
     aggregateFunc match {
       case _: RegrReplacement =>
-        parseRegrReplacementChild(aggregateFunc.children.head).map {
+        parseRegrReplacementChild(aggregateFunc.children.head, aggregateFunc).map {
           case (name, yx) => (name, Some(yx))
         }
       case _ =>
@@ -80,24 +81,50 @@ object OmniRegrMeasureBuilder {
   }
 
   /**
-   * Parse RegrReplacement's child: If(Or(IsNull(ref1), IsNull(ref2)), null, value).
-   * Returns (substraitName, List(yExpr, xExpr)) with refs ordered as (y, x):
-   * ref1 = left of Or, ref2 = right; (y, x) = (ref1, ref2); name = regr_sxx if value is ref2 else regr_syy.
+   * Substrait function name for regr_sxx vs regr_syy when the plan uses [[RegrReplacement]].
    */
-  private def parseRegrReplacementChild(child: Expression): Option[(String, Seq[Expression])] = {
+  private def resolveRegrSubstraitName(aggregateFunc: AggregateFunction): String = {
+    aggregateFunc.getClass.getName match {
+      case "org.apache.spark.sql.catalyst.expressions.aggregate.RegrSXX" => REGR_SXX
+      case "org.apache.spark.sql.catalyst.expressions.aggregate.RegrSYY" => REGR_SYY
+      case _ =>
+        // Spark 3.5: AggregateFunction overloads sql(Boolean); force Expression#sql to avoid ambiguity.
+        val sql = (aggregateFunc: Expression).sql.toLowerCase
+        if (sql.contains("regr_syy")) REGR_SYY else REGR_SXX
+    }
+  }
+
+  /**
+   * Parse RegrReplacement's child: If(Or(IsNull(ref1), IsNull(ref2)), null, value).
+   * Returns (substraitName, Seq(yExpr, xExpr)) for Omni. Spark's replacement uses false = right (x)
+   * for regr_sxx and false = left (y) for regr_syy; [[Or]] may be commuted, so we derive (y, x) from
+   * [[falseValue]] and the other column in the Or, not from Or's left/right order.
+   */
+  private def parseRegrReplacementChild(
+      child: Expression,
+      aggregateFunc: AggregateFunction): Option[(String, Seq[Expression])] = {
     unwrapLeadingCasts(child) match {
       case ifExpr: If if (ifExpr.trueValue match { case Literal(null, _) => true; case _ => false }) =>
         val cond = ifExpr.predicate
         val falseValue = unwrapLeadingCasts(ifExpr.falseValue)
+        val substraitName = resolveRegrSubstraitName(aggregateFunc)
         cond match {
           case or: Or =>
             (or.left, or.right) match {
               case (IsNull(ref1), IsNull(ref2)) =>
-                // (ref1, ref2) = (y, x) by convention (left = y, right = x)
-                val yExpr = ref1
-                val xExpr = ref2
-                val name = if (falseValue.semanticEquals(xExpr)) REGR_SXX else REGR_SYY
-                Some((name, Seq(yExpr, xExpr)))
+                val yx: Option[(Expression, Expression)] =
+                  if (falseValue.semanticEquals(ref1) && falseValue.semanticEquals(ref2)) {
+                    Some((ref1, ref2))
+                  } else if (falseValue.semanticEquals(ref1)) {
+                    Some(
+                      if (substraitName == REGR_SYY) (falseValue, ref2) else (ref2, falseValue))
+                  } else if (falseValue.semanticEquals(ref2)) {
+                    Some(
+                      if (substraitName == REGR_SYY) (falseValue, ref1) else (ref1, falseValue))
+                  } else {
+                    None
+                  }
+                yx.map { case (yExpr, xExpr) => (substraitName, Seq(yExpr, xExpr)) }
               case _ =>
                 None
             }

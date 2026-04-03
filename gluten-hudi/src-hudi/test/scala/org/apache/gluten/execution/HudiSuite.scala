@@ -121,7 +121,9 @@ abstract class HudiSuite extends WholeStageTransformerSuite {
                    |""".stripMargin)
       val df1 = runQueryAndCompare("select id, name from hudi_pf where name = 'v1'") { _ => }
       val hudiScanTransformer = df1.queryExecution.executedPlan.collect {
-        case f: HudiScanTransformer => f
+        case f: FileSourceScanExecTransformerBase
+            if f.relation.fileFormat.getClass.getName.endsWith("HoodieParquetFileFormat") =>
+          f
       }.head
       // No data filters as only partition filters exist
       assert(hudiScanTransformer.filterExprs().size == 0)
