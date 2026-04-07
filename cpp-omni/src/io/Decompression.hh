@@ -31,13 +31,22 @@
 
 #include "vec_data.pb.h"
 
+#include <cstddef>
+
 namespace spark {
+
+const int32_t BYTE_3_OFFSET = 24;
+const int32_t BYTE_2_OFFSET = 16;
+const int32_t BYTE_1_OFFSET = 8;
+const int32_t BYTE_0_OFFSET = 0;
+
 class DecompressionStream
 {
 public:
     int64_t shuffleCompressBlockSize;
     jobject dIn;
     jobject result;
+    /** One VecBatch/ProtoRowBatch payload after readSize + decompress. */
     std::vector<char> uncompress;
     char* output = nullptr;
 
@@ -58,65 +67,24 @@ public:
     int32_t createResult(JNIEnv *env, int rowCount, int vecCount, jint* typeIdArrayElements, jint* precisionArrayElements,
         jint* scaleArrayElements, jlong* vecNativeIdArrayElements);
 
-    virtual std::pair<char*, int32_t> decompress(JNIEnv *pEnv, int32_t dataSize);
+    std::pair<char*, int32_t> decompress(JNIEnv *pEnv, int32_t dataSize);
 
-    virtual std::pair<char *, int32_t> readHeader(JNIEnv *env)
-    {
-        // Read the header (3 bytes)
-        char buf[3];
-        int header[3] = {};
-        jlong ret = env->CallLongMethod(dIn, readByteMethod, reinterpret_cast<jlong>(buf), 3);
-        if (ret < 3) {
-            return std::make_pair(nullptr, -1);
-        }
-        for (int i = 0; i < 3; i++) {
-            header[i] = buf[i] & 0xff;
-        }
+    int32_t readSize(JNIEnv *env);
 
-        bool isOriginal = (header[0] & 0x01) == 1;
-        int chunkLength = (header[2] << 15) | (header[1] << 7) | (header[0] >> 1);
+protected:
+    /** Sliding window: last readHeader payload (plain or decompressed); readSize/decompress consume from here. */
+    std::vector<char> uncompressed;
+    size_t uncompressedCursor_ = 0;
+    size_t uncompressedLimit_ = 0;
+    bool finishedReading_ = false;
 
-        char *compressed = new char [chunkLength];
-        jlong readBytes = 0;
-        while (readBytes < chunkLength) {
-            jlong ret = env->CallLongMethod(dIn, readByteMethod, reinterpret_cast<jlong>(compressed), chunkLength - readBytes);
-            if (ret == -1 || ret == 0) {
-                break;
-            }
-            readBytes += ret;
-        }
-        if (readBytes < chunkLength) {
-            delete[] compressed;
-            throw std::runtime_error("failed to read chunk!");
-        }
-        if (!isOriginal) {
-            if (output == nullptr) {
-                output = new char [shuffleCompressBlockSize];
-            }
-            auto data = doDecompression(compressed, chunkLength);
-            delete[] compressed;
-            return data;
-        }
-        return std::make_pair(compressed, chunkLength);
-    }
-
-    int32_t readSize(JNIEnv *env)
-    {
-        auto pair = readHeader(env);
-        if (pair.second == -1) {
-            return -1;
-        }
-
-        auto data = pair.first;
-        int header[4] = {};
-        for (int i = 0; i < 4; i++) {
-            header[i] = data[i] & 0xff;
-        }
-        if ((header[0] | header[1] | header[2] | header[3]) < 0)
-            return -1;
-        return ((header[0] << 24) + (header[1] << 16) + (header[2] << 8) + (header[3] << 0));
-    }
-
+    bool ensureBufferHasData(JNIEnv* env);
+    bool consumeBytes(JNIEnv* env, void* dest, int32_t n);
+    /**
+     * Default: framed shuffle wire (3-byte header + chunk). UncompressionStream overrides.
+     */
+    virtual bool loadNextUncompressedChunk(JNIEnv* env) { return loadNextFramedFromWire(env); }
+    bool loadNextFramedFromWire(JNIEnv* env);
 };
 
 class UncompressionStream final: public DecompressionStream {
@@ -124,38 +92,12 @@ public:
     UncompressionStream(jobject dIn, int64_t shuffleCompressBlockSize)
         : DecompressionStream(dIn, shuffleCompressBlockSize) {}
 
-    std::pair<char*, int32_t> decompress(JNIEnv *pEnv, int32_t dataSize) override;
-
-    std::pair<char *, int32_t> readHeader(JNIEnv *env) override {
-        char buf[4];
-        jlong ret = env->CallLongMethod(dIn, readByteMethod, reinterpret_cast<jlong>(buf), 4);
-        if (ret < 3) {
-            return std::make_pair(nullptr, -1);
-        }
-        return std::make_pair(buf, 4);
-    }
-
-    std::pair<char *, int32_t> readData(JNIEnv *env, jobject dIn, int32_t chunkLength) {
-        char *uncompressed = new char [chunkLength];
-        jlong readBytes = 0;
-        while (readBytes < chunkLength) {
-            jlong ret = env->CallLongMethod(dIn, readByteMethod, reinterpret_cast<jlong>(uncompressed), chunkLength - readBytes);
-            if (ret == -1 || ret == 0) {
-                break;
-            }
-            readBytes += ret;
-        }
-        if (readBytes < chunkLength) {
-            delete[] uncompressed;
-            throw std::runtime_error("failed to read chunk!");
-        }
-        return std::make_pair(uncompressed, chunkLength);
-    }
-
 protected:
     std::pair<char*, int32_t> doDecompression(char* input, int32_t inputLength) override {
         return {nullptr, -1};
     }
+
+    bool loadNextUncompressedChunk(JNIEnv* env) override;
 };
 
 class LZ4DecompressionStream final: public DecompressionStream {

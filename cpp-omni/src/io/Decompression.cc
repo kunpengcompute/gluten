@@ -24,6 +24,139 @@
 
 namespace spark {
 
+bool DecompressionStream::ensureBufferHasData(JNIEnv* env)
+{
+    while (uncompressedCursor_ >= uncompressedLimit_) {
+        if (finishedReading_) {
+            return false;
+        }
+        if (!loadNextUncompressedChunk(env)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool DecompressionStream::consumeBytes(JNIEnv* env, void* dest, int32_t n)
+{
+    if (n < 0) {
+        return false;
+    }
+    auto* out = static_cast<char*>(dest);
+    int32_t got = 0;
+    while (got < n) {
+        if (!ensureBufferHasData(env)) {
+            return false;
+        }
+        const size_t avail = uncompressedLimit_ - uncompressedCursor_;
+        const int32_t take = static_cast<int32_t>(std::min(avail, static_cast<size_t>(n - got)));
+        memcpy(out + got, uncompressed.data() + uncompressedCursor_, static_cast<size_t>(take));
+        uncompressedCursor_ += static_cast<size_t>(take);
+        got += take;
+    }
+    return true;
+}
+
+int32_t DecompressionStream::readSize(JNIEnv* env)
+{
+    // 4 bytes read from the input stream, combined into a 32-bit data size
+    char hdr[4];
+    if (!consumeBytes(env, hdr, 4)) {
+        return -1;
+    }
+    const int32_t dataSize = static_cast<int32_t>(
+        (static_cast<uint32_t>(static_cast<uint8_t>(hdr[0])) << BYTE_3_OFFSET) |
+        (static_cast<uint32_t>(static_cast<uint8_t>(hdr[1])) << BYTE_2_OFFSET) |
+        (static_cast<uint32_t>(static_cast<uint8_t>(hdr[2])) << BYTE_1_OFFSET) |
+        static_cast<uint32_t>(static_cast<uint8_t>(hdr[3])));
+    return dataSize;
+}
+
+std::pair<char*, int32_t> DecompressionStream::decompress(JNIEnv* env, int32_t dataSize)
+{
+    if (dataSize <= 0) {
+        return std::make_pair(nullptr, -1);
+    }
+    if (uncompress.size() < static_cast<size_t>(dataSize)) {
+        uncompress.resize(static_cast<size_t>(dataSize));
+    }
+    if (!consumeBytes(env, uncompress.data(), dataSize)) {
+        return std::make_pair(nullptr, -1);
+    }
+    return std::make_pair(uncompress.data(), dataSize);
+}
+
+bool DecompressionStream::loadNextFramedFromWire(JNIEnv* env)
+{
+    // 3 bytes read from the header for compressed size and original flag
+    char hbuf[3];
+    jlong ret = env->CallLongMethod(dIn, readByteMethod, reinterpret_cast<jlong>(hbuf), 3);
+    if (ret < 3) {
+        finishedReading_ = true;
+        return false;
+    }
+    const int h0 = hbuf[0] & 0xff;
+    const int h1 = hbuf[1] & 0xff;
+    const int h2 = hbuf[2] & 0xff;
+    const bool isOriginal = (h0 & 0x01) == 1;
+    const int32_t chunkLength = (h2 << 15) | (h1 << 7) | (h0 >> 1);
+    if (chunkLength <= 0) {
+        throw std::runtime_error("invalid compression chunk length");
+    }
+
+    std::vector<char> compressed(static_cast<size_t>(chunkLength));
+    jlong readBytes = 0;
+    while (readBytes < chunkLength) {
+        ret = env->CallLongMethod(dIn, readByteMethod,
+            reinterpret_cast<jlong>(compressed.data() + readBytes),
+            static_cast<jlong>(chunkLength - readBytes));
+        if (ret == -1 || ret == 0) {
+            throw std::runtime_error("failed to read chunk!");
+        }
+        readBytes += ret;
+    }
+
+    uncompressedCursor_ = 0;
+    if (isOriginal) {
+        uncompressed = std::move(compressed);
+        uncompressedLimit_ = uncompressed.size();
+        return true;
+    }
+    if (output == nullptr) {
+        output = new char[static_cast<size_t>(shuffleCompressBlockSize)];
+    }
+    std::pair<char*, int32_t> decoded = doDecompression(compressed.data(), chunkLength);
+    uncompressed.assign(decoded.first, decoded.first + decoded.second);
+    uncompressedLimit_ = uncompressed.size();
+    return true;
+}
+
+bool UncompressionStream::loadNextUncompressedChunk(JNIEnv* env)
+{
+    const size_t cap = static_cast<size_t>(std::max<int64_t>(shuffleCompressBlockSize, 4096));
+    if (uncompressed.size() < cap) {
+        uncompressed.resize(cap);
+    }
+    jlong readTotal = 0;
+    while (readTotal < static_cast<jlong>(cap)) {
+        const jlong ret = env->CallLongMethod(dIn, readByteMethod,
+            reinterpret_cast<jlong>(uncompressed.data() + readTotal),
+            static_cast<jlong>(cap - static_cast<size_t>(readTotal)));
+        if (ret <= 0) {
+            break;
+        }
+        readTotal += ret;
+    }
+    if (readTotal <= 0) {
+        finishedReading_ = true;
+        return false;
+    }
+    uncompressedCursor_ = 0;
+    uncompressedLimit_ = static_cast<size_t>(readTotal);
+    return true;
+}
+
+
 std::pair<char*, int32_t> LZ4DecompressionStream::doDecompression(char* input, int32_t inputLength) {
     int actualLength = LZ4_decompress_safe(input, output, inputLength, shuffleCompressBlockSize);
     if (actualLength < 0) {
@@ -87,50 +220,6 @@ std::pair<char*, int32_t> ZstdDecompressionStream::doDecompression(char* input, 
         throw std::runtime_error("ZSTD decompression failed:" + std::string(ZSTD_getErrorName(retCode)));
     }
     return std::make_pair(output, actualLength);
-}
-
-std::pair<char*, int32_t> UncompressionStream::decompress(JNIEnv *env, int32_t dataSize) {
-    if (uncompress.size() < dataSize) {
-        uncompress.resize(dataSize);
-    }
-
-    int32_t actualLength = 0;
-    auto data = uncompress.data();
-    while (actualLength < dataSize) {
-        std::pair<char*, int32_t> res = readData(env, dIn, dataSize);
-        if (res.second == -1) {
-            break;
-        }
-        memcpy_s(data + actualLength, dataSize - actualLength, res.first, res.second);
-        actualLength += res.second;
-    }
-
-    if (actualLength == 0) {
-        return std::make_pair(nullptr, -1);
-    }
-    return std::make_pair(data, actualLength);
-}
-
-std::pair<char*, int32_t> DecompressionStream::decompress(JNIEnv *env, int32_t dataSize) {
-    if (uncompress.size() < dataSize) {
-        uncompress.resize(dataSize);
-    }
-
-    int32_t actualLength = 0;
-    auto data = uncompress.data();
-    while (actualLength < dataSize) {
-         std::pair<char*, int32_t> res = readHeader(env);
-        if (res.second == -1) {
-            break;
-        }
-        memcpy_s(data + actualLength, dataSize - actualLength, res.first, res.second);
-        actualLength += res.second;
-    }
-
-    if (actualLength == 0) {
-        return std::make_pair(nullptr, -1);
-    }
-    return std::make_pair(data, actualLength);
 }
 
 ShuffleReaderDeserializer::ShuffleReaderDeserializer(JNIEnv* env, jobject jniIn,
@@ -289,6 +378,9 @@ omniruntime::vec::VectorBatch* ShuffleReaderDeserializer::Next()
     }
 
     auto uncompress = this->decompressionStream->decompress(env, dataSize);
+    if (uncompress.first == nullptr || uncompress.second != dataSize) {
+        return nullptr;
+    }
 
     int32_t rowCnt = 0;
     if (this->isRowShuffle) {
