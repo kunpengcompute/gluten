@@ -129,7 +129,8 @@ class OmniOptimisticTransaction(
           partitionColumns = partitioningColumns,
           bucketSpec = None,
           statsTrackers = statsTrackers,
-          options = options
+          options = options,
+          deltaNativeParquetProjectDataColumns = true
         )
       } catch {
         case s: SparkException =>

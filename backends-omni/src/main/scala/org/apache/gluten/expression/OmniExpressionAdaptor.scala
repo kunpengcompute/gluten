@@ -1355,6 +1355,27 @@ object OmniExpressionAdaptor extends Logging {
     }
   }
 
+  /**
+   * Omni `DataTypeId` values for JNI/native Parquet and ORC writers: one entry per columnar batch column,
+   * same order as `ColumnarBatch` column indices.
+   *
+   * Invariant (enforced in `com.huawei.boostkit.spark.jni.ParquetColumnarBatchWriter`): `result.length`
+   * must equal `batch.numCols()`, and `dataColumnsIds.length` must match when passed to write/splitWrite.
+   *
+   * Iceberg / Hudi (DSv2): the batch columns are exactly the file write schema; partition keys are derived from
+   * those same vectors. Use `perBatchColumnOmniTypeIds(writeSchema)` and set every `dataColumnsIds` entry to true
+   * (see `org.apache.gluten.execution.IcebergWriteJniWrapper`).
+   *
+   * Spark FileFormat (Hive, etc.) with dynamic partitions: the batch includes partition columns plus data
+   * columns. Build ids from `allColumns.toStructType` and pass `dataColumnsIds` to skip non-file columns.
+   * Delta transactional native Parquet sets the job conf handled by
+   * [[org.apache.gluten.execution.DeltaNativeParquetWrite]] so [[org.apache.gluten.datasources.parquet.OmniParquetOutputWriter]]
+   * projects to data columns and calls JNI like [[org.apache.gluten.execution.IcebergWriteJniWrapper]] (all-true
+   * `dataColumnsIds`).
+   */
+  def perBatchColumnOmniTypeIds(struct: StructType): Array[Int] =
+    struct.fields.map(f => sparkTypeToOmniTypeWithComplex(f.dataType, f.metadata).getId.toValue()).toArray
+
   def sparkProjectionToOmniJsonProjection(attr: Attribute, colVal: Int): String = {
     val dataType: DataType = attr.dataType
     val metadata = attr.metadata

@@ -407,7 +407,8 @@ public class IcebergWriteJniWrapper implements RuntimeAware {
                 }
                 writer = pw;
             } else {
-                OrcColumnarBatchWriter ow = new OrcColumnarBatchWriter();
+                // Iceberg ORC requires timestamp instant semantics for Spark TIMESTAMP columns.
+                OrcColumnarBatchWriter ow = new OrcColumnarBatchWriter(true);
                 Path pathObj = new Path(path);
                 Configuration conf = new Configuration();
                 ow.initializeOutputStreamJava(pathObj.toUri());
@@ -441,7 +442,8 @@ public class IcebergWriteJniWrapper implements RuntimeAware {
                 }
                 currentWriter = pw;
             } else {
-                OrcColumnarBatchWriter ow = new OrcColumnarBatchWriter();
+                // Iceberg ORC requires timestamp instant semantics for Spark TIMESTAMP columns.
+                OrcColumnarBatchWriter ow = new OrcColumnarBatchWriter(true);
                 Path pathObj = new Path(currentPath);
                 Configuration conf = new Configuration();
                 ow.initializeOutputStreamJava(pathObj.toUri());

@@ -15,8 +15,6 @@
 
   <properties>
     <omniruntime.version>2.1.0</omniruntime.version>
-    <delta.spark.ivy.jar>${user.home}/.ivy2/jars/io.delta_${delta.package.name}_${scala.binary.version}-${delta.version}.jar</delta.spark.ivy.jar>
-    <delta.storage.ivy.jar>${user.home}/.ivy2/jars/io.delta_delta-storage-${delta.version}.jar</delta.storage.ivy.jar>
   </properties>
 
   <profiles>
@@ -170,55 +168,21 @@
         </plugins>
       </build>
     </profile>
-    <profile>
-      <id>delta-local-ivy-spark35</id>
-      <activation>
-        <file>
-          <exists>${user.home}/.ivy2/jars/io.delta_delta-spark_2.12-3.2.0.jar</exists>
-        </file>
-      </activation>
-      <dependencies>
-        <dependency>
-          <groupId>io.delta</groupId>
-          <artifactId>${delta.package.name}_${scala.binary.version}</artifactId>
-          <version>${delta.version}</version>
-          <scope>system</scope>
-          <systemPath>${delta.spark.ivy.jar}</systemPath>
-        </dependency>
-        <dependency>
-          <groupId>io.delta</groupId>
-          <artifactId>delta-storage</artifactId>
-          <version>${delta.version}</version>
-          <scope>system</scope>
-          <systemPath>${delta.storage.ivy.jar}</systemPath>
-        </dependency>
-      </dependencies>
-    </profile>
-    <profile>
-      <id>delta-maven</id>
-      <activation>
-        <file>
-          <missing>${user.home}/.ivy2/jars/io.delta_delta-spark_2.12-3.2.0.jar</missing>
-        </file>
-      </activation>
-      <dependencies>
-        <dependency>
-          <groupId>io.delta</groupId>
-          <artifactId>${delta.package.name}_${scala.binary.version}</artifactId>
-          <version>${delta.version}</version>
-          <scope>provided</scope>
-        </dependency>
-        <dependency>
-          <groupId>io.delta</groupId>
-          <artifactId>delta-storage</artifactId>
-          <version>${delta.version}</version>
-          <scope>provided</scope>
-        </dependency>
-      </dependencies>
-    </profile>
   </profiles>
 
   <dependencies>
+    <dependency>
+      <groupId>io.delta</groupId>
+      <artifactId>${delta.package.name}_${scala.binary.version}</artifactId>
+      <version>${delta.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.delta</groupId>
+      <artifactId>delta-storage</artifactId>
+      <version>${delta.version}</version>
+      <scope>provided</scope>
+    </dependency>
     <dependency>
       <groupId>com.huawei.boostkit</groupId>
       <artifactId>boostkit-omniop-bindings</artifactId>

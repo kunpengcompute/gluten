@@ -19,7 +19,7 @@
 package org.apache.gluten.datasources.orc
 
 import com.huawei.boostkit.spark.jni.OrcColumnarBatchWriter
-import org.apache.gluten.expression.OmniExpressionAdaptor.sparkTypeToOmniTypeWithComplex
+import org.apache.gluten.expression.OmniExpressionAdaptor.perBatchColumnOmniTypeIds
 import org.apache.hadoop.fs.Path
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.execution.datasources.{FakeRow, OutputWriter}
@@ -32,9 +32,8 @@ class OmniOrcOutputWriter(path: String, dataSchema: StructType,
                                        context: TaskAttemptContext) extends OutputWriter {
 
   val writer = new OrcColumnarBatchWriter()
-  var omniTypes: Array[Int] = new Array[Int](0)
   var dataColumnsIds: Array[Boolean] = new Array[Boolean](0)
-  var allOmniTypes: Array[Int] = new Array[Int](0)
+  var batchColumnOmniTypeIds: Array[Int] = new Array[Int](0)
 
   def initialize(allColumns: Seq[Attribute], dataColumns: Seq[Attribute]): Unit = {
     val filePath = new Path(path)
@@ -44,24 +43,18 @@ class OmniOrcOutputWriter(path: String, dataSchema: StructType,
     writer.initializeOutputStreamJava(filePath.toUri)
     writer.initializeSchemaTypeJava(dataSchema)
     writer.initializeWriterJava(filePath.toUri, dataSchema, writerOptions)
-    dataSchema.foreach(field => {
-      omniTypes = omniTypes :+ sparkTypeToOmniTypeWithComplex(field.dataType, field.metadata).getId.ordinal()
-    })
-    allColumns.toStructType.foreach(field => {
-      allOmniTypes = allOmniTypes :+ sparkTypeToOmniTypeWithComplex(field.dataType, field.metadata)
-        .getId.ordinal()
-    })
+    batchColumnOmniTypeIds = perBatchColumnOmniTypeIds(allColumns.toStructType)
     dataColumnsIds = allColumns.map(x => dataColumns.contains(x)).toArray
   }
 
   override def write(row: InternalRow): Unit = {
     assert(row.isInstanceOf[FakeRow])
-    writer.write(omniTypes, dataColumnsIds, row.asInstanceOf[FakeRow].batch)
+    writer.write(batchColumnOmniTypeIds, dataColumnsIds, row.asInstanceOf[FakeRow].batch)
   }
 
   def spiltWrite(row: InternalRow, startPos: Long, endPos: Long): Unit = {
     assert(row.isInstanceOf[FakeRow])
-    writer.splitWrite(omniTypes, allOmniTypes, dataColumnsIds,
+    writer.splitWrite(batchColumnOmniTypeIds, batchColumnOmniTypeIds, dataColumnsIds,
       row.asInstanceOf[FakeRow].batch, startPos, endPos)
   }
 

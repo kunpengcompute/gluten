@@ -54,8 +54,20 @@ import java.net.URI;
  * OrcColumnarBatchWriter
  */
 public class OrcColumnarBatchWriter {
+    /**
+     * ORC has two timestamp flavors: TIMESTAMP (no timezone) and TIMESTAMP_INSTANT (timestamp with
+     * local timezone semantics). Some writers (e.g. Iceberg) require TIMESTAMP_INSTANT for Spark
+     * TIMESTAMP columns to avoid schema projection/promotion issues when reading.
+     */
+    private final boolean shouldWriteTimestampAsInstant;
+
     public OrcColumnarBatchWriter() {
+        this(false);
+    }
+
+    public OrcColumnarBatchWriter(boolean shouldWriteTimestampAsInstant) {
         jniWriter = new OrcColumnarBatchJniWriter();
+        this.shouldWriteTimestampAsInstant = shouldWriteTimestampAsInstant;
     }
 
     /**
@@ -244,7 +256,9 @@ public class OrcColumnarBatchWriter {
         } else if (dataType instanceof ByteType) {
             return OrcLibTypeKind.BYTE.ordinal();
         } else if (dataType instanceof TimestampType) {
-            return OrcLibTypeKind.TIMESTAMP.ordinal();
+            return shouldWriteTimestampAsInstant
+                    ? OrcLibTypeKind.TIMESTAMP_INSTANT.ordinal()
+                    : OrcLibTypeKind.TIMESTAMP.ordinal();
         } else if (dataType instanceof StructType) {
             return OrcLibTypeKind.STRUCT.ordinal();
         } else {

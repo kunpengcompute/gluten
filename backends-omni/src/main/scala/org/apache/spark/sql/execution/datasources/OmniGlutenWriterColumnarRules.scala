@@ -17,7 +17,11 @@
 
 package org.apache.spark.sql.execution.datasources
 import org.apache.gluten.backendsapi.BackendsApiManager
-import org.apache.gluten.execution.{ColumnarToRowExecBase}
+import org.apache.gluten.execution.{
+  ColumnarToRowExecBase,
+  OmniGlutenLabeledAppendDataExecV1,
+  OmniGlutenLabeledOverwriteByExpressionExecV1
+}
 import org.apache.gluten.execution.datasource.GlutenFormatFactory
 
 import org.apache.spark.internal.Logging
@@ -116,19 +120,33 @@ object OmniGlutenWriterColumnarRules extends Logging {
               s"write=${rc.write.getClass.getName}, " +
               s"deltaLogSource=${resolveClassSource("org.apache.spark.sql.delta.DeltaLog")}, " +
               s"omniTxnSource=${resolveClassSource("org.apache.spark.sql.delta.OmniOptimisticTransaction")}")
+          logInfo(
+            "[Omni-Proof][WriteRule] Replacing Delta AppendDataExecV1 with LeafV2CommandExec " +
+              "delegate (same nodeName=AppendDataExecV1, Gluten+Omni line in stringArgs).")
+          OmniGlutenLabeledAppendDataExecV1(rc)
         } else {
           logInfo(
             s"[Omni-Proof][WriteRule] AppendDataExecV1 detected; " +
               s"this V1 fallback write path is not rewritten to Omni native write " +
               s"in the current build. write=${rc.write.getClass.getName}")
+          rc
         }
-        rc
       case rc: OverwriteByExpressionExecV1 =>
-        logInfo(
-          s"[Omni-Proof][WriteRule] OverwriteByExpressionExecV1 detected; " +
-            s"this V1 fallback write path is not rewritten to Omni native write " +
-            s"in the current build. write=${rc.write.getClass.getName}")
-        rc
+        if (isDeltaV1FallbackWrite(rc.write)) {
+          logInfo(
+            s"[Omni-Proof][WriteRule] OverwriteByExpressionExecV1 detected for Delta V1 fallback; " +
+              s"write=${rc.write.getClass.getName}")
+          logInfo(
+            "[Omni-Proof][WriteRule] Replacing Delta OverwriteByExpressionExecV1 with LeafV2CommandExec " +
+              "delegate (same nodeName=OverwriteByExpressionExecV1, Gluten+Omni line in stringArgs).")
+          OmniGlutenLabeledOverwriteByExpressionExecV1(rc)
+        } else {
+          logInfo(
+            s"[Omni-Proof][WriteRule] OverwriteByExpressionExecV1 detected; " +
+              s"this V1 fallback write path is not rewritten to Omni native write " +
+              s"in the current build. write=${rc.write.getClass.getName}")
+          rc
+        }
       case rc @ AppendDataExec(_, _, write)
         if write.getClass.getName == NOOP_WRITE &&
           BackendsApiManager.getSettings.enableNativeWriteFiles() =>

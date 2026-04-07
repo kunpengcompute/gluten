@@ -6,7 +6,7 @@ package org.apache.gluten.connector.write
 
 import org.apache.gluten.backendsapi.BackendsApiManager
 import org.apache.gluten.execution.HudiWriteJniWrapper
-import org.apache.gluten.expression.OmniExpressionAdaptor.sparkTypeToOmniTypeWithComplex
+import org.apache.gluten.expression.OmniExpressionAdaptor.perBatchColumnOmniTypeIds
 import org.apache.gluten.runtime.OmniRuntimes
 
 import org.apache.spark.sql.connector.write.DataWriter
@@ -58,9 +58,7 @@ case class OmniHudiDataWriteFactory(
       partitionId: Int,
       taskId: Long,
       operationId: String): HudiWriteJniWrapper = {
-    val omniTypes = localSchema.fields
-      .map(f => sparkTypeToOmniTypeWithComplex(f.dataType, f.metadata).getId.toValue())
-      .toArray
+    val omniTypes = perBatchColumnOmniTypeIds(localSchema)
     val runtime = OmniRuntimes.contextInstance(
       BackendsApiManager.getBackendName, "HudiWrite#write")
     val jniWrapper = new HudiWriteJniWrapper(runtime)

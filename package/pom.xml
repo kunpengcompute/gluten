@@ -70,16 +70,21 @@
           <groupId>org.apache.gluten</groupId>
           <artifactId>backends-omni</artifactId>
           <version>${project.version}</version>
-          <exclusions>
-            <exclusion>
-              <groupId>io.delta</groupId>
-              <artifactId>${delta.package.name}_${scala.binary.version}</artifactId>
-            </exclusion>
-            <exclusion>
-              <groupId>io.delta</groupId>
-              <artifactId>delta-storage</artifactId>
-            </exclusion>
-          </exclusions>
+        </dependency>
+        <dependency>
+          <groupId>io.delta</groupId>
+          <artifactId>${delta.package.name}_${scala.binary.version}</artifactId>
+          <version>${delta.version}</version>
+        </dependency>
+        <dependency>
+          <groupId>io.delta</groupId>
+          <artifactId>delta-spark_${scala.binary.version}</artifactId>
+          <version>${delta.version}</version>
+        </dependency>
+        <dependency>
+          <groupId>io.delta</groupId>
+          <artifactId>delta-storage</artifactId>
+          <version>${delta.version}</version>
         </dependency>
       </dependencies>
     </profile>
@@ -110,6 +115,11 @@
           <groupId>org.apache.gluten</groupId>
           <artifactId>gluten-iceberg</artifactId>
           <version>${project.version}</version>
+        </dependency>
+        <dependency>
+          <groupId>org.apache.iceberg</groupId>
+          <artifactId>iceberg-spark-runtime-${sparkbundle.version}_${scala.binary.version}</artifactId>
+          <version>${iceberg.version}</version>
         </dependency>
       </dependencies>
     </profile>
@@ -151,11 +161,6 @@
             </goals>
             <configuration>
               <createSourcesJar>true</createSourcesJar>
-              <artifactSet>
-                <excludes>
-                  <exclude>io.delta:*</exclude>
-                </excludes>
-              </artifactSet>
               <relocations>
                 <relocation>
                   <pattern>com.google.protobuf</pattern>
@@ -383,6 +388,15 @@
                     <ignoreClass>org.apache.spark.memory.TaskMemoryManager </ignoreClass>
                     <!-- protobuf -->
                     <ignoreClass>com.google.protobuf.*</ignoreClass>
+                    <!-- iceberg runtime may embed eclipse-collections classes -->
+                    <ignoreClass>org.eclipse.collections.*</ignoreClass>
+                    <!-- iceberg runtime may embed yetus/annotations -->
+                    <ignoreClass>org.apache.yetus.audience.*</ignoreClass>
+                    <!-- iceberg runtime may embed jetbrains/intellij annotations -->
+                    <ignoreClass>org.jetbrains.annotations.*</ignoreClass>
+                    <ignoreClass>org.intellij.lang.annotations.*</ignoreClass>
+                    <!-- backends-omni delta sources overlap delta-spark provided classes -->
+                    <ignoreClass>org.apache.spark.sql.delta.*</ignoreClass>
                   </ignoreClasses>
                   <scopes>
                     <scope>compile</scope>
