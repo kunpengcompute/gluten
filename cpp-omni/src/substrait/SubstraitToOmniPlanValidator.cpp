@@ -70,6 +70,8 @@ bool ValidatePattern(const std::string &pattern, std::string &error)
     LogValidateMsg(Format("Validation failed at file:{}, line:{}, function:{}, reason:{}", ExtractFileName(__FILE__),  \
         __LINE__, __FUNCTION__, reason))
 
+const std::unordered_set<std::string> kRegexFunctions = {"rlike", "like"};
+
 const std::unordered_set<std::string> kBlackList = {"get_struct_field"};
 } // namespace
 
@@ -191,6 +193,13 @@ bool SubstraitToOmniPlanValidator::ValidateScalarFunction(
         LOG_VALIDATION_MSG("Function is not support: " + funcName);
         return false;
     }
+    if (kRegexFunctions.find(funcName) != kRegexFunctions.end()) {
+        // LIKE:  OmniOperator supports both literal and non-literal pattern (column/expr); skip strict literal check
+        if (funcName == "like") {
+            return true;
+        }
+        return ValidateRegexExpr(funcName, scalarFunction);
+    }
     return true;
 }
 
@@ -252,6 +261,39 @@ bool SubstraitToOmniPlanValidator::IsAllowedCast(const DataTypePtr &fromType, co
             }
             break;
     }
+
+    // Limited support for Timestamp to X.
+    if (fromType->GetId() == OMNI_TIMESTAMP && !(toType->GetId() == OMNI_DATE32 || toType->GetId() == OMNI_VARCHAR)) {
+        return false;
+    }
+
+    // Limited support for X to Timestamp.
+    if (toType->GetId() == OMNI_TIMESTAMP) {
+        if (fromType->isDecimal()) {
+            return false;
+        }
+        if (fromType->GetId() == OMNI_DATE32) {
+            return true;
+        }
+        if (fromType->GetId() == OMNI_VARCHAR) {
+            return true;
+        }
+        if (fromType->GetId() == OMNI_BYTE || fromType->GetId() == OMNI_SHORT || fromType->GetId() == OMNI_INT ||
+            fromType->GetId() == OMNI_LONG || fromType->GetId() == OMNI_DOUBLE || fromType->GetId() == OMNI_FLOAT) {
+            return true;
+        }
+        return false;
+    }
+
+    // Limited support for Complex types.
+    if (fromType->GetId() == OMNI_ARRAY || fromType->GetId() == OMNI_MAP || fromType->GetId() == OMNI_ROW) {
+        return false;
+    }
+
+    if (fromType->GetId() == OMNI_VARBINARY && toType->GetId() != OMNI_VARCHAR) {
+        return false;
+    }
+
     return true;
 }
 
@@ -357,7 +399,7 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::FetchRel &fetchRe
         }
     }
 
-    if (fetchRel.offset() < 0 || fetchRel.count() < 0) {
+    if (fetchRel.offset() != 0 || fetchRel.count() < 0) {
         LOG_VALIDATION_MSG("Offset and count should be valid in FetchRel.");
         return false;
     }
@@ -812,8 +854,13 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::SortRel &sortRel)
 
         if (sort.has_expr()) {
             auto expression = exprConverter_->ToOmniExpr(sort.expr(), rowType);
+            auto fieldExpr = ExtractFieldExprFromPartitionOrSortKey(expression);
+            if (fieldExpr == nullptr) {
+                LOG_VALIDATION_MSG("in SortRel, sort key must resolve to a field reference.");
+                return false;
+            }
             ExprVerifier ev;
-            if (!ev.VisitExpr(*expression)) {
+            if (!ev.VisitExpr(*fieldExpr)) {
                 LOG_VALIDATION_MSG("Sort expression verification failed.");
                 return false;
             }

@@ -251,13 +251,16 @@ object OmniMetricsUtil extends Logging {
     }
     val operatorMetrics = new JArrayList[OperatorMetrics]()
     var curMetricsIdx = metricsIdx
-    relMap
-      .get(operatorIdx)
-      .forEach(
+    val relIdsForOp = relMap.get(operatorIdx)
+    if (relIdsForOp != null) {
+      relIdsForOp.forEach(
         _ => {
           operatorMetrics.add(metrics.genOperatorMetrics(curMetricsIdx))
           curMetricsIdx -= 1
         })
+    } else {
+      logDebug(s"OmniMetricsUtil: relMap has no entry for operatorIdx=$operatorIdx (skip native metrics slice)")
+    }
     mutNode.updater match {
       case ju: HashJoinMetricsUpdater =>
         // JoinRel outputs two suites of metrics respectively for hash build and hash probe.
@@ -284,19 +287,26 @@ object OmniMetricsUtil extends Logging {
       case lu: OmniLimitMetricsUpdater =>
         // Limit over Sort is converted to TopN node in omni, so there is only one suite of metrics
         // for the two transformers. We do not update metrics for limit and leave it for sort.
-        if (!mutNode.children.head.updater.isInstanceOf[OmniSortMetricsUpdater]) {
+        if (
+          mutNode.children.nonEmpty &&
+          !mutNode.children.head.updater.isInstanceOf[OmniSortMetricsUpdater]) {
           val opMetrics: OperatorMetrics = mergeMetrics(operatorMetrics)
-          lu.updateNativeMetrics(opMetrics)
+          if (opMetrics != null) {
+            lu.updateNativeMetrics(opMetrics)
+          }
         }
       case u =>
         val opMetrics: OperatorMetrics = mergeMetrics(operatorMetrics)
-        u.updateNativeMetrics(opMetrics)
+        if (opMetrics != null) {
+          u.updateNativeMetrics(opMetrics)
+        }
     }
 
     var newOperatorIdx: JLong = operatorIdx - 1
     var newMetricsIdx: Int =
       if (
         mutNode.updater.isInstanceOf[OmniLimitMetricsUpdater] &&
+        mutNode.children.nonEmpty &&
         mutNode.children.head.updater.isInstanceOf[OmniSortMetricsUpdater]
       ) {
         // This suite of metrics is not consumed.
@@ -346,23 +356,34 @@ object OmniMetricsUtil extends Logging {
       aggParamsMap: JMap[JLong, AggregationParams]): IMetrics => Unit = {
     imetrics =>
       try {
-        val metrics = imetrics.asInstanceOf[Metrics]
-        val numNativeMetrics = metrics.getInputRows().length
-        if (numNativeMetrics == 0) {
-          logInfo("numNativeMetrics size is 0.")
+        if (imetrics == null) {
+          logDebug("OmniMetricsUtil: IMetrics is null, skip")
         } else {
-          updateTransformerMetricsInternal(
-            mutNode,
-            relMap,
-            operatorIdx,
-            metrics,
-            numNativeMetrics - 1,
-            joinParamsMap,
-            aggParamsMap)
+          val metrics = imetrics.asInstanceOf[Metrics]
+          val inputRowsArr = metrics.getInputRows
+          if (inputRowsArr == null) {
+            logDebug("OmniMetricsUtil: Metrics.getInputRows is null, skip native metrics update")
+          } else {
+            val numNativeMetrics = inputRowsArr.length
+            if (numNativeMetrics == 0) {
+              logInfo("numNativeMetrics size is 0.")
+            } else {
+              updateTransformerMetricsInternal(
+                mutNode,
+                relMap,
+                operatorIdx,
+                metrics,
+                numNativeMetrics - 1,
+                joinParamsMap,
+                aggParamsMap)
+            }
+          }
         }
       } catch {
         case e: Exception =>
-          logWarning(s"Updating native metrics failed due to ${e.getCause}.")
+          val detail =
+            Option(e.getCause).map(_.toString).getOrElse(Option(e.getMessage).getOrElse(e.toString))
+          logWarning(s"Updating native metrics failed: $detail")
           ()
       }
   }

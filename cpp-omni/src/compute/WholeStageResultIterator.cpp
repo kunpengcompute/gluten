@@ -65,7 +65,7 @@ WholeStageResultIterator::WholeStageResultIterator(MemoryManager *memoryManager,
                 std::unordered_map<std::string, std::string>(),
                 0,
                 true,
-                std::unordered_map<std::string, std::string>(),
+                metadataColumn,
                 properties[idx]);
             connectorSplits.emplace_back(split);
         }
@@ -152,6 +152,21 @@ std::unordered_map<std::string, std::string> WholeStageResultIterator::GetQueryC
     const std::string &spillDir) const
 {
     std::unordered_map<std::string, std::string> configs = {};
+    auto safeGetBool = [this](const char* key, bool defaultValue) -> bool {
+        return omniCfg_->Get<bool>(std::string(key), defaultValue);
+    };
+    auto safeGetI32 = [this](const char* key, int32_t defaultValue) -> int32_t {
+        return omniCfg_->Get<int32_t>(std::string(key), defaultValue);
+    };
+    auto safeGetU64 = [this](const char* key, uint64_t defaultValue) -> uint64_t {
+        return omniCfg_->Get<uint64_t>(std::string(key), defaultValue);
+    };
+    auto safeGetU8 = [this](const char* key, uint8_t defaultValue) -> uint8_t {
+        return omniCfg_->Get<uint8_t>(std::string(key), defaultValue);
+    };
+    auto safeGetStr = [this](const char* key, const char* defaultValue) -> std::string {
+        return omniCfg_->Get<std::string>(std::string(key), std::string(defaultValue));
+    };
 
     try {
         if (omniCfg_->ValueExists(kDefaultSessionTimezone)) {
@@ -169,26 +184,29 @@ std::unordered_map<std::string, std::string> WholeStageResultIterator::GetQueryC
             configs[config::QueryConfig::kSpillEnabled] = "true";
         }
         configs[config::QueryConfig::kAggregationSpillEnabled] = BoolToString(
-            omniCfg_->Get<bool>(kAggregationSpillEnabled, true));
-        configs[config::QueryConfig::kMemFraction] = std::to_string(omniCfg_->Get<int32_t>(kMemFraction, 90));
-        configs[config::QueryConfig::kJoinSpillEnabled] = BoolToString(omniCfg_->Get<bool>(kJoinSpillEnabled, true));
-        configs[config::QueryConfig::kOrderBySpillEnabled] = BoolToString(omniCfg_->Get<bool>(kOrderBySpillEnabled,
-            true));
-        configs[config::QueryConfig::kMaxSpillLevel] = std::to_string(omniCfg_->Get<int32_t>(kMaxSpillLevel, 4));
+            safeGetBool("spark.gluten.sql.columnar.backend.omni.aggregationSpillEnabled", true));
+        configs[config::QueryConfig::kMemFraction] = std::to_string(
+            safeGetI32("spark.gluten.sql.columnar.backend.omni.memFraction", 90));
+        configs[config::QueryConfig::kJoinSpillEnabled] = BoolToString(
+            safeGetBool("spark.gluten.sql.columnar.backend.omni.joinSpillEnabled", true));
+        configs[config::QueryConfig::kOrderBySpillEnabled] = BoolToString(
+            safeGetBool("spark.gluten.sql.columnar.backend.omni.orderBySpillEnabled", true));
+        configs[config::QueryConfig::kMaxSpillLevel] = std::to_string(
+            safeGetI32("spark.gluten.sql.columnar.backend.omni.maxSpillLevel", 4));
         configs[config::QueryConfig::kMaxSpillFileSize] = std::to_string(
-            omniCfg_->Get<uint64_t>(kMaxSpillFileSize, 1L * 1024 * 1024 * 1024));
+            safeGetU64("spark.gluten.sql.columnar.backend.omni.maxSpillFileSize", 1L * 1024 * 1024 * 1024));
         configs[config::QueryConfig::kMaxSpillRunRows] = std::to_string(
-            omniCfg_->Get<uint64_t>(kMaxSpillRunRows, 3L * 1024 * 1024));
-        configs[config::QueryConfig::kMaxSpillBytes] = std::to_string(omniCfg_->Get<uint64_t>(kMaxSpillBytes,
-            107374182400LL));
+            safeGetU64("spark.gluten.sql.columnar.backend.omni.MaxSpillRunRows", 3L * 1024 * 1024));
+        configs[config::QueryConfig::kMaxSpillBytes] = std::to_string(
+            safeGetU64("spark.gluten.sql.columnar.backend.omni.MaxSpillBytes", 107374182400LL));
         configs[config::QueryConfig::kSpillStartPartitionBit] = std::to_string(
-            omniCfg_->Get<uint8_t>(kSpillStartPartitionBit, 29));
+            safeGetU8("spark.gluten.sql.columnar.backend.omni.spillStartPartitionBit", 29));
         configs[config::QueryConfig::kSpillNumPartitionBits] = std::to_string(
-            omniCfg_->Get<uint8_t>(kSpillPartitionBits, 3));
+            safeGetU8("spark.gluten.sql.columnar.backend.omni.spillPartitionBits", 3));
         configs[config::QueryConfig::kSpillableReservationGrowthPct] = std::to_string(
-            omniCfg_->Get<uint8_t>(kSpillableReservationGrowthPct, 25));
-        configs[config::QueryConfig::kSpillPrefixSortEnabled] = omniCfg_->Get<std::string>(kSpillPrefixSortEnabled,
-            "false");
+            safeGetU8("spark.gluten.sql.columnar.backend.omni.spillableReservationGrowthPct", 25));
+        configs[config::QueryConfig::kSpillPrefixSortEnabled] = safeGetStr(
+            "spark.gluten.sql.columnar.backend.omni.spillPrefixsortEnabled", "false");
         configs[config::QueryConfig::KSpillHashAggRowThreshold] = std::to_string(
             omniCfg_->Get<int32_t>(KSpillHashAggRowThreshold, INT32_MAX));
         configs[config::QueryConfig::KSpillSortRowThreshold] = std::to_string(
@@ -201,19 +219,20 @@ std::unordered_map<std::string, std::string> WholeStageResultIterator::GetQueryC
             omniCfg_->Get<uint64_t>(KColumnarSpillDirDiskReserveSize, 10737418240L));
         configs[config::QueryConfig::KColumnarSpillEnableCompress] = BoolToString(
             omniCfg_->Get<bool>(KColumnarSpillEnableCompress, false));
-        configs[config::QueryConfig::KEnableAdaptivePartialAggregation] = omniCfg_->Get<std::string>(
-            KEnableAdaptivePartialAggregation, "true");
+        configs[config::QueryConfig::KEnableAdaptivePartialAggregation] = safeGetStr(
+            "spark.gluten.sql.columnar.backend.omni.adaptivePartialAggregation.enabled", "true");
         configs[config::QueryConfig::KAdaptivePartialAggregationMinRows] = std::to_string(
             omniCfg_->Get<int32_t>(KAdaptivePartialAggregationMinRows, 500000));
         configs[config::QueryConfig::KAdaptivePartialAggregationRatio] = std::to_string(
             omniCfg_->Get<double>(KAdaptivePartialAggregationRatio, 0.8));
         configs[config::QueryConfig::KPreferVectorizationExpression] = BoolToString(
-            omniCfg_->Get<bool>(KPreferVectorizationExpression, false));
+            safeGetBool("spark.gluten.sql.columnar.backend.omni.preferVectorizationExpression", false));
         configs[config::QueryConfig::KMaxBatchSize] = std::to_string(
-            omniCfg_->Get<uint64_t>(kSparkBatchSize, 4096));
-        if (omniCfg_->Get<bool>(kSparkShuffleSpillCompress, true)) {
-            configs[config::QueryConfig::kSpillCompressionKind] = omniCfg_->Get<std::string>(kSpillCompressionKind,
-                omniCfg_->Get<std::string>(kCompressionKind, "lz4"));
+            safeGetU64("spark.gluten.sql.columnar.maxBatchSize", 4096));
+        if (safeGetBool("spark.shuffle.spill.compress", true)) {
+            const std::string defaultCodec = safeGetStr("spark.io.compression.codec", "lz4");
+            configs[config::QueryConfig::kSpillCompressionKind] = safeGetStr(
+                "spark.gluten.sql.columnar.backend.omni.spillCompressionCodec", defaultCodec.c_str());
         } else {
             configs[config::QueryConfig::kSpillCompressionKind] = "none";
         }

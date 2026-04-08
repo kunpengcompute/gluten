@@ -537,6 +537,9 @@ class GlutenConfig(conf: SQLConf) extends Logging {
 
   def enableColumnarAQEShuffle: Boolean = conf.getConf(COLUMNAR_OMNI_AQE_SHUFFLE_MERGE)
 
+  def omniHudiSelectAllStripVirtualColumns: Boolean =
+    conf.getConf(OMNI_HUDI_SELECT_ALL_STRIP_VIRTUAL_COLUMNS)
+
   def enableJoinReorderEnhance: Boolean = conf.getConf(ENABLE_JOIN_REORDER_ENHANCE)
 
   def joinOutputStringTypeCost: Int = conf.getConf(JOIN_OUTPUT_STRING_COST_ESTIMATE)
@@ -2584,6 +2587,15 @@ object GlutenConfig {
     .doc("enable or disable aqe shuffle")
     .booleanConf
     .createWithDefault(true)
+
+  val OMNI_HUDI_SELECT_ALL_STRIP_VIRTUAL_COLUMNS =
+    buildConf("spark.gluten.sql.columnar.backend.omni.hudi.selectAll.stripVirtualColumns")
+      .internal()
+      .doc(
+        "When true, optimizer removes Hudi virtual columns (_hoodie_*) from Project lists that " +
+          "reference every output of the child (typical SELECT *), so results match user-written columns only.")
+      .booleanConf
+      .createWithDefault(true)
 
   val COLUMNAR_SPILL_WRITE_BUFFER_SIZE = buildConf("spark.gluten.sql.columnar.backend.omni.spill.writeBufferSize")
     .internal()

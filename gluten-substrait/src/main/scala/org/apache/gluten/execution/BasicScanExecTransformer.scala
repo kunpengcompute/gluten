@@ -126,13 +126,22 @@ trait BasicScanExecTransformer extends LeafTransformSupport with BaseDataSource 
     val output = outputAttributes()
     val typeNodes = ConverterUtils.collectAttributeTypeNodes(output)
     val nameList = ConverterUtils.collectAttributeNamesWithoutExprId(output)
+    val hoodiePrefixAsMetadata = this match {
+      case f: FileSourceScanExecTransformerBase =>
+        HudiDatasourceDetection.isHudiSparkFileFormat(f.relation.fileFormat)
+      case b: BatchScanExecTransformerBase =>
+        HudiDatasourceDetection.isHudiConnectorScan(b.scan)
+      case _ => false
+    }
     val columnTypeNodes = output.map {
       attr =>
         if (getPartitionSchema.exists(_.name.equals(attr.name))) {
           new ColumnTypeNode(NamedStruct.ColumnType.PARTITION_COL)
         } else if (SparkShimLoader.getSparkShims.isRowIndexMetadataColumn(attr.name)) {
           new ColumnTypeNode(NamedStruct.ColumnType.ROWINDEX_COL)
-        } else if (attr.isMetadataCol) {
+        } else if (
+          attr.isMetadataCol ||
+          (hoodiePrefixAsMetadata && attr.name.startsWith("_hoodie_"))) {
           new ColumnTypeNode(NamedStruct.ColumnType.METADATA_COL)
         } else {
           new ColumnTypeNode(NamedStruct.ColumnType.NORMAL_COL)
