@@ -20,7 +20,7 @@ package org.apache.spark.sql.execution.datasources
 import org.apache.gluten.datasources.OmniOrcFormatWriterInjects
 import org.apache.gluten.datasources.orc.OmniOrcFileFormat
 import org.apache.gluten.datasources.parquet.{OmniParquetFileFormat, OmniParquetFormatWriterInjects}
-import org.apache.gluten.execution.TransformSupport
+import org.apache.gluten.execution.{DeltaNativeParquetWrite, TransformSupport}
 import org.apache.gluten.execution.datasource.GlutenFormatFactory
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileAlreadyExistsException, Path}
@@ -101,7 +101,8 @@ object OmniFileFormatWriter extends Logging {
              bucketSpec: Option[BucketSpec],
              statsTrackers: Seq[WriteJobStatsTracker],
              options: Map[String, String],
-             numStaticPartitionCols: Int = 0)
+             numStaticPartitionCols: Int = 0,
+             deltaNativeParquetProjectDataColumns: Boolean = false)
   : Set[String] = {
     require(partitionColumns.size >= numStaticPartitionCols)
     val writeFilesOpt = V1WritesUtils.getWriteFilesOpt(plan)
@@ -125,6 +126,9 @@ object OmniFileFormatWriter extends Logging {
     job.setOutputKeyClass(classOf[Void])
     job.setOutputValueClass(classOf[InternalRow])
     FileOutputFormat.setOutputPath(job, new Path(outputSpec.outputPath))
+    if (deltaNativeParquetProjectDataColumns) {
+      job.getConfiguration.setBoolean(DeltaNativeParquetWrite.JOB_CONF_PROJECT_DATA_COLUMNS, true)
+    }
 
     val partitionSet = AttributeSet(partitionColumns)
     // cleanup the internal metadata information of

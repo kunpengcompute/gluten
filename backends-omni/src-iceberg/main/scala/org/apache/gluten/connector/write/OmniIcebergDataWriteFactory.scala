@@ -5,7 +5,7 @@ package org.apache.gluten.connector.write
 
 import org.apache.gluten.backendsapi.BackendsApiManager
 import org.apache.gluten.execution.IcebergWriteJniWrapper
-import org.apache.gluten.expression.OmniExpressionAdaptor.sparkTypeToOmniTypeWithComplex
+import org.apache.gluten.expression.OmniExpressionAdaptor.perBatchColumnOmniTypeIds
 import org.apache.gluten.runtime.OmniRuntimes
 
 import org.apache.spark.sql.connector.write.DataWriter
@@ -56,9 +56,7 @@ case class OmniIcebergDataWriteFactory(
       operationId: String,
       partitionSpec: PartitionSpec,
       sortOrder: SortOrder): IcebergWriteJniWrapper = {
-    val omniTypes = localSchema.fields
-      .map(f => sparkTypeToOmniTypeWithComplex(f.dataType, f.metadata).getId.toValue())
-      .toArray
+    val omniTypes = perBatchColumnOmniTypeIds(localSchema)
     val runtime = OmniRuntimes.contextInstance(
       BackendsApiManager.getBackendName, "IcebergWrite#write")
     val jniWrapper = new IcebergWriteJniWrapper(runtime)
