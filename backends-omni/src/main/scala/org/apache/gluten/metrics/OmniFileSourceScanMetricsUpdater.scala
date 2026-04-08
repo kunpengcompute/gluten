@@ -26,12 +26,29 @@ import org.apache.spark.sql.utils.SparkInputMetricsUtil.InputMetricsWrapper
 class OmniFileSourceScanMetricsUpdater(@transient val metrics: Map[String, SQLMetric])
   extends MetricsUpdater {
 
+  val rawInputRows: SQLMetric = metrics("rawInputRows")
+  val outputRows: SQLMetric = metrics("numOutputRows")
+  val outputVectors: SQLMetric = metrics("outputVectors")
+  val outputBytes: SQLMetric = metrics("outputBytes")
+
+  val numInputBytes: SQLMetric = metrics("numInputBytes")
+  val totalScanTime: SQLMetric = metrics("totalScanTime")
+
   override def updateInputMetrics(inputMetrics: InputMetricsWrapper): Unit = {
+    inputMetrics.bridgeIncBytesRead(numInputBytes.value)
+    inputMetrics.bridgeIncRecordsRead(rawInputRows.value)
   }
 
   override def updateNativeMetrics(opMetrics: IOperatorMetrics): Unit = {
     if (opMetrics != null) {
-      val operatorMetrics = opMetrics.asInstanceOf[OperatorMetrics]
+      val m = opMetrics.asInstanceOf[OperatorMetrics]
+      rawInputRows += m.getRawInputRows
+      outputRows += m.getNumOutputRows
+      outputVectors += m.getNumOutputVecBatches
+      outputBytes += m.getNumOutputBytes
+
+      numInputBytes += m.getNumInputBytes
+      totalScanTime += m.getScanTime
     }
   }
 }
