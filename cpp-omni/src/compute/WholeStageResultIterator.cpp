@@ -31,7 +31,9 @@ WholeStageResultIterator::WholeStageResultIterator(MemoryManager *memoryManager,
     task_ = std::make_shared<OmniTask>(planFragment, std::move(queryConfig));
     getOrderedNodeIds(omniPlan_, orderedNodeIds_);
 
-    omniruntime::connector::registerConnector(std::make_shared<HiveConnector>(kHiveConnectorId(), omniCfg_));
+    if (!omniruntime::connector::getConnector(kHiveConnectorId())) {
+        omniruntime::connector::registerConnector(std::make_shared<HiveConnector>(kHiveConnectorId(), omniCfg_));
+    }
     splits_.reserve(scanInfos_.size());
     if (scanNodeIds_.size() != scanInfos_.size()) {
         throw std::runtime_error("Invalid scan information.");

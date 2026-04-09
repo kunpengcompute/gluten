@@ -55,7 +55,7 @@ public:
 
     ~WholeStageResultIterator() override
     {
-        omniruntime::connector::unregisterConnector(kHiveConnectorId());
+
     };
 
     VectorBatch *Next() override;
