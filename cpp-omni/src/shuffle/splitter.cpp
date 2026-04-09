@@ -834,18 +834,56 @@ int Splitter::SplitComplexColumns(VectorBatch& vb)
 
         for (uint complex_col_idx = 0; complex_col_idx < complex_type_array_idx_.size(); ++complex_col_idx) {
             auto col_idx_vb = complex_type_array_idx_[complex_col_idx];
-
             auto *vector = vb.Get(col_idx_vb);
-            spark::Vec* proto_vec = new spark::Vec(); // initialize proto vec
-            partition_complex_type_proto_vecs_[pid][complex_col_idx] = proto_vec;
-
             int32_t col_idx_schema = singlePartitionFlag ? col_idx_vb : (col_idx_vb - 1);
             DataTypePtr dataType = inputDataTypes_[col_idx_schema];
-            SerializeColumn(vector, row_ids, *proto_vec, dataType);
+
+            if (partition_complex_type_proto_vecs_[pid][complex_col_idx] == nullptr) {
+                spark::Vec* proto_vec = new spark::Vec();
+                partition_complex_type_proto_vecs_[pid][complex_col_idx] = proto_vec;
+                SerializeColumn(vector, row_ids, *proto_vec, dataType);
+            } else {
+                spark::Vec tmpVec;
+                SerializeColumn(vector, row_ids, tmpVec, dataType);
+                MergeProtoVec(*partition_complex_type_proto_vecs_[pid][complex_col_idx], tmpVec);
+            }
         }
     }
 
     return 0;
+}
+
+void Splitter::MergeProtoVec(spark::Vec& dst, const spark::Vec& src)
+{
+    dst.set_size(dst.size() + src.size());
+
+    dst.mutable_nulls()->append(src.nulls());
+
+    if (!src.values().empty()) {
+        dst.mutable_values()->append(src.values());
+    }
+
+    if (!src.offsets().empty()) {
+        auto* dstOffsetsStr = dst.mutable_offsets();
+        int32_t dstCount = static_cast<int32_t>(dstOffsetsStr->size() / sizeof(int32_t));
+        auto* dstOffsets = reinterpret_cast<const int32_t*>(dstOffsetsStr->data());
+        int32_t baseOffset = dstOffsets[dstCount - 1];
+
+        int32_t srcCount = static_cast<int32_t>(src.offsets().size() / sizeof(int32_t));
+        auto* srcOffsets = reinterpret_cast<const int32_t*>(src.offsets().data());
+
+        std::string adjusted;
+        adjusted.resize((srcCount - 1) * sizeof(int32_t));
+        auto* adjustedData = reinterpret_cast<int32_t*>(adjusted.data());
+        for (int32_t i = 1; i < srcCount; ++i) {
+            adjustedData[i - 1] = srcOffsets[i] + baseOffset;
+        }
+        dstOffsetsStr->append(adjusted);
+    }
+
+    for (int i = 0; i < src.subvectors_size(); ++i) {
+        MergeProtoVec(*dst.mutable_subvectors(i), src.subvectors(i));
+    }
 }
 
 int Splitter::SplitBinaryArray(VectorBatch& vb)
