@@ -1627,8 +1627,9 @@ int32_t Splitter::ProtoWritePartition(int32_t partition_id, std::unique_ptr<Buff
                 case ShuffleTypeId::SHUFFLE_ARRAY:
                 case ShuffleTypeId::SHUFFLE_MAP:
                 case ShuffleTypeId::SHUFFLE_ROW: {
-                    // directly obtain Vec from the serialized complex type data
-                    *vec = *partition_complex_type_proto_vecs_[partition_id][complexColIndexTmp];
+                    if (partition_complex_type_proto_vecs_[partition_id][complexColIndexTmp] != nullptr) {
+                        *vec = *partition_complex_type_proto_vecs_[partition_id][complexColIndexTmp];
+                    }
                     complexColIndexTmp++;
                     break;
                 }
@@ -1798,7 +1799,7 @@ int Splitter::protoSpillPartition(int32_t partition_id, std::unique_ptr<Buffered
                partition_id,
                splitRowInfoTmp.remainCopyRow,
                partition_cached_vectorbatch_[partition_id].size());
-    int curBatch = 0; // 变长cache batch下标，split已按照options_.spill_batch_row_num切割完成
+    int curBatch = 0;
     total_spill_row_num_ += splitRowInfoTmp.remainCopyRow;
     while (0 < splitRowInfoTmp.remainCopyRow) {
         if (options_.spill_batch_row_num < splitRowInfoTmp.remainCopyRow) {
@@ -1810,6 +1811,7 @@ int Splitter::protoSpillPartition(int32_t partition_id, std::unique_ptr<Buffered
         vecBatchProto->set_rowcnt(splitRowInfoTmp.onceCopyRow);
         vecBatchProto->set_veccnt(column_type_id_.size());
         int fixColIndexTmp = 0;
+        int complexColIndexTmp = 0;
         for (size_t indexSchema = 0; indexSchema < column_type_id_.size(); indexSchema++) {
             spark::Vec *vec = vecBatchProto->add_vecs();
             switch (column_type_id_[indexSchema]) {
@@ -1824,6 +1826,15 @@ int Splitter::protoSpillPartition(int32_t partition_id, std::unique_ptr<Buffered
                 }
                 case ShuffleTypeId::SHUFFLE_BINARY: {
                     SerializingBinaryColumns(partition_id, *vec, indexSchema, curBatch);
+                    break;
+                }
+                case ShuffleTypeId::SHUFFLE_ARRAY:
+                case ShuffleTypeId::SHUFFLE_MAP:
+                case ShuffleTypeId::SHUFFLE_ROW: {
+                    if (partition_complex_type_proto_vecs_[partition_id][complexColIndexTmp] != nullptr) {
+                        *vec = *partition_complex_type_proto_vecs_[partition_id][complexColIndexTmp];
+                    }
+                    complexColIndexTmp++;
                     break;
                 }
                 default: {
@@ -1871,6 +1882,10 @@ int Splitter::protoSpillPartition(int32_t partition_id, std::unique_ptr<Buffered
     partition_cached_vectorbatch_[partition_id].clear();
     for (size_t col = 0; col < column_type_id_.size(); col++) {
         vc_partition_array_buffers_[partition_id][col].clear();
+    }
+    for (size_t complexIdx = 0; complexIdx < complex_type_array_idx_.size(); ++complexIdx) {
+        delete partition_complex_type_proto_vecs_[partition_id][complexIdx];
+        partition_complex_type_proto_vecs_[partition_id][complexIdx] = nullptr;
     }
 
     return 0;
