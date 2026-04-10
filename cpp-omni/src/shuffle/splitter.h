@@ -105,6 +105,8 @@ class Splitter {
 
     int SplitComplexColumns(VectorBatch& vb);
 
+    void MergeProtoVec(spark::Vec& dst, const spark::Vec& src);
+
     int protoSpillPartition(int32_t partition_id, std::unique_ptr<BufferedOutputStream> &bufferStream);
 
     int protoSpillPartitionByRow(int32_t partition_id, std::unique_ptr<BufferedOutputStream> &bufferStream);
