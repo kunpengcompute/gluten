@@ -26,77 +26,121 @@ import org.apache.spark.sql.vectorized.ColumnarBatch;
 import java.io.IOException;
 import java.util.List;
 
+/**
+ * Iterator that pulls columnar batches from the Omni native runtime and wraps them as Spark
+ * {@link ColumnarBatch} instances for Gluten execution.
+ *
+ * @since 2026/04/14
+ */
 public class OmniColumnarBatchOutIterator extends ClosableIterator implements RuntimeAware {
-  private final long iterHandle;
+    private final long iterHandle;
 
-  private List<TypeNode> outputTypes;
+    private List<TypeNode> outputTypes;
 
-  public OmniColumnarBatchOutIterator(long iterHandle) {
-    super();
-    this.iterHandle = iterHandle;
-  }
-
-  public void setOutputTypes(List<TypeNode> outputTypes) {
-    this.outputTypes = outputTypes;
-  }
-
-  @Override
-  public long rtHandle() {
-    return -1;
-  }
-
-  public long itrHandle() {
-    return iterHandle;
-  }
-
-  private native boolean nativeHasNext(long iterHandle);
-
-  private native long nativeNext(long iterHandle);
-
-  private native long nativeSpill(long iterHandle, long size);
-
-  private native void nativeClose(long iterHandle);
-
-  @Override
-  public boolean hasNext0() throws IOException {
-    return nativeHasNext(iterHandle);
-  }
-
-  @Override
-  public ColumnarBatch next0() throws IOException {
-    long batchHandle = nativeNext(iterHandle);
-    if (batchHandle == -1L) {
-      return null; // stream ended
+    /**
+     * Constructs an iterator bound to the given native iterator handle.
+     *
+     * @param iterHandle native iterator handle from the Omni backend
+     */
+    public OmniColumnarBatchOutIterator(long iterHandle) {
+        super();
+        this.iterHandle = iterHandle;
     }
-    VecBatch vecBatch = transform(batchHandle);
-    OmniColumnVector[] omniColumnVectors = OmniColumnVector.allocateColumns(vecBatch.getRowCount(),
-        outputTypes.toArray(new TypeNode[0]), false);
-    for (int i = 0; i < omniColumnVectors.length; i++) {
-      omniColumnVectors[i].setVec(vecBatch.getVector(i));
+
+    /**
+     * Sets the logical output types used when materializing column vectors from native batches.
+     *
+     * @param outputTypes Substrait type nodes for each output column
+     */
+    public void setOutputTypes(List<TypeNode> outputTypes) {
+        this.outputTypes = outputTypes;
     }
-    return new ColumnarBatch(omniColumnVectors, vecBatch.getRowCount());
-  }
 
-
-  private VecBatch transform(long nativeBatch) {
-    return nativeTransform(nativeBatch);
-  }
-
-  public native VecBatch nativeTransform(long nativeBatch);
-
-
-  public long spill(long size) {
-    if (!closed.get()) {
-      return nativeSpill(iterHandle, size);
-    } else {
-      return 0L;
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public long rtHandle() {
+        return -1;
     }
-  }
 
-  @Override
-  public void close0() {
-    // To make sure the outputted batches are still accessible after the iterator is closed.
-    // TODO: Remove this API if we have other choice, e.g., hold the pools in native code.
-    nativeClose(iterHandle);
-  }
+    /**
+     * Returns the native iterator handle backing this iterator.
+     *
+     * @return native iterator handle
+     */
+    public long itrHandle() {
+        return iterHandle;
+    }
+
+    private native boolean nativeHasNext(long iterHandle);
+
+    private native long nativeNext(long iterHandle);
+
+    private native long nativeSpill(long iterHandle, long size);
+
+    private native void nativeClose(long iterHandle);
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean hasNext0() throws IOException {
+        return nativeHasNext(iterHandle);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ColumnarBatch next0() throws IOException {
+        long batchHandle = nativeNext(iterHandle);
+        if (batchHandle == -1L) {
+            return null; // stream ended
+        }
+        VecBatch vecBatch = transform(batchHandle);
+        OmniColumnVector[] omniColumnVectors = OmniColumnVector.allocateColumns(vecBatch.getRowCount(),
+                outputTypes.toArray(new TypeNode[0]), false);
+        for (int i = 0; i < omniColumnVectors.length; i++) {
+            omniColumnVectors[i].setVec(vecBatch.getVector(i));
+        }
+        return new ColumnarBatch(omniColumnVectors, vecBatch.getRowCount());
+    }
+
+    private VecBatch transform(long nativeBatch) {
+        return nativeTransform(nativeBatch);
+    }
+
+    /**
+     * Converts a native batch handle into a {@link VecBatch} owned by the Java side.
+     *
+     * @param nativeBatch native batch handle from Omni
+     * @return materialized vector batch
+     */
+    public native VecBatch nativeTransform(long nativeBatch);
+
+    /**
+     * Requests the native iterator to spill up to the given number of bytes.
+     *
+     * @param size maximum bytes to spill
+     * @return number of bytes spilled, or zero if this iterator is already closed
+     */
+    public long spill(long size) {
+        if (!closed.get()) {
+            return nativeSpill(iterHandle, size);
+        } else {
+            return 0L;
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Releases native resources while keeping already produced batches usable until their own
+     * lifecycle ends.
+     */
+    @Override
+    protected void close0() {
+        nativeClose(iterHandle);
+    }
 }
