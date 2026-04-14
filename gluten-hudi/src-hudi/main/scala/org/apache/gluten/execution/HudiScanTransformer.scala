@@ -20,9 +20,7 @@ import org.apache.gluten.extension.ValidationResult
 import org.apache.gluten.substrait.rel.LocalFilesNode.ReadFileFormat
 
 import org.apache.spark.sql.catalyst.TableIdentifier
-import org.apache.spark.sql.catalyst.expressions.{Attribute, AttributeReference, Expression}
-
-import scala.collection.mutable
+import org.apache.spark.sql.catalyst.expressions.{Attribute, Expression}
 import org.apache.spark.sql.catalyst.plans.QueryPlan
 import org.apache.spark.sql.execution.FileSourceScanExec
 import org.apache.spark.sql.execution.datasources.HadoopFsRelation
@@ -51,33 +49,12 @@ case class HudiScanTransformer(
     disableBucketedScan
   ) {
 
-  /**
-   * Hudi `_hoodie_*` attributes are not
-   * [[org.apache.spark.sql.catalyst.expressions.FileSourceGeneratedMetadataAttribute]], so they
-   * must be merged into [[getMetadataColumns]] for per-split metadata maps on native scan paths.
-   */
-  override def getMetadataColumns(): Seq[AttributeReference] = {
-    val fromSpark = metadataColumns
-    val fromSparkNames = fromSpark.map(_.name).toSet
-    val hoodieExtra = {
-      val buf = mutable.ArrayBuffer[AttributeReference]()
-      val seen = mutable.Set[String]()
-      output.foreach {
-        case ar: AttributeReference
-            if ar.name.startsWith("_hoodie_") &&
-              !fromSparkNames.contains(ar.name) &&
-              seen.add(ar.name) =>
-          buf += ar
-        case _ =>
-      }
-      buf.toSeq
-    }
-    fromSpark ++ hoodieExtra
-  }
-
   override lazy val fileFormat: ReadFileFormat = ReadFileFormat.ParquetReadFormat
 
   override protected def doValidateInternal(): ValidationResult = {
+    if (requiredSchema.fields.exists(_.name.startsWith("_hoodie"))) {
+      return ValidationResult.failed(s"Hudi meta field not supported.")
+    }
     super.doValidateInternal()
   }
 

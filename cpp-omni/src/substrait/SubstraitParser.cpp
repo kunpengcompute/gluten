@@ -116,21 +116,14 @@ void SubstraitParser::ParseColumnTypes(
     std::vector<ColumnType>& columnTypes)
 {
     const auto& columnsTypes = namedStruct.column_types();
-    const int nameCount = static_cast<int>(namedStruct.names().size());
-    columnTypes.clear();
-    columnTypes.reserve(nameCount);
     if (columnsTypes.size() == 0) {
         // Regard all columns as regular columns.
-        columnTypes.resize(nameCount, ColumnType::kRegular);
+        columnTypes.resize(namedStruct.names().size(), ColumnType::kRegular);
         return;
     }
 
-    for (int i = 0; i < nameCount; ++i) {
-        if (i >= columnsTypes.size()) {
-            columnTypes.push_back(ColumnType::kRegular);
-            continue;
-        }
-        const auto columnType = columnsTypes.Get(i);
+    columnTypes.reserve(columnsTypes.size());
+    for (const auto& columnType : columnsTypes) {
         switch (columnType) {
             case ::substrait::NamedStruct::NORMAL_COL:
                 columnTypes.push_back(ColumnType::kRegular);
@@ -145,10 +138,10 @@ void SubstraitParser::ParseColumnTypes(
                 columnTypes.push_back(ColumnType::kRowIndex);
                 break;
             default:
-                columnTypes.push_back(ColumnType::kRegular);
-                break;
+                std::cout << "Thread.currentThread() parseColumnTypes" ;
         }
     }
+    return;
 }
 
 std::pair<SubstraitToOmniExprType, std::string> SubstraitParser::FindOmniFunction(

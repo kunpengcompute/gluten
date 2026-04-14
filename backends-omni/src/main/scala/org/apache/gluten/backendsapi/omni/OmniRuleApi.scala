@@ -29,23 +29,13 @@ import org.apache.gluten.extension.columnar.transition.{InsertTransitions, Remov
 import org.apache.gluten.extension.columnar.validator.{Validator, Validators}
 import org.apache.gluten.extension.injector.{Injector, SparkInjector}
 import org.apache.gluten.extension.injector.GlutenInjector.{LegacyInjector, RasInjector}
-import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
-import org.apache.spark.sql.catalyst.rules.Rule
 import org.apache.gluten.extension.{OmniHLLRewriteRule, RewriteAQEShuffleRead}
-import org.apache.gluten.integration.hudi.OmniHudiSelectAllVirtualColumnPruneRule
 import org.apache.spark.sql.catalyst.optimizer.{CombineJoinedAggregates, DedupLeftSemiJoin, MergeSubqueryFilters, PushOrderedLimitThroughAgg, ReorderJoinEnhances, RewriteSelfJoinInInPredicate, RollupOptimization, ShuffleJoinStrategy, RewriteTopNSort, CombineWindowSort, OmniRewriteSubqueryBroadcast, CombineProject}
-import org.apache.gluten.extension.{AdaptiveHashAggregateRule, FallbackBroadcastHashJoin, FallbackBroadcastHashJoinPrepQueryStage, OmniRewriteCollectFuncRule, OmniRewriteJoin, PushDownFilterToOmniScan}
+import org.apache.gluten.extension.{FallbackBroadcastHashJoin, FallbackBroadcastHashJoinPrepQueryStage, PushDownFilterToOmniScan, OmniRewriteCollectFuncRule, RewriteAQEShuffleRead, OmniRewriteJoin, AdaptiveHashAggregateRule}
 import org.apache.gluten.sql.shims.SparkShimLoader
 import org.apache.spark.internal.Logging
-import org.apache.spark.sql.execution.{
-  ColumnarCollapseTransformStages,
-  FileSourceScanExec,
-  GlutenAutoAdjustStageResourceProfile,
-  GlutenFallbackReporter,
-  OmniShuffleStageColumnarReadRule,
-  RDDScanExec,
-  SparkPlan
-}
+import org.apache.spark.sql.catalyst.rules.Rule
+import org.apache.spark.sql.execution.{ColumnarCollapseTransformStages, FileSourceScanExec, GlutenAutoAdjustStageResourceProfile, GlutenFallbackReporter, RDDScanExec, SparkPlan}
 import org.apache.spark.sql.execution.adaptive.AdaptiveSparkPlanHelper
 import org.apache.spark.sql.types.StructType
 
@@ -54,9 +44,6 @@ class OmniRuleApi extends RuleApi {
   import OmniRuleApi._
 
   override def injectRules(injector: Injector): Unit = {
-    // Same as VeloxIcebergComponent: register BatchScanExec -> IcebergScanTransformer (legacy + RAS).
-    // gluten-iceberg is optional (-Piceberg); reflect to keep default Omni build compiling.
-    injectIcebergScanIfPresent(injector)
     injectSpark(injector.spark)
     injectLegacy(injector.gluten.legacy)
     injectRas(injector.gluten.ras)
@@ -64,40 +51,11 @@ class OmniRuleApi extends RuleApi {
 }
 
 object OmniRuleApi {
-
-  private def injectIcebergScanIfPresent(injector: Injector): Unit = {
-    try {
-      val clazz = Class.forName("org.apache.gluten.execution.OffloadIcebergScan$")
-      val module = clazz.getField("MODULE$").get(null)
-      val m = clazz.getMethod("inject", classOf[Injector])
-      m.invoke(module, injector)
-    } catch {
-      case _: ClassNotFoundException | _: NoSuchFieldException | _: NoSuchMethodException =>
-      case e: java.lang.reflect.InvocationTargetException =>
-        throw Option(e.getCause).getOrElse(e)
-    }
-  }
-
   private def injectSpark(injector: SparkInjector): Unit = {
     // Inject the regular Spark rules directly.
     injector.injectQueryStagePrepRule(FallbackMultiCodegens.apply)
     injector.injectQueryStagePrepRule(FallbackBroadcastHashJoinPrepQueryStage.apply)
     injector.injectQueryStagePrepRule(DedupLeftSemiJoin.apply)
-    // AQE replaces exchanges with ShuffleQueryStageExec / AQEShuffleReadExec; without re-collapsing,
-    // native HashAggregate can sit outside WholeStageTransformer while still reporting columnar
-    // support, which triggers SparkPlan's default doExecuteColumnar ("column support mismatch").
-    // Do not touch session.sessionState in this lambda: Spark builds QueryStagePrep rules while
-    // initializing sessionState; reading sessionState here causes infinite recursion (StackOverflow).
-    // Must not evaluate [[GlutenConfig(session.sessionState.conf)]] when the rule is built:
-    // [[InjectorControl.wrapRule]] calls ruleBuilder(session) eagerly; touching sessionState here
-    // recurses while sessionState is still initializing (StackOverflow).
-    injector.injectQueryStagePrepRule { session =>
-      new Rule[SparkPlan] {
-        private lazy val collapse =
-          ColumnarCollapseTransformStages(new GlutenConfig(session.sessionState.conf))
-        override def apply(plan: SparkPlan): SparkPlan = collapse(plan)
-      }
-    }
     injector.injectPlannerStrategy(_ => ShuffleJoinStrategy)
     injector.injectOptimizerRule(OmniRewriteCollectFuncRule.apply)
     injector.injectOptimizerRule(OmniHLLRewriteRule.apply)
@@ -107,32 +65,6 @@ object OmniRuleApi {
     injector.injectOptimizerRule(RewriteSelfJoinInInPredicate.apply)
     injector.injectOptimizerRule(CombineJoinedAggregates.apply)
     injector.injectOptimizerRule(MergeSubqueryFilters.apply)
-    injectHudiInsertSqlRewriteIfPresent(injector)
-    // Must run in analyzer post-hoc, not the optimizer: trivial `SELECT *` Project (same output as
-    // Relation) is removed by EliminateProject before typical extended optimizer rules see it.
-    injector.injectPostHocResolutionRule(OmniHudiSelectAllVirtualColumnPruneRule.build)
-  }
-
-  /**
-   * When `-Phudi` is on, rewrite `InsertIntoHoodieTableCommand` -> `writeTo().append()` so INSERT SQL
-   * can use DSv2 + [[org.apache.gluten.execution.OmniHudiAppendDataExec]] without patching Hudi JAR.
-   */
-  private def injectHudiInsertSqlRewriteIfPresent(injector: SparkInjector): Unit = {
-    try {
-      val clazz = Class.forName("org.apache.gluten.integration.hudi.OmniHudiInsertRewriteRule$")
-      val mod = clazz.getField("MODULE$").get(null)
-      val build = clazz.getMethod("build", classOf[org.apache.spark.sql.SparkSession])
-      injector.injectResolutionRule { session =>
-        build.invoke(mod, session).asInstanceOf[Rule[LogicalPlan]]
-      }
-      injector.injectOptimizerRule { session =>
-        build.invoke(mod, session).asInstanceOf[Rule[LogicalPlan]]
-      }
-    } catch {
-      case _: ClassNotFoundException | _: NoSuchFieldException | _: NoSuchMethodException =>
-      case e: java.lang.reflect.InvocationTargetException =>
-        throw Option(e.getCause).getOrElse(e)
-    }
   }
 
   private def injectLegacy(injector: LegacyInjector): Unit = {
@@ -151,12 +83,7 @@ object OmniRuleApi {
 //    injector.injectPreTransform(c => ArrowScanReplaceRule.apply(c.session))
 
     // Legacy: The legacy transform rule.
-    // Hudi scan offload must precede OffloadOthers so FileSourceScanExec can become HudiScanTransformer.
-    // Hudi DSv2 writes: OffloadHudiWrite -> OmniHudi*Exec when plan uses AppendDataExec / Overwrite* / WriteToDataSourceV2 (use writeTo / V2 catalog; INSERT may stay Command).
-    val offloads = HudiOffloadRegistry.scanOffloads ++
-      Seq(OffloadOthers(), OffloadExchange(), OffloadJoin(), OffloadWrite()) ++
-      IcebergOffloadRegistry.offloads ++
-      HudiOffloadRegistry.writeOffloads
+    val offloads = Seq(OffloadOthers(), OffloadExchange(), OffloadJoin(), OffloadWrite()) ++ IcebergOffloadRegistry.offloads ++ HudiOffloadRegistry.offloads
     val validatorBuilder: GlutenConfig => Validator = conf =>
       Validators.newValidator(conf, offloads)
     val rewrites =
@@ -195,9 +122,6 @@ object OmniRuleApi {
       .getExtendedColumnarPostRules()
       .foreach(each => injector.injectPost(c => each(c.session)))
     injector.injectPost(c => ColumnarCollapseTransformStages(c.glutenConf))
-    // Omni-only: same behavior as previous postColumnarCollapse hook, without touching shared
-    // [[ColumnarCollapseTransformStages]] / [[BackendSettingsApi]] (Velox/CH substrait parity).
-    injector.injectPost(_ => OmniShuffleStageColumnarReadRule)
 
     // Gluten columnar: Final rules.
     injector.injectFinal(c => RollupOptimization.apply(c.session))

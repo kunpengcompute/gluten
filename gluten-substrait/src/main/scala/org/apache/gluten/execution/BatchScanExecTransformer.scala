@@ -144,14 +144,6 @@ abstract class BatchScanExecTransformerBase(
     }
   }
 
-  override def getProperties: Map[String, String] = {
-    if (HudiDatasourceDetection.isHudiConnectorScan(scan)) {
-      Map(GlutenScanExtensionProperties.HudiDataSourceProperty -> "true")
-    } else {
-      Map.empty
-    }
-  }
-
   protected[this] def supportsBatchScan(scan: Scan): Boolean
 
   override def doValidateInternal(): ValidationResult = {

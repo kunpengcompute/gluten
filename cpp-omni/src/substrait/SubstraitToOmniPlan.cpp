@@ -824,7 +824,7 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::ReadRel 
     std::shared_ptr<HiveTableHandle> tableHandle;
     if (!readRel.has_advanced_extension() || !readRel.advanced_extension().has_enhancement()) {
         tableHandle = std::make_shared<connector::hive::HiveTableHandle>(
-            kHiveConnectorId(), TABLE_NAME, filterPushdownEnabled, "{}");
+            kHiveConnectorId(), TABLE_NAME, filterPushdownEnabled, "");
     } else {
         auto names = colNameList;
         auto types = omniTypeList;

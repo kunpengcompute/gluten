@@ -279,16 +279,6 @@ case class WholeStageTransformer(child: SparkPlan, materializeInput: Boolean = f
     super.verboseStringWithOperatorId() ++ nativePlan
   }
 
-  /**
-   * Whole stage is a pipeline boundary, not an extra relational operator. When AQE / collapse
-   * nests [[WholeStageTransformer]] (e.g. shuffle stage feeding another stage), the outer stage
-   * calls [[TransformSupport.transform]] on the inner one; without this override the default
-   * [[TransformSupport.doTransform]] throws.
-   */
-  override protected def doTransform(context: SubstraitContext): TransformContext = {
-    child.asInstanceOf[TransformSupport].transform(context)
-  }
-
   private def generateWholeStageTransformContext(): WholeStageTransformContext = {
     val substraitContext = new SubstraitContext
     val childCtx = child

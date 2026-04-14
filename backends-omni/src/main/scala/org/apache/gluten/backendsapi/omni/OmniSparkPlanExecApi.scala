@@ -55,9 +55,8 @@ import org.apache.spark.sql.execution.datasources.parquet.ParquetFileFormat
 import org.apache.spark.sql.hive.OmniHiveUDFTransformer
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.catalyst.expressions._
-import org.apache.spark.internal.Logging
 
-class OmniSparkPlanExecApi extends SparkPlanExecApi with Logging {
+class OmniSparkPlanExecApi extends SparkPlanExecApi {
 
   override def extraExpressionMappings: Seq[Sig] = {
     Seq(
@@ -645,22 +644,6 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi with Logging {
   override def genFileSourceScanExecTransformer(
     scanExec: FileSourceScanExec): FileSourceScanExecTransformerBase = {
     val hadoopFsRelation = scanExec.relation
-    val rawFormatClass = hadoopFsRelation.fileFormat.getClass.getName
-    if (rawFormatClass.endsWith("HoodieParquetFileFormat")) {
-      val tableStr = scanExec.tableIdentifier
-        .map(id => s"${id.database.getOrElse("default")}.${id.table}")
-        .getOrElse("n/a")
-      logWarning(
-        "[Gluten][Hudi+Omni] Omni accelerated Hudi read (parquet-native scan): " +
-          s"format=$rawFormatClass, table=$tableStr")
-      // Prefer OmniHudiScanTransformer from backends-omni/src-hudi (Parquet enhancement JSON);
-      // fall back to gluten-hudi HudiScanTransformer.
-      val reflectedHudiScan =
-        tryBuildOmniHudiScanTransformer(scanExec).orElse(tryBuildHudiScanTransformer(scanExec))
-      if (reflectedHudiScan.isDefined) {
-        return reflectedHudiScan.get
-      }
-    }
     val fileFormat: FileFormat = hadoopFsRelation.fileFormat match {
         case orcFormat: OrcFileFormat =>
             new OmniOrcFileFormat()
@@ -689,30 +672,6 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi with Logging {
       scanExec.tableIdentifier,
       scanExec.disableBucketedScan
     )
-  }
-
-  private def tryBuildOmniHudiScanTransformer(
-      scanExec: FileSourceScanExec): Option[FileSourceScanExecTransformerBase] = {
-    try {
-      val clazz = Class.forName("org.apache.gluten.execution.OmniHudiScanTransformer$")
-      val module = clazz.getField("MODULE$").get(null)
-      val m = clazz.getMethod("apply", classOf[FileSourceScanExec])
-      Some(m.invoke(module, scanExec).asInstanceOf[FileSourceScanExecTransformerBase])
-    } catch {
-      case _: Throwable => None
-    }
-  }
-
-  private def tryBuildHudiScanTransformer(
-      scanExec: FileSourceScanExec): Option[FileSourceScanExecTransformerBase] = {
-    try {
-      val clazz = Class.forName("org.apache.gluten.execution.HudiScanTransformer$")
-      val module = clazz.getField("MODULE$").get(null)
-      val m = clazz.getMethod("apply", classOf[FileSourceScanExec])
-      Some(m.invoke(module, scanExec).asInstanceOf[FileSourceScanExecTransformerBase])
-    } catch {
-      case _: Throwable => None
-    }
   }
 
   override def genPromotePrecisionTransformer(
