@@ -577,9 +577,11 @@ class OmniSparkPlanExecApi extends SparkPlanExecApi {
       left: ExpressionTransformer,
       right: ExpressionTransformer,
       original: Like): ExpressionTransformer = {
+    // Align with VeloxSparkPlanExecApi: third arg is escape literal. Spark Like.escapeChar type
+    // varies by version (Option[Char], Char, etc.); LiteralTransformer(original.escapeChar) matches Velox.
     GenericExpressionTransformer(
       substraitExprName,
-      Seq(left, right),
+      Seq(left, right, LiteralTransformer(original.escapeChar)),
       original)
   }
 
