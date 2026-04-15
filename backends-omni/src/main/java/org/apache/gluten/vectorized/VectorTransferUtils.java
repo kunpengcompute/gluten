@@ -140,6 +140,8 @@ public class VectorTransferUtils {
                         getTypeNode(type.getMap().getValue()));
             case STRUCT:
                 return getStructNodeFromProto(type.getStruct());
+            case NOTHING:
+                return new NothingNode();
             default:
                 throw new RuntimeException("Unsupported TypeNode: " + type);
         }
