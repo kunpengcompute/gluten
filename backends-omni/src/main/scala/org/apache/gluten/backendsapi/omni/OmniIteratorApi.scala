@@ -64,7 +64,7 @@ class OmniIteratorApiImpl extends IteratorApi with Logging {
           modificationTimes,
           partitionColumns,
           metadataColumns) =
-          constructSplitInfo(partitionSchema, f.files, metadataColumnNames, properties)
+          constructSplitInfo(partitionSchema, f.files, metadataColumnNames)
         val preferredLocations =
           SoftAffinity.getFilePartitionLocations(f)
         LocalFilesBuilder.makeLocalFiles(
@@ -107,10 +107,7 @@ class OmniIteratorApiImpl extends IteratorApi with Logging {
   private def constructSplitInfo(
       schema: StructType,
       files: Array[PartitionedFile],
-      metadataColumnNames: Seq[String],
-      scanProperties: Map[String, String]) = {
-    val markHudiNative =
-      scanProperties.get(GlutenScanExtensionProperties.HudiDataSourceProperty).contains("true")
+      metadataColumnNames: Seq[String]) = {
     val paths = new JArrayList[String]()
     val starts = new JArrayList[JLong]
     val lengths = new JArrayList[JLong]()
@@ -137,12 +134,6 @@ class OmniIteratorApiImpl extends IteratorApi with Logging {
         }
         val metadataColumn =
           SparkShimLoader.getSparkShims.generateMetadataColumns(file, metadataColumnNames)
-        augmentHudiSplitMetadataIfPresent(file, metadataColumnNames, metadataColumn)
-        if (markHudiNative) {
-          metadataColumn.put(
-            GlutenScanExtensionProperties.InternalHudiDatasourceMetadataKey,
-            "true")
-        }
         metadataColumns.add(metadataColumn)
         val partitionColumn = new JHashMap[String, String]()
         for (i <- 0 until file.partitionValues.numFields) {
@@ -169,29 +160,6 @@ class OmniIteratorApiImpl extends IteratorApi with Logging {
         partitionColumns.add(partitionColumn)
     }
     (paths, starts, lengths, fileSizes, modificationTimes, partitionColumns, metadataColumns)
-  }
-
-  /**
-   * When the `hudi` Maven profile is enabled, `HudiSplitMetadataColumns` is on the classpath and
-   * enriches `_hoodie_*` keys for Omni native synthetic columns.
-   */
-  private def augmentHudiSplitMetadataIfPresent(
-      file: PartitionedFile,
-      metadataColumnNames: Seq[String],
-      metadataColumn: JMap[String, String]): Unit = {
-    try {
-      val clazz = Class.forName(
-        "org.apache.gluten.backendsapi.omni.HudiSplitMetadataColumns$")
-      val module = clazz.getField("MODULE$").get(null)
-      val m = clazz.getMethod(
-        "augment",
-        classOf[PartitionedFile],
-        classOf[Seq[_]],
-        classOf[JMap[String, String]])
-      m.invoke(module, file, metadataColumnNames, metadataColumn)
-    } catch {
-      case _: ClassNotFoundException | _: NoSuchMethodException | _: NoSuchFieldException =>
-    }
   }
 
   def injectWriteFilesTempPath(path: String): Unit = {

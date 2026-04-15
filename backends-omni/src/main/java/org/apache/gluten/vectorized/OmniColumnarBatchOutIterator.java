@@ -18,7 +18,6 @@ package org.apache.gluten.vectorized;
 
 import nova.hetu.omniruntime.vector.VecBatch;
 
-import org.apache.gluten.exception.GlutenException;
 import org.apache.gluten.iterator.ClosableIterator;
 import org.apache.gluten.runtime.RuntimeAware;
 import org.apache.gluten.substrait.type.TypeNode;
@@ -28,10 +27,10 @@ import java.io.IOException;
 import java.util.List;
 
 /**
- * Bridges the native Omni execution pipeline to Spark's vectorized batch API for the Gluten Omni
- * backend.
+ * Iterator that pulls columnar batches from the Omni native runtime and wraps them as Spark
+ * {@link ColumnarBatch} instances for Gluten execution.
  *
- * @since 2026
+ * @since 2026/04/14
  */
 public class OmniColumnarBatchOutIterator extends ClosableIterator implements RuntimeAware {
     private final long iterHandle;
@@ -39,9 +38,9 @@ public class OmniColumnarBatchOutIterator extends ClosableIterator implements Ru
     private List<TypeNode> outputTypes;
 
     /**
-     * Wraps a native iterator handle returned from the Omni runtime for JNI-driven iteration.
+     * Constructs an iterator bound to the given native iterator handle.
      *
-     * @param iterHandle opaque native handle to the Omni output iterator
+     * @param iterHandle native iterator handle from the Omni backend
      */
     public OmniColumnarBatchOutIterator(long iterHandle) {
         super();
@@ -49,11 +48,9 @@ public class OmniColumnarBatchOutIterator extends ClosableIterator implements Ru
     }
 
     /**
-     * Sets the Substrait output schema used to allocate {@link OmniColumnVector} wrappers for each
-     * native column. Must be set before consuming batches if column types are required for
-     * allocation.
+     * Sets the logical output types used when materializing column vectors from native batches.
      *
-     * @param outputTypes logical output type nodes, one per column
+     * @param outputTypes Substrait type nodes for each output column
      */
     public void setOutputTypes(List<TypeNode> outputTypes) {
         this.outputTypes = outputTypes;
@@ -61,8 +58,6 @@ public class OmniColumnarBatchOutIterator extends ClosableIterator implements Ru
 
     /**
      * {@inheritDoc}
-     *
-     * <p>This iterator does not expose a separate native runtime handle; returns {@code -1}.
      */
     @Override
     public long rtHandle() {
@@ -70,9 +65,9 @@ public class OmniColumnarBatchOutIterator extends ClosableIterator implements Ru
     }
 
     /**
-     * Returns the native Omni output iterator handle used by JNI calls.
+     * Returns the native iterator handle backing this iterator.
      *
-     * @return opaque iterator handle passed to {@code native*} methods
+     * @return native iterator handle
      */
     public long itrHandle() {
         return iterHandle;
@@ -90,33 +85,24 @@ public class OmniColumnarBatchOutIterator extends ClosableIterator implements Ru
      * {@inheritDoc}
      */
     @Override
-    protected boolean hasNext0() throws IOException {
+    public boolean hasNext0() throws IOException {
         return nativeHasNext(iterHandle);
     }
 
     /**
      * {@inheritDoc}
-     *
-     * @throws GlutenException if a native vector type does not match the declared Substrait output
-     *     type for a column (see {@link OmniColumnVector#setVec})
      */
     @Override
-    protected ColumnarBatch next0() throws IOException {
+    public ColumnarBatch next0() throws IOException {
         long batchHandle = nativeNext(iterHandle);
         if (batchHandle == -1L) {
-            return null;
+            return null; // stream ended
         }
         VecBatch vecBatch = transform(batchHandle);
         OmniColumnVector[] omniColumnVectors = OmniColumnVector.allocateColumns(vecBatch.getRowCount(),
                 outputTypes.toArray(new TypeNode[0]), false);
         for (int i = 0; i < omniColumnVectors.length; i++) {
-            try {
-                omniColumnVectors[i].setVec(vecBatch.getVector(i));
-            } catch (ClassCastException cce) {
-                throw new GlutenException(
-                        buildVectorTypeMismatchMessage(i, outputTypes, vecBatch, omniColumnVectors),
-                        cce);
-            }
+            omniColumnVectors[i].setVec(vecBatch.getVector(i));
         }
         return new ColumnarBatch(omniColumnVectors, vecBatch.getRowCount());
     }
@@ -126,18 +112,18 @@ public class OmniColumnarBatchOutIterator extends ClosableIterator implements Ru
     }
 
     /**
-     * Converts a native batch handle to an Omni {@link VecBatch} (JNI).
+     * Converts a native batch handle into a {@link VecBatch} owned by the Java side.
      *
-     * @param nativeBatch opaque native batch handle from {@link #nativeNext(long)}
-     * @return decoded columnar batch in Omni runtime representation
+     * @param nativeBatch native batch handle from Omni
+     * @return materialized vector batch
      */
     public native VecBatch nativeTransform(long nativeBatch);
 
     /**
-     * Requests the native iterator to spill up to the given number of bytes, if supported.
+     * Requests the native iterator to spill up to the given number of bytes.
      *
-     * @param size hint in bytes for how much memory to try to release
-     * @return implementation-specific spill result (e.g. bytes released), or {@code 0} if closed
+     * @param size maximum bytes to spill
+     * @return number of bytes spilled, or zero if this iterator is already closed
      */
     public long spill(long size) {
         if (!closed.get()) {
@@ -149,42 +135,12 @@ public class OmniColumnarBatchOutIterator extends ClosableIterator implements Ru
 
     /**
      * {@inheritDoc}
-     *
-     * <p>Releases native resources associated with the iterator handle.
+     * <p>
+     * Releases native resources while keeping already produced batches usable until their own
+     * lifecycle ends.
      */
     @Override
     protected void close0() {
         nativeClose(iterHandle);
-    }
-
-    private static String buildVectorTypeMismatchMessage(
-            int columnIndex,
-            List<TypeNode> outputTypes,
-            VecBatch vecBatch,
-            OmniColumnVector[] omniColumnVectors) {
-        StringBuilder detail = new StringBuilder();
-        detail.append("Omni vector type does not match Substrait output type at column index ")
-                .append(columnIndex)
-                .append(", outputType=")
-                .append(outputTypes.get(columnIndex).getClass().getSimpleName())
-                .append(", vecClass=")
-                .append(vecBatch.getVector(columnIndex).getClass().getName())
-                .append(", rowCount=")
-                .append(vecBatch.getRowCount())
-                .append(", vectorCount=")
-                .append(omniColumnVectors.length)
-                .append(", mapping=[");
-        for (int j = 0; j < omniColumnVectors.length; j++) {
-            if (j > 0) {
-                detail.append("; ");
-            }
-            detail.append(j)
-                    .append(":")
-                    .append(outputTypes.get(j).getClass().getSimpleName())
-                    .append("<-")
-                    .append(vecBatch.getVector(j).getClass().getSimpleName());
-        }
-        detail.append("]");
-        return detail.toString();
     }
 }

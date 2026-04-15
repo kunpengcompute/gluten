@@ -17,14 +17,14 @@
 
 package org.apache.spark.sql.execution
 
+import org.apache.gluten.backendsapi.BackendsApiManager
 import org.apache.gluten.config.GlutenConfig
-import org.apache.gluten.execution.{TransformContext, TransformSupport, WholeStageTransformer}
+import org.apache.gluten.execution.ValidatablePlan
 import org.apache.gluten.extension.ValidationResult
-import org.apache.gluten.metrics.MetricsUpdater
-import org.apache.gluten.substrait.SubstraitContext
-import org.apache.gluten.substrait.rel.RelBuilder
+import org.apache.gluten.extension.columnar.transition.Convention
 import org.apache.gluten.utils.{MergeIterator, SparkMemoryUtils}
 import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.{Attribute, Expression}
 import org.apache.spark.sql.catalyst.plans.physical._
 import org.apache.spark.sql.catalyst.trees.CurrentOrigin
@@ -34,8 +34,6 @@ import org.apache.spark.sql.execution.metric.{SQLMetric, SQLMetrics}
 import org.apache.spark.sql.types.{StructField, StructType}
 import org.apache.spark.sql.vectorized.ColumnarBatch
 
-import scala.annotation.tailrec
-import scala.collection.JavaConverters._
 import scala.collection.mutable.ArrayBuffer
 
 
@@ -49,8 +47,7 @@ import scala.collection.mutable.ArrayBuffer
 case class OmniAQEShuffleReadExec(
       child: SparkPlan,
       partitionSpecs: Seq[ShufflePartitionSpec])
-  extends UnaryExecNode
-  with TransformSupport {
+  extends UnaryExecNode with ValidatablePlan {
   // If this reader is to read shuffle files locally, then all partition specs should be
   // `PartialMapperPartitionSpec`.
   if (partitionSpecs.exists(_.isInstanceOf[PartialMapperPartitionSpec])) {
@@ -151,39 +148,17 @@ case class OmniAQEShuffleReadExec(
     }
   }
 
-  /**
-   * Whole-stage collapse may wrap the stage in [[InputIteratorTransformer]] /
-   * [[ColumnarInputAdapter]] / [[WholeStageTransformer]] so the direct child is no longer a
-   * [[ShuffleQueryStageExec]]. Strip known wrappers first, then search the subtree (e.g. under Sort).
-   */
-  private def unwrapShuffleQueryStage(plan: SparkPlan): Option[ShuffleQueryStageExec] = {
-    @tailrec
-    def strip(p: SparkPlan): Option[ShuffleQueryStageExec] = {
-      p match {
-        case stage: ShuffleQueryStageExec => Some(stage)
-        case it: InputIteratorTransformer => strip(it.child)
-        case adapter: ColumnarInputAdapter => strip(adapter.child)
-        case omni: OmniAQEShuffleReadExec => strip(omni.child)
-        case wst: WholeStageTransformer => strip(wst.child)
-        case _ => None
-      }
-    }
-    strip(plan).orElse(plan.collectFirst { case s: ShuffleQueryStageExec => s })
+  private def shuffleStage = child match {
+    case stage: ShuffleQueryStageExec => Some(stage)
+    case _ => None
   }
-
-  private def shuffleStage: Option[ShuffleQueryStageExec] = unwrapShuffleQueryStage(child)
 
   @transient private lazy val partitionDataSizes: Option[Seq[Long]] = {
     if (!isLocalRead && shuffleStage.get.mapStats.isDefined) {
       Some(partitionSpecs.map {
         case p: CoalescedPartitionSpec =>
-          p.dataSize.getOrElse {
-            // Specs built by OmniShuffleStageColumnarReadRule are typically (start,end) only.
-            // Fallback to mapStats so driver-side metrics still work without assertion failure.
-            shuffleStage.get.mapStats.get.bytesByPartitionId
-              .slice(p.startReducerIndex, p.endReducerIndex)
-              .sum
-          }
+          assert(p.dataSize.isDefined)
+          p.dataSize.get
         case p: PartialReducerPartitionSpec => p.dataSize
         case p => throw new IllegalStateException(s"unexpected $p")
       })
@@ -291,35 +266,27 @@ case class OmniAQEShuffleReadExec(
           rdd
         }
       case _ =>
-        throw new IllegalStateException(
-          s"operating on canonicalized plan or missing ShuffleQueryStageExec under OmniAQEShuffleReadExec " +
-            s"(child=${child.getClass.getSimpleName})")
+        throw new IllegalStateException("operating on canonicalized plan")
     }
+  }
+
+  override protected def doExecute(): RDD[InternalRow] = {
+    throw new UnsupportedOperationException(
+        "AQEShuffleReadExec does not supported the execute() code path.")
   }
 
   override protected def doExecuteColumnar(): RDD[ColumnarBatch] = {
     shuffleRDD.asInstanceOf[RDD[ColumnarBatch]]
   }
 
-  /**
-   * Must match [[doExecuteColumnar]]: AQE coalesced read uses [[getShuffleRDD]], not
-   * `child.executeColumnar()` on [[ShuffleQueryStageExec]].
-   */
-  override def columnarInputRDDs: Seq[RDD[ColumnarBatch]] =
-    Seq(shuffleRDD.asInstanceOf[RDD[ColumnarBatch]])
-
-  override protected def doTransform(context: SubstraitContext): TransformContext = {
-    val operatorId = context.nextOperatorId(nodeName)
-    val readRel = RelBuilder.makeReadRelForInputIterator(output.asJava, context, operatorId)
-    TransformContext(output, readRel)
-  }
-
-  override def metricsUpdater(): MetricsUpdater = MetricsUpdater.None
-
   override protected def withNewChildInternal(newChild: SparkPlan): OmniAQEShuffleReadExec =
     copy(child = newChild)
 
   override def nodeName: String = "OmniAQEShuffleRead"
+
+  override def batchType(): Convention.BatchType = BackendsApiManager.getSettings.primaryBatchType
+
+  override def rowType0(): Convention.RowType = Convention.RowType.None
 
   override protected def doValidateInternal(): ValidationResult = {
     ValidationResult.succeeded

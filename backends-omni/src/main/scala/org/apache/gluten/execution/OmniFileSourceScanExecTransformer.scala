@@ -16,14 +16,29 @@
  */
 package org.apache.gluten.execution
 
-import org.apache.gluten.extension.ValidationResult
+import com.google.protobuf.StringValue
+import com.huawei.boostkit.spark.jni.{OrcPushFilterBuilder, ParquetPushFilterBuilder}
+import org.apache.gluten.backendsapi.BackendsApiManager
+import org.apache.gluten.config.GlutenConfig.COLUMNAR_OMNI_ENABLE_VEC_PREDICATE_FILTER
+import org.apache.gluten.expression.{ConverterUtils, ExpressionConverter}
+import org.apache.gluten.sql.shims.SparkShimLoader
 import org.apache.gluten.substrait.SubstraitContext
+import org.apache.gluten.substrait.`type`.ColumnTypeNode
+import org.apache.gluten.substrait.extensions.ExtensionBuilder
+import org.apache.gluten.substrait.rel.LocalFilesNode.ReadFileFormat
+import org.apache.gluten.substrait.rel.RelBuilder
 import org.apache.spark.sql.catalyst.TableIdentifier
-import org.apache.spark.sql.catalyst.expressions.{Attribute, Expression}
+import org.apache.spark.sql.catalyst.expressions.{And, Attribute, Expression}
 import org.apache.spark.sql.catalyst.plans.QueryPlan
 import org.apache.spark.sql.execution.datasources.HadoopFsRelation
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.util.collection.BitSet
+import io.substrait.proto.NamedStruct
+import org.apache.spark.sql.catalyst.util.RebaseDateTime
+import org.apache.spark.sql.internal.{LegacyBehaviorPolicy, SQLConf}
+import scala.Option
+
+import scala.collection.JavaConverters._
 
 case class OmniFileSourceScanExecTransformer(
     @transient override val relation: HadoopFsRelation,
@@ -46,6 +61,8 @@ case class OmniFileSourceScanExecTransformer(
       tableIdentifier,
       disableBucketedScan) {
 
+  import org.apache.spark.sql.catalyst.util._
+
   override def doCanonicalize(): OmniFileSourceScanExecTransformer = {
     OmniFileSourceScanExecTransformer(
       relation,
@@ -62,11 +79,90 @@ case class OmniFileSourceScanExecTransformer(
     )
   }
 
-  override protected def doValidateInternal(): ValidationResult = {
-    super.doValidateInternal()
-  }
-
   override protected def doTransform(context: SubstraitContext): TransformContext = {
-    OmniFileSourceScanTransformHelper.doTransform(this, context, this.fileFormat)
+    val output = outputAttributes()
+    val typeNodes = ConverterUtils.collectAttributeTypeNodes(output)
+    val nameList = ConverterUtils.collectAttributeNamesWithoutExprId(output)
+    val columnTypeNodes = output.map {
+      attr =>
+        if (getPartitionSchema.exists(_.name.equals(attr.name))) {
+          new ColumnTypeNode(NamedStruct.ColumnType.PARTITION_COL)
+        } else if (SparkShimLoader.getSparkShims.isRowIndexMetadataColumn(attr.name)) {
+          new ColumnTypeNode(NamedStruct.ColumnType.ROWINDEX_COL)
+        } else if (attr.isMetadataCol) {
+          new ColumnTypeNode(NamedStruct.ColumnType.METADATA_COL)
+        } else {
+          new ColumnTypeNode(NamedStruct.ColumnType.NORMAL_COL)
+        }
+    }.asJava
+    // Will put all filter expressions into an AND expression
+    val transformer = filterExprs()
+        .map(ExpressionConverter.replaceAttributeReference)
+        .reduceLeftOption(And)
+        .map(ExpressionConverter.replaceWithExpressionTransformer(_, output))
+    val filterNodes = transformer.map(_.doTransform(context.registeredFunction))
+    val exprNode = filterNodes.orNull
+
+    // used by CH backend
+    val optimizationContent =
+      s"isMergeTree=${if (this.fileFormat == ReadFileFormat.MergeTreeReadFormat) "1" else "0"}\n"
+
+    val optimization =
+      BackendsApiManager.getTransformerApiInstance.packPBMessage(
+        StringValue.newBuilder.setValue(optimizationContent).build)
+    val filter = pushedDownFilters.reduceOption(org.apache.spark.sql.sources.And(_, _))
+
+    val json = this.fileFormat match {
+      // ORC PushFilterJsonBuilder
+      case ReadFileFormat.OrcReadFormat =>
+        val orcBuilder = new OrcPushFilterBuilder(relation.dataSchema, requiredSchema)
+        orcBuilder.buildPushFilterJson(filter.orNull,
+          session.sessionState.conf.orcFilterPushDown,
+          session.sessionState.conf.getConf(COLUMNAR_OMNI_ENABLE_VEC_PREDICATE_FILTER)
+        )
+
+      // Parquet PushFilterJsonBuilder
+      case ReadFileFormat.ParquetReadFormat =>
+        val datetimeRebaseModeStr = session.sessionState.conf.getConf(SQLConf.PARQUET_REBASE_MODE_IN_READ)
+        val int96RebaseModeStr = session.sessionState.conf.getConf(SQLConf.PARQUET_INT96_REBASE_MODE_IN_READ)
+
+        def toLegacyBehaviorPolicy(modeStr: String): LegacyBehaviorPolicy.Value = {
+          modeStr match {
+            case "LEGACY" => LegacyBehaviorPolicy.LEGACY
+            case "CORRECTED" => LegacyBehaviorPolicy.CORRECTED
+            case "EXCEPTION" => LegacyBehaviorPolicy.EXCEPTION
+            case _ => LegacyBehaviorPolicy.LEGACY
+          }
+        }
+
+        val datetimeRebaseMode = toLegacyBehaviorPolicy(datetimeRebaseModeStr)
+        val int96RebaseMode = toLegacyBehaviorPolicy(int96RebaseModeStr)
+
+        val datetimeRebaseSpec = new RebaseDateTime.RebaseSpec(datetimeRebaseMode, scala.None)
+        val int96RebaseSpec = new RebaseDateTime.RebaseSpec(int96RebaseMode, scala.None)
+
+        val parquetBuilder = new ParquetPushFilterBuilder(relation.dataSchema, requiredSchema,
+          datetimeRebaseSpec, int96RebaseSpec)
+        parquetBuilder.buildPushFilterJson(filter.orNull,
+          session.sessionState.conf.parquetFilterPushDown,
+          session.sessionState.conf.getConf(COLUMNAR_OMNI_ENABLE_VEC_PREDICATE_FILTER)
+        )
+
+      case _ => "{}"
+    }
+
+    val extraProto = BackendsApiManager.getTransformerApiInstance.packPBMessage(
+      StringValue.newBuilder.setValue(json).build)
+    val extensionNode = ExtensionBuilder.makeAdvancedExtension(optimization, extraProto)
+
+    val readNode = RelBuilder.makeReadRel(
+      typeNodes,
+      nameList,
+      columnTypeNodes,
+      exprNode,
+      extensionNode,
+      context,
+      context.nextOperatorId(this.nodeName))
+    TransformContext(output, readNode)
   }
 }
