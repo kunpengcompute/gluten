@@ -1356,6 +1356,8 @@ object OmniExpressionAdaptor extends Logging {
         val children = s.fields.map(f => sparkTypeToOmniTypeWithComplex(f.dataType, f.metadata))
         val names = s.fields.map(_.name)
         new StructDataType(children, names)
+      case NullType =>
+        BooleanDataType.BOOLEAN
       case _ =>
         throw new UnsupportedOperationException(s"Unsupported datatype: $dataType")
     }
