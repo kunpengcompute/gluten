@@ -237,6 +237,8 @@ trait SparkShims {
 
   def withAnsiEvalMode(expr: Expression): Boolean = false
 
+  def isTrySum(expr: Expression): Boolean = false
+
   def dateTimestampFormatInReadIsDefaultValue(csvOptions: CSVOptions, timeZone: String): Boolean
 
   def isPlannedV1Write(write: DataWritingCommandExec): Boolean = false

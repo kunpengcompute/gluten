@@ -28,7 +28,7 @@ import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.catalog.BucketSpec
 import org.apache.spark.sql.catalyst.csv.CSVOptions
 import org.apache.spark.sql.catalyst.expressions._
-import org.apache.spark.sql.catalyst.expressions.aggregate.{BloomFilterAggregate, RegrR2, TypedImperativeAggregate}
+import org.apache.spark.sql.catalyst.expressions.aggregate._
 import org.apache.spark.sql.catalyst.plans.QueryPlan
 import org.apache.spark.sql.catalyst.plans.logical.{CTERelationRef, LogicalPlan, Statistics}
 import org.apache.spark.sql.catalyst.plans.physical.{ClusteredDistribution, Distribution}
@@ -77,6 +77,13 @@ class Spark33Shims extends SparkShims {
       Sig[RoundFloor](FLOOR),
       Sig[RoundCeil](CEIL)
     )
+  }
+
+  override def isTrySum(expr: Expression): Boolean = {
+    expr match {
+      case _: TrySum => true
+      case _ => false
+    }
   }
 
   override def aggregateExpressionMappings: Seq[Sig] = {

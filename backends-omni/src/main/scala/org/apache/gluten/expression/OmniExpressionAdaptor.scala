@@ -29,6 +29,7 @@ import org.apache.spark.sql.catalyst.util.CharVarcharUtils.getRawTypeString
 import org.apache.spark.sql.execution
 import org.apache.spark.sql.types.{DataType, _}
 import com.google.gson.{JsonArray, JsonElement, JsonObject, JsonParser}
+import org.apache.gluten.sql.shims.SparkShimLoader
 import nova.hetu.omniruntime.`type`._
 import nova.hetu.omniruntime.constants.BuildSide._
 import nova.hetu.omniruntime.constants.FunctionType
@@ -1079,7 +1080,11 @@ object OmniExpressionAdaptor extends Logging {
       isMergeCount: Boolean = false): FunctionType = {
     agg.aggregateFunction match {
       case sum: Sum =>
-        OMNI_AGGREGATION_TYPE_SUM
+        if (SparkShimLoader.getSparkShims.isTrySum(sum)) {
+          OMNI_AGGREGATION_TYPE_TRY_SUM
+        } else {
+          OMNI_AGGREGATION_TYPE_SUM
+        }
       case Max(_) => OMNI_AGGREGATION_TYPE_MAX
       case avg: Average =>
         OMNI_AGGREGATION_TYPE_AVG
