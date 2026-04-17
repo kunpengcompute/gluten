@@ -21,6 +21,7 @@ object ExpressionNames {
   // Aggregation functions used by Substrait plan.
   final val SUM = "sum"
   final val AVG = "avg"
+  final val TRY_SUM = "try_sum"
   final val COUNT = "count"
   final val COUNT_DISTINCT = "count_distinct"
   final val MIN = "min"
