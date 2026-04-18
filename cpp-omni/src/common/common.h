@@ -21,6 +21,8 @@
 
 #include <vector/vector_common.h>
 #include <cstring>
+#include <cstdint>
+#include <stdexcept>
 #include <chrono>
 #include <memory>
 #include <list>
@@ -48,20 +50,16 @@ int32_t BytesGen(uint64_t offsetsAddr, std::string &nullStr, uint64_t valuesAddr
     std::vector<VCLocation> &lst = vcb.getVcList();
     int itemsTotalLen = lst.size(); // number of strings
 
-    int valueTotalLen = 0; // total length of the string
+    int64_t valueTotalLen = 0; // total length of the string (use 64-bit to avoid overflow)
     if constexpr (hasNull) {
         nullStr.resize(itemsTotalLen, 0);  // initialize nullStr only when there are null values
         nulls = nullStr.data();
     }
 
+    offsets[0] = 0;
     for (int i = 0; i < itemsTotalLen; i++) {
         char* addr = reinterpret_cast<char *>(lst[i].get_vc_addr()); // address of the string
         int len = lst[i].get_vc_len();
-        if (i == 0) {
-            offsets[0] = 0;
-        } else {
-            offsets[i] = offsets[i -1] + lst[i - 1].get_vc_len();
-        }
         if constexpr(hasNull) {
             if (lst[i].get_is_null()) {
                 nulls[i] = 1;
@@ -72,9 +70,14 @@ int32_t BytesGen(uint64_t offsetsAddr, std::string &nullStr, uint64_t valuesAddr
             memcpy((char *) (values + offsets[i]), addr, len);
             valueTotalLen += len;
         }
+        // Detect int32 overflow on cumulative offset before writing offsets[i+1].
+        int64_t next = static_cast<int64_t>(offsets[i]) + static_cast<int64_t>(len);
+        if (next > static_cast<int64_t>(INT32_MAX)) {
+            throw std::overflow_error("BytesGen: cumulative string offset exceeds INT32_MAX");
+        }
+        offsets[i + 1] = static_cast<int32_t>(next);
     }
-    offsets[itemsTotalLen] = offsets[itemsTotalLen -1] + lst[itemsTotalLen - 1].get_vc_len();
-    return valueTotalLen;
+    return static_cast<int32_t>(valueTotalLen);
 }
 
 uint32_t reversebytes_uint32t(uint32_t value);
