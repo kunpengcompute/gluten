@@ -86,6 +86,8 @@ object OmniBackendSettings extends BackendSettingsApi {
   /** The columnar-batch type this backend is by default using. */
   override def primaryBatchType: Convention.BatchType = OmniBatch
 
+  def enableJoinKeysRewrite(): Boolean = false
+
   override def validateScanExec(
       format: ReadFileFormat,
       fields: Array[StructField],
