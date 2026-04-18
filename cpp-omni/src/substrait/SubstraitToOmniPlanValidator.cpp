@@ -226,12 +226,8 @@ bool SubstraitToOmniPlanValidator::IsAllowedCast(const DataTypePtr &fromType, co
         case OMNI_INT:
         case OMNI_LONG:
         case OMNI_FLOAT:
-            if (fromTypeId == OMNI_DATE32 || fromTypeId == OMNI_TIMESTAMP) {
-                return false;
-            }
-            break;
         case OMNI_DOUBLE:
-            if (fromTypeId == OMNI_DATE32) {
+            if (fromTypeId == OMNI_DATE32 || fromTypeId == OMNI_TIMESTAMP) {
                 return false;
             }
             break;
