@@ -812,8 +812,13 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::SortRel &sortRel)
 
         if (sort.has_expr()) {
             auto expression = exprConverter_->ToOmniExpr(sort.expr(), rowType);
+            auto fieldExpr = ExtractFieldExprFromPartitionOrSortKey(expression);
+            if (fieldExpr == nullptr) {
+                LOG_VALIDATION_MSG("in SortRel, sort key must resolve to a field reference.");
+                return false;
+            }
             ExprVerifier ev;
-            if (!ev.VisitExpr(*expression)) {
+            if (!ev.VisitExpr(*fieldExpr)) {
                 LOG_VALIDATION_MSG("Sort expression verification failed.");
                 return false;
             }
