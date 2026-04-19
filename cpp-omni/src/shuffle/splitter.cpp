@@ -20,8 +20,6 @@
 #include "splitter.h"
 #include "utils.h"
 
-#include <string>
-
 using namespace omniruntime::vec;
 using namespace omniruntime::vec::unsafe;
 using namespace omniruntime::type;
@@ -75,7 +73,7 @@ int Splitter::ComputeAndCountPartitionId(VectorBatch& vb) {
             for (auto i = 0; i < num_rows; ++i) {
                 partition_id_[i] = constPid;
             }
-        } else if (pidVector->GetEncoding() == OMNI_FLAT) {
+        } else {
             auto hash_vct = reinterpret_cast<Vector<int32_t> *>(pidVector);
             for (auto i = 0; i < num_rows; ++i) {
                 // positive mod
@@ -88,10 +86,6 @@ int Splitter::ComputeAndCountPartitionId(VectorBatch& vb) {
                 partition_id_cnt_cur_[pid]++;
                 partition_id_cnt_cache_[pid]++;
             }
-        } else {
-            throw std::runtime_error(
-                std::string("ComputeAndCountPartitionId(pid column): unsupported vector encoding ") +
-                std::to_string(static_cast<int>(pidVector->GetEncoding())));
         }
     }
     return 0;
@@ -279,7 +273,7 @@ int Splitter::SplitFixedWidthValueBuffer(VectorBatch& vb) {
                     throw std::runtime_error("SplitFixedWidthValueBuffer not match this type: " + column_type_id_[col_idx_schema]);
                 }
             }
-        } else if (vb.Get(col_idx_vb)->GetEncoding() == OMNI_FLAT) {
+        } else {
             auto src_addr = reinterpret_cast<int64_t>(VectorHelper::UnsafeGetValues(vb.Get(col_idx_vb)));
             auto process = [&]<typename CTYPE>(const ShuffleTypeId shuffleTypeId) {
                 const auto shuffle_size = (1 << shuffleTypeId);
@@ -318,10 +312,6 @@ int Splitter::SplitFixedWidthValueBuffer(VectorBatch& vb) {
                     throw std::runtime_error("ERROR: SplitFixedWidthValueBuffer not match this type: " + column_type_id_[col_idx_schema]);
                 }
             }
-        } else {
-            throw std::runtime_error(
-                std::string("SplitFixedWidthValueBuffer: unsupported vector encoding ") +
-                std::to_string(static_cast<int>(vb.Get(col_idx_vb)->GetEncoding())));
         }
     }
     return 0;
@@ -420,7 +410,7 @@ void Splitter::SplitBinaryVector(BaseVector *varcharVector, int col_schema) {
                 }
             }
         }
-    } else if (varcharVector->GetEncoding() == OMNI_FLAT) {
+    } else {
         auto vc = reinterpret_cast<Vector<LargeStringContainer<std::string_view>> *>(varcharVector);
         cached_vectorbatch_size_ += num_rows * (sizeof(bool) + sizeof(int32_t)) + sizeof(int32_t);
         for (auto &pid: partition_used_) {
@@ -466,10 +456,6 @@ void Splitter::SplitBinaryVector(BaseVector *varcharVector, int col_schema) {
                 }
             }
         }
-    } else {
-        throw std::runtime_error(
-            std::string("SplitBinaryVector: unsupported vector encoding ") +
-            std::to_string(static_cast<int>(varcharVector->GetEncoding())));
     }
 }
 
@@ -579,79 +565,7 @@ void Splitter::SerializeFlatVector(BaseVector *vector, std::vector<uint32_t> row
                 valuesData[i] = constValue;
             }
         }
-    } else if (vector->GetEncoding() == OMNI_DICTIONARY) {
-        auto fillRow = [&](auto *dictVec) {
-            for (int32_t i = 0; i < num_rows; ++i) {
-                auto rowId = row_ids[i];
-                if (dictVec->IsNull(rowId)) {
-                    nullsData[i] = 1;
-                    valuesData[i] = T{};
-                } else {
-                    valuesData[i] = static_cast<T>(dictVec->GetValue(rowId));
-                }
-            }
-        };
-        switch (typeId) {
-            case OMNI_BYTE: {
-                fillRow(static_cast<Vector<DictionaryContainer<int8_t>> *>(vector));
-                break;
-            }
-            case OMNI_BOOLEAN: {
-                auto *dv = static_cast<Vector<DictionaryContainer<bool>> *>(vector);
-                for (int32_t i = 0; i < num_rows; ++i) {
-                    auto rowId = row_ids[i];
-                    if (dv->IsNull(rowId)) {
-                        nullsData[i] = 1;
-                        valuesData[i] = T{};
-                    } else {
-                        valuesData[i] = dv->GetValue(rowId) ? static_cast<T>(1) : static_cast<T>(0);
-                    }
-                }
-                break;
-            }
-            case OMNI_SHORT: {
-                fillRow(static_cast<Vector<DictionaryContainer<int16_t>> *>(vector));
-                break;
-            }
-            case OMNI_INT:
-            case OMNI_DATE32: {
-                fillRow(static_cast<Vector<DictionaryContainer<int32_t>> *>(vector));
-                break;
-            }
-            case OMNI_FLOAT: {
-                fillRow(static_cast<Vector<DictionaryContainer<float>> *>(vector));
-                break;
-            }
-            case OMNI_DOUBLE: {
-                fillRow(static_cast<Vector<DictionaryContainer<double>> *>(vector));
-                break;
-            }
-            case OMNI_LONG:
-            case OMNI_TIMESTAMP:
-            case OMNI_DATE64:
-            case OMNI_DECIMAL64: {
-                fillRow(static_cast<Vector<DictionaryContainer<int64_t>> *>(vector));
-                break;
-            }
-            case OMNI_DECIMAL128: {
-                auto *dv = static_cast<Vector<DictionaryContainer<Decimal128>> *>(vector);
-                for (int32_t i = 0; i < num_rows; ++i) {
-                    auto rowId = row_ids[i];
-                    if (dv->IsNull(rowId)) {
-                        nullsData[i] = 1;
-                        valuesData[i] = T{};
-                    } else {
-                        const Decimal128 &decVal = dv->GetValue(rowId);
-                        valuesData[i] = *reinterpret_cast<const uint128_t *>(&decVal);
-                    }
-                }
-                break;
-            }
-            default:
-                throw std::runtime_error(
-                    "SerializeFlatVector: OMNI_DICTIONARY not supported for type id " + std::to_string(static_cast<int>(typeId)));
-        }
-    } else if (vector->GetEncoding() == OMNI_FLAT) {
+    } else {
         auto* typedVec = static_cast<Vector<T>*>(vector);
         if (!typedVec) {
             throw std::runtime_error("SerializeFlatVector: vector is not Vector<T>!");
@@ -665,10 +579,6 @@ void Splitter::SerializeFlatVector(BaseVector *vector, std::vector<uint32_t> row
                 valuesData[i] = typedVec->GetValue(rowId);
             }
         }
-    } else {
-        throw std::runtime_error(
-            std::string("SerializeFlatVector: unsupported vector encoding ") +
-            std::to_string(static_cast<int>(vector->GetEncoding())));
     }
 
     vec.set_nulls(std::move(nullsStr));
@@ -717,33 +627,7 @@ void Splitter::SerializeStringVector(BaseVector *vector, std::vector<uint32_t> r
                 offsetsData[i + 1] = currentOffset;
             }
         }
-    } else if (vector->GetEncoding() == OMNI_DICTIONARY) {
-        auto dictVec = reinterpret_cast<Vector<DictionaryContainer<std::string_view, LargeStringContainer>> *>(vector);
-
-        int64_t totalSize = 0;
-        for (int32_t i = 0; i < num_rows; ++i) {
-            auto rowId = row_ids[i];
-            if (!dictVec->IsNull(rowId)) {
-                auto strValue = dictVec->GetValue(rowId);
-                totalSize += strValue.size();
-            }
-        }
-        valuesStr.resize(totalSize);
-
-        char* valuesDataPtr = valuesStr.data();
-        for (int32_t i = 0; i < num_rows; ++i) {
-            auto rowId = row_ids[i];
-            if (dictVec->IsNull(rowId)) {
-                nullsData[i] = 1;
-                offsetsData[i + 1] = currentOffset;
-            } else {
-                auto strValue = dictVec->GetValue(rowId);
-                memcpy(valuesDataPtr + currentOffset, strValue.data(), strValue.size());
-                currentOffset += strValue.size();
-                offsetsData[i + 1] = currentOffset;
-            }
-        }
-    } else if (vector->GetEncoding() == OMNI_FLAT) {
+    } else {
         auto stringVec = reinterpret_cast<Vector<LargeStringContainer<std::string_view>> *>(vector);
 
         // calculate total size of strings
@@ -770,10 +654,6 @@ void Splitter::SerializeStringVector(BaseVector *vector, std::vector<uint32_t> r
                 offsetsData[i + 1] = currentOffset;
             }
         }
-    } else {
-        throw std::runtime_error(
-            std::string("SerializeStringVector: unsupported vector encoding ") +
-            std::to_string(static_cast<int>(vector->GetEncoding())));
     }
 
     vec.set_nulls(std::move(nullsStr));
@@ -785,11 +665,6 @@ void Splitter::SerializeArrayVector(BaseVector *vector, std::vector<uint32_t> ro
 {
     if (dataType == nullptr) {
         throw runtime_error("dataType is nullptr in SerializeArrayVector()!");
-    }
-    if (vector->GetEncoding() != OMNI_ENCODING_ARRAY) {
-        throw std::runtime_error(
-            std::string("SerializeArrayVector: unsupported vector encoding ") +
-            std::to_string(static_cast<int>(vector->GetEncoding())));
     }
 
     auto arrayVec = reinterpret_cast<ArrayVector *>(vector);
@@ -846,11 +721,6 @@ void Splitter::SerializeMapVector(BaseVector *vector, std::vector<uint32_t> row_
 {
     if (dataType == nullptr) {
         throw runtime_error("dataType is nullptr in SerializeArrayVector()!");
-    }
-    if (vector->GetEncoding() != OMNI_ENCODING_MAP) {
-        throw std::runtime_error(
-            std::string("SerializeMapVector: unsupported vector encoding ") +
-            std::to_string(static_cast<int>(vector->GetEncoding())));
     }
 
     auto mapVec =  reinterpret_cast<MapVector *>(vector);
@@ -916,11 +786,6 @@ void Splitter::SerializeRowVector(BaseVector *vector, std::vector<uint32_t> row_
 {
     if (dataType == nullptr) {
         throw runtime_error("dataType is nullptr in SerializeArrayVector()!");
-    }
-    if (vector->GetEncoding() != OMNI_ENCODING_STRUCT) {
-        throw std::runtime_error(
-            std::string("SerializeRowVector: unsupported vector encoding ") +
-            std::to_string(static_cast<int>(vector->GetEncoding())));
     }
 
     auto rowVec = reinterpret_cast<RowVector *>(vector);
@@ -1073,8 +938,7 @@ int Splitter::SplitFixedWidthValidityBuffer(VectorBatch& vb){
                 }
             }
 
-            Encoding validityEnc = vb.Get(col_idx)->GetEncoding();
-            if (validityEnc == OMNI_ENCODING_CONST) {
+            if (vb.Get(col_idx)->GetEncoding() == OMNI_ENCODING_CONST) {
                 uint8_t constNullVal = vb.Get(col_idx)->IsNull(0) ? 1 : 0;
                 for (auto &pid : partition_used_) {
                     auto dstPidBase = dst_addrs[pid] + partition_buffer_idx_base_[pid];
@@ -1084,7 +948,7 @@ int Splitter::SplitFixedWidthValidityBuffer(VectorBatch& vb){
                         *dstPidBase++ = constNullVal;
                     }
                 }
-            } else if (validityEnc == OMNI_FLAT || validityEnc == OMNI_DICTIONARY) {
+            } else {
                 auto src_addr = unsafe::UnsafeBaseVector::GetNulls(vb.Get(col_idx));
                 for (auto &pid: partition_used_) {
                     auto dstPidBase = dst_addrs[pid] + partition_buffer_idx_base_[pid];
@@ -1095,10 +959,6 @@ int Splitter::SplitFixedWidthValidityBuffer(VectorBatch& vb){
                         *dstPidBase++ = omniruntime::BitUtil::IsBitSet(src_addr, rowId);
                     }
                 }
-            } else {
-                throw std::runtime_error(
-                    std::string("SplitFixedWidthValidityBuffer: unsupported vector encoding ") +
-                    std::to_string(static_cast<int>(validityEnc)));
             }
         }
     }
@@ -1414,9 +1274,8 @@ int Splitter::SplitByRow(VectorBatch *vecBatch) {
         auto tmpVectorBatch = new VectorBatch(rowCount);
         partition_id_.resize(rowCount);
         memset(partition_id_cnt_cur_, 0, num_partitions_ * sizeof(int32_t));
-        BaseVector *pidCol = vecBatch->Get(0);
-        if (pidCol->GetEncoding() == OMNI_ENCODING_CONST) {
-            int32_t constPid = reinterpret_cast<ConstVector<int32_t> *>(pidCol)->GetConstValue();
+        if (vecBatch->Get(0)->GetEncoding() == OMNI_ENCODING_CONST) {
+            int32_t constPid = reinterpret_cast<ConstVector<int32_t> *>(vecBatch->Get(0))->GetConstValue();
             if (constPid >= num_partitions_) {
                 LogsError(" Illegal pid Value: %d >= partition number %d .", constPid, num_partitions_);
                 throw std::runtime_error("Shuffle pidVec Illegal pid Value!");
@@ -1425,8 +1284,8 @@ int Splitter::SplitByRow(VectorBatch *vecBatch) {
             for (int i = 0; i < rowCount; ++i) {
                 partition_id_[i] = constPid;
             }
-        } else if (pidCol->GetEncoding() == OMNI_FLAT) {
-            auto pidVec = reinterpret_cast<Vector<int32_t> *>(pidCol);
+        } else {
+            auto pidVec = reinterpret_cast<Vector<int32_t> *>(vecBatch->Get(0));
             for (int i = 0; i < rowCount; ++i) {
                 auto pid = pidVec->GetValue(i);
                 if (pid >= num_partitions_) {
@@ -1436,10 +1295,6 @@ int Splitter::SplitByRow(VectorBatch *vecBatch) {
                 partition_id_[i] = pid;
                 partition_id_cnt_cur_[pid]++;
             }
-        } else {
-            throw std::runtime_error(
-                std::string("SplitByRow(pid column): unsupported vector encoding ") +
-                std::to_string(static_cast<int>(pidCol->GetEncoding())));
         }
         BuildPartition2Row(rowCount);
         for (int i = 1; i < vecBatch->GetVectorCount(); ++i) {
