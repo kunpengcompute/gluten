@@ -825,6 +825,11 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::SortRel &sortRel)
         return false;
     }
 
+    if (types.empty()) {
+        LOG_VALIDATION_MSG("Validation failed for empty input schema in SortRel.");
+        return false;
+    }
+
     for (const auto &type : types) {
         switch (type->GetId()) {
             case OMNI_BYTE:
@@ -869,13 +874,8 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::SortRel &sortRel)
 
         if (sort.has_expr()) {
             auto expression = exprConverter_->ToOmniExpr(sort.expr(), rowType);
-            auto fieldExpr = ExtractFieldExprFromPartitionOrSortKey(expression);
-            if (fieldExpr == nullptr) {
-                LOG_VALIDATION_MSG("in SortRel, sort key must resolve to a field reference.");
-                return false;
-            }
             ExprVerifier ev;
-            if (!ev.VisitExpr(*fieldExpr)) {
+            if (!ev.VisitExpr(*expression)) {
                 LOG_VALIDATION_MSG("Sort expression verification failed.");
                 return false;
             }
