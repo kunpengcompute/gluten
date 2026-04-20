@@ -35,14 +35,22 @@ class OmniOrcOutputWriter(path: String, dataSchema: StructType,
   var dataColumnsIds: Array[Boolean] = new Array[Boolean](0)
   var batchColumnOmniTypeIds: Array[Int] = new Array[Int](0)
 
-  def initialize(allColumns: Seq[Attribute], dataColumns: Seq[Attribute]): Unit = {
+  def initialize(
+      allColumns: Seq[Attribute],
+      dataColumns: Seq[Attribute],
+      sessionTimeZone: String): Unit = {
     val filePath = new Path(path)
     val conf = context.getConfiguration
     val writerOptions = OrcFile.writerOptions(conf).
       fileSystem(filePath.getFileSystem(conf))
+    val resolvedTz = Option(sessionTimeZone)
+      .filter(_.nonEmpty)
+      .orElse(Option(conf.get("spark.sql.session.timeZone")).filter(_.nonEmpty))
+      .orElse(Option(conf.get("spark.gluten.sql.session.timeZone.default")).filter(_.nonEmpty))
+      .getOrElse(java.util.TimeZone.getDefault.getID)
     writer.initializeOutputStreamJava(filePath.toUri)
     writer.initializeSchemaTypeJava(dataSchema)
-    writer.initializeWriterJava(filePath.toUri, dataSchema, writerOptions)
+    writer.initializeWriterJava(filePath.toUri, dataSchema, writerOptions, resolvedTz)
     batchColumnOmniTypeIds = perBatchColumnOmniTypeIds(allColumns.toStructType)
     dataColumnsIds = allColumns.map(x => dataColumns.contains(x)).toArray
   }

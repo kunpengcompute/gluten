@@ -19,6 +19,8 @@
 package com.huawei.boostkit.spark.jni;
 
 import com.huawei.boostkit.write.jni.OrcColumnarBatchJniWriter;
+import com.huawei.boostkit.spark.timestamp.JulianGregorianRebase;
+import com.huawei.boostkit.spark.timestamp.TimestampUtil;
 
 import nova.hetu.omniruntime.vector.*;
 
@@ -43,17 +45,22 @@ import org.apache.spark.sql.types.TimestampType;
 import org.apache.spark.sql.types.ArrayType;
 import org.apache.spark.sql.types.MapType;
 import org.apache.spark.sql.types.StructField;
+import org.apache.spark.sql.internal.SQLConf;
 import java.util.List;
 import java.util.ArrayList;
 import org.apache.spark.sql.vectorized.ColumnarBatch;
 import org.json.JSONObject;
 
+import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
+import java.util.Optional;
 
 /**
  * OrcColumnarBatchWriter
  */
 public class OrcColumnarBatchWriter {
+    private static final String GMT_PLUS_8_TIME_ZONE = "Etc/GMT-8";
+
     /**
      * ORC has two timestamp flavors: TIMESTAMP (no timezone) and TIMESTAMP_INSTANT (timestamp with
      * local timezone semantics). Some writers (e.g. Iceberg) require TIMESTAMP_INSTANT for Spark
@@ -184,6 +191,21 @@ public class OrcColumnarBatchWriter {
      * @param options OrcFile WriterOptions
      */
     public void initializeWriterJava(URI uri, StructType dataSchema, OrcFile.WriterOptions options) {
+        initializeWriterJava(uri, dataSchema, options, null);
+    }
+
+    /**
+     * initializeWriterJava
+     * @param uri URI
+     * @param dataSchema StructType
+     * @param options OrcFile WriterOptions
+     * @param sessionTimeZone Spark session timezone from task conf
+     */
+    public void initializeWriterJava(
+            URI uri,
+            StructType dataSchema,
+            OrcFile.WriterOptions options,
+            String sessionTimeZone) {
         JSONObject writerOptionsJson = new JSONObject();
 
         JSONObject versionJob = new JSONObject();
@@ -200,19 +222,86 @@ public class OrcColumnarBatchWriter {
         writerOptionsJson.put("columns use bloom filter", options.getBloomFilterColumns());
         writerOptionsJson.put("bloom filter fpp", options.getBloomFilterFpp());
 
-        //for jniWriter to initialize writerOptions and OmniTimestampColumnWriter
-        String tzId = java.util.TimeZone.getDefault().getID();
-        if ("GMT+08:00".equals(tzId)) {
-            tzId = "Asia/Shanghai";
-        } else if (tzId != null && tzId.startsWith("GMT") && java.util.TimeZone.getDefault().getRawOffset() == 28800000) {
-            tzId = "Asia/Shanghai";
-        }
-        if (tzId == null || tzId.isEmpty()) {
-            tzId = "Asia/Shanghai";
-        }
+        String tzId = Optional.ofNullable(sessionTimeZone)
+                .filter(tz -> !tz.isEmpty())
+                .orElseGet(() -> getSessionTimeZoneFromSqlConf()
+                        .orElseGet(() -> getTimeZoneFromWriterOptions(options)
+                                .orElseGet(() -> java.util.TimeZone.getDefault().getID())));
+        tzId = normalizeTimeZone(tzId);
         writerOptionsJson.put("timezone", tzId);
+        putTimestampRebaseInfo(writerOptionsJson, tzId);
 
         writer = jniWriter.initializeWriter(outputStream, schemaType, writerOptionsJson);
+    }
+
+    private static Optional<String> getSessionTimeZoneFromSqlConf() {
+        SQLConf conf = SQLConf.get();
+        if (conf == null) {
+            return Optional.empty();
+        }
+        String sessionTz = conf.sessionLocalTimeZone();
+        return sessionTz == null || sessionTz.isEmpty() ? Optional.empty() : Optional.of(sessionTz);
+    }
+
+    private static Optional<String> getTimeZoneFromWriterOptions(OrcFile.WriterOptions options) {
+        Object tzObj;
+        try {
+            tzObj = options.getClass().getMethod("getTimeZone").invoke(options);
+        } catch (NoSuchMethodException e) {
+            return Optional.empty();
+        } catch (IllegalAccessException e) {
+            throw new IllegalStateException("Unable to access ORC writer option timezone", e);
+        } catch (InvocationTargetException e) {
+            throw new IllegalStateException("Failed to read ORC writer option timezone", e.getCause());
+        }
+        if (tzObj instanceof java.util.TimeZone) {
+            return Optional.of(((java.util.TimeZone) tzObj).getID());
+        }
+        return Optional.empty();
+    }
+
+    private static void putTimestampRebaseInfo(JSONObject writerOptionsJson, String tzId) {
+        JulianGregorianRebase rebase = TimestampUtil.getInstance().getJulianObject(tzId);
+        if (rebase == null) {
+            writerOptionsJson.put("timestamp rebase tz", "");
+            writerOptionsJson.put("timestamp rebase switches", "");
+            writerOptionsJson.put("timestamp rebase diffs", "");
+            return;
+        }
+
+        writerOptionsJson.put("timestamp rebase tz", rebase.getTz());
+        writerOptionsJson.put("timestamp rebase switches", joinLongs(rebase.getSwitches()));
+        writerOptionsJson.put("timestamp rebase diffs", joinLongs(rebase.getDiffs()));
+    }
+
+    private static String joinLongs(long[] values) {
+        if (values == null || values.length == 0) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < values.length; ++i) {
+            if (i > 0) {
+                builder.append(',');
+            }
+            builder.append(values[i]);
+        }
+        return builder.toString();
+    }
+
+    private static String normalizeTimeZone(String tzId) {
+        if (tzId == null || tzId.isEmpty()) {
+            return "GMT";
+        }
+
+        String normalized = java.util.TimeZone.getTimeZone(tzId).getID();
+        if (normalized == null || normalized.isEmpty()) {
+            return "GMT";
+        }
+
+        if ("GMT+08:00".equals(normalized) || "GMT+8".equals(tzId) || "UTC+08:00".equals(tzId)) {
+            return GMT_PLUS_8_TIME_ZONE;
+        }
+        return normalized;
     }
 
     /**
