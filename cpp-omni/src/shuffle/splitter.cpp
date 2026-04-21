@@ -75,6 +75,18 @@ int Splitter::ComputeAndCountPartitionId(VectorBatch& vb) {
             for (auto i = 0; i < num_rows; ++i) {
                 partition_id_[i] = constPid;
             }
+        } else if (pidVector->GetEncoding() == OMNI_DICTIONARY) {
+            auto hash_vct = reinterpret_cast<Vector<DictionaryContainer<int32_t>> *>(pidVector);
+            for (auto i = 0; i < num_rows; ++i) {
+                int32_t pid = hash_vct->GetValue(i);
+                if (pid >= num_partitions_) {
+                    LogsError(" Illegal pid Value: %d >= partition number %d .", pid, num_partitions_);
+                    throw std::runtime_error("Shuffle pidVec Illegal pid Value!");
+                }
+                partition_id_[i] = pid;
+                partition_id_cnt_cur_[pid]++;
+                partition_id_cnt_cache_[pid]++;
+            }
         } else if (pidVector->GetEncoding() == OMNI_FLAT) {
             auto hash_vct = reinterpret_cast<Vector<int32_t> *>(pidVector);
             for (auto i = 0; i < num_rows; ++i) {
@@ -1084,6 +1096,16 @@ int Splitter::SplitFixedWidthValidityBuffer(VectorBatch& vb){
                         *dstPidBase++ = constNullVal;
                     }
                 }
+            } else if (validityEnc == OMNI_DICTIONARY) {
+                for (auto &pid: partition_used_) {
+                    auto dstPidBase = dst_addrs[pid] + partition_buffer_idx_base_[pid];
+                    auto pos = partition_row_offset_base_[pid];
+                    auto end = partition_row_offset_base_[pid + 1];
+                    for (; pos < end; ++pos) {
+                        auto rowId = row_offset_row_id_[pos];
+                        *dstPidBase++ = vb.Get(col_idx)->IsNull(rowId);
+                    }
+                }
             } else if (validityEnc == OMNI_FLAT) {
                 auto src_addr = unsafe::UnsafeBaseVector::GetNulls(vb.Get(col_idx));
                 for (auto &pid: partition_used_) {
@@ -1425,6 +1447,17 @@ int Splitter::SplitByRow(VectorBatch *vecBatch) {
             partition_id_cnt_cur_[constPid] += rowCount;
             for (int i = 0; i < rowCount; ++i) {
                 partition_id_[i] = constPid;
+            }
+        } else if (pidCol->GetEncoding() == OMNI_DICTIONARY) {
+            auto pidVec = reinterpret_cast<Vector<DictionaryContainer<int32_t>> *>(pidCol);
+            for (int i = 0; i < rowCount; ++i) {
+                auto pid = pidVec->GetValue(i);
+                if (pid >= num_partitions_) {
+                    LogsError(" Illegal pid Value: %d >= partition number %d .", pid, num_partitions_);
+                    throw std::runtime_error("Shuffle pidVec Illegal pid Value!");
+                }
+                partition_id_[i] = pid;
+                partition_id_cnt_cur_[pid]++;
             }
         } else if (pidCol->GetEncoding() == OMNI_FLAT) {
             auto pidVec = reinterpret_cast<Vector<int32_t> *>(pidCol);
