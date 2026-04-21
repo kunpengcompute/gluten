@@ -238,8 +238,8 @@ case class OmniHiveTableScanExecTransformer(
       case ReadFileFormat.OrcReadFormat =>
         val orcBuilder = new OrcPushFilterBuilder(relation.tableMeta.dataSchema, attributesToStructType(requestedAttributes))
         orcBuilder.buildPushFilterJson(null,
-          session.sessionState.conf.orcFilterPushDown,
-          session.sessionState.conf.getConf(COLUMNAR_OMNI_ENABLE_VEC_PREDICATE_FILTER)
+          session.sessionState.conf.getConf(COLUMNAR_OMNI_ENABLE_VEC_PREDICATE_FILTER),
+          session.sessionState.conf.orcFilterPushDown
         )
 
       // Parquet PushFilterJsonBuilder
@@ -265,8 +265,8 @@ case class OmniHiveTableScanExecTransformer(
         val parquetBuilder = new ParquetPushFilterBuilder(relation.tableMeta.dataSchema, attributesToStructType(requestedAttributes),
           datetimeRebaseSpec, int96RebaseSpec)
         parquetBuilder.buildPushFilterJson(null,
-          session.sessionState.conf.parquetFilterPushDown,
-          session.sessionState.conf.getConf(COLUMNAR_OMNI_ENABLE_VEC_PREDICATE_FILTER)
+          session.sessionState.conf.getConf(COLUMNAR_OMNI_ENABLE_VEC_PREDICATE_FILTER),
+          session.sessionState.conf.parquetFilterPushDown
         )
 
       case _ => "{}"
