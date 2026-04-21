@@ -183,18 +183,20 @@ private object OmniRowToColumnConverter {
         offsets += totalLen
       }
 
-      val keyVector = new OmniColumnVector(totalLen, dataType.keyType, true)
-      val valueVector = new OmniColumnVector(totalLen, dataType.valueType, true)
+      val mapKeys = new ListBuffer[SpecializedGetters]()
+      val mapValues = new ListBuffer[SpecializedGetters]()
       for (row <- rows) {
         val mapData = if (row == null) null else row.getMap(column)
         if (mapData != null) {
           val mapLength = mapData.numElements
           for (i <- 0 until mapLength) {
-            keyConverter.append(mapData.keyArray(), i, keyVector)
-            valueConverter.append(mapData.valueArray(), i, valueVector)
+            mapKeys += new ArrayElementGetter(mapData.keyArray(), i)
+            mapValues += new ArrayElementGetter(mapData.valueArray(), i)
           }
         }
       }
+      val keyVector = keyConverter.add(mapKeys.toSeq, 0, totalLen)
+      val valueVector = valueConverter.add(mapValues.toSeq, 0, totalLen)
 
       cv.setChild(keyVector, 0)
       cv.setChild(valueVector, 1)
@@ -294,26 +296,27 @@ private object OmniRowToColumnConverter {
     override def update(i: Int, value: Any): Unit = throw new UnsupportedOperationException()
     override def copy(): InternalRow = throw new UnsupportedOperationException()
     override def isNullAt(ordinal: Int): Boolean = arrayData.isNullAt(index)
-    override def getBoolean(ordinal: Int): Boolean = throw new UnsupportedOperationException()
-    override def getByte(ordinal: Int): Byte = throw new UnsupportedOperationException()
-    override def getShort(ordinal: Int): Short = throw new UnsupportedOperationException()
-    override def getInt(ordinal: Int): Int = throw new UnsupportedOperationException()
-    override def getLong(ordinal: Int): Long = throw new UnsupportedOperationException()
-    override def getFloat(ordinal: Int): Float = throw new UnsupportedOperationException()
-    override def getDouble(ordinal: Int): Double = throw new UnsupportedOperationException()
+    override def getBoolean(ordinal: Int): Boolean = arrayData.getBoolean(index)
+    override def getByte(ordinal: Int): Byte = arrayData.getByte(index)
+    override def getShort(ordinal: Int): Short = arrayData.getShort(index)
+    override def getInt(ordinal: Int): Int = arrayData.getInt(index)
+    override def getLong(ordinal: Int): Long = arrayData.getLong(index)
+    override def getFloat(ordinal: Int): Float = arrayData.getFloat(index)
+    override def getDouble(ordinal: Int): Double = arrayData.getDouble(index)
     override def getDecimal(ordinal: Int, precision: Int, scale: Int): Decimal =
-      throw new UnsupportedOperationException()
-    override def getUTF8String(ordinal: Int): UTF8String = throw new UnsupportedOperationException()
-    override def getBinary(ordinal: Int): Array[Byte] = throw new UnsupportedOperationException()
+      arrayData.getDecimal(index, precision, scale)
+    override def getUTF8String(ordinal: Int): UTF8String = arrayData.getUTF8String(index)
+    override def getBinary(ordinal: Int): Array[Byte] = arrayData.getBinary(index)
     override def getInterval(ordinal: Int): CalendarInterval =
-      throw new UnsupportedOperationException()
+      arrayData.getInterval(index)
     override def getStruct(ordinal: Int, numFields: Int): InternalRow =
       if (ordinal == 0 && !arrayData.isNullAt(index)) arrayData.getStruct(index, numFields) else null
-    override def getArray(ordinal: Int): ArrayData = throw new UnsupportedOperationException()
+    override def getArray(ordinal: Int): ArrayData =
+      if (ordinal == 0 && !arrayData.isNullAt(index)) arrayData.getArray(index) else null
     override def getMap(ordinal: Int): MapData =
       if (ordinal == 0 && !arrayData.isNullAt(index)) arrayData.getMap(index) else null
     override def get(ordinal: Int, dataType: DataType): AnyRef =
-      throw new UnsupportedOperationException()
+      if (ordinal == 0 && !arrayData.isNullAt(index)) arrayData.get(index, dataType) else null
   }
 
   /** Build element vector for nested array (e.g. Array<Array<Long>>, Array<Array<Int>>, Array<Array<String>>). Only supports 2 levels. */
