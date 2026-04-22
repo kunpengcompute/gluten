@@ -172,8 +172,18 @@ abstract class HashAggregateExecTransformer(
 
     if (supported.exists(_.isInstance(agg.aggregateFunction)) ||
       SparkShimLoader.getSparkShims.isTrySum(agg.aggregateFunction)) {
-      toOmniAggFunType(agg)
-      true
+      agg.aggregateFunction match {
+        case ap: ApproximatePercentile =>
+          if (!OmniExpressionAdaptor.isApproxPercentileValueTypeSupportedByOmni(ap.children.head)) {
+            false
+          } else {
+            toOmniAggFunType(agg)
+            true
+          }
+        case _ =>
+          toOmniAggFunType(agg)
+          true
+      }
     } else if (OmniExpressionAdaptor.isRegrAggregateByClassName(agg.aggregateFunction)) {
       toOmniAggFunType(agg)
       true
@@ -233,11 +243,12 @@ abstract class HashAggregateExecTransformer(
     }
 
     aggregateExpressions.foreach {
-       expr =>
-         if (!checkAggFuncSupport(expr, expr.mode)) {
-           return ValidationResult.failed(
-             s"Unsupported aggregate function: ${expr.mode} for ${expr.aggregateFunction.prettyName}")
-         }
+      expr =>
+        if (!checkAggFuncSupport(expr, expr.mode)) {
+          val vt = expr.aggregateFunction.children.headOption.map(_.dataType.toString).getOrElse("?")
+          return ValidationResult.failed(
+            s"Unsupported aggregate for Omni: ${expr.mode} ${expr.aggregateFunction.prettyName} (value type $vt)")
+        }
     }
 
     doNativeValidation(substraitContext, relNode)
