@@ -631,7 +631,6 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"filter", {FUNCTION_OMNI_EXPR_TYPE, "filter"}},
     {"lambdafunction", {FUNCTION_OMNI_EXPR_TYPE, "lambdafunction"}},
     {"namedlambdavariable", {FUNCTION_OMNI_EXPR_TYPE, "namedlambdavariable"}},
-    {"map", {FUNCTION_OMNI_EXPR_TYPE, "map_from_arrays"}},
     {"map_from_arrays", {FUNCTION_OMNI_EXPR_TYPE, "map_from_arrays"}},
     {"map_zip_with", {FUNCTION_OMNI_EXPR_TYPE, "map_zip_with"}},
     {"acosh", {FUNCTION_OMNI_EXPR_TYPE, "acosh"}},
