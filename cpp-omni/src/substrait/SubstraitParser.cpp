@@ -362,6 +362,8 @@ op::FunctionType SubstraitParser::ParseFunctionType(
 
     if (funcName == "sum") {
         return op::OMNI_AGGREGATION_TYPE_SUM;
+    } else if (funcName == "try_sum") {
+        return op::OMNI_AGGREGATION_TYPE_TRY_SUM;
     } else if (funcName == "max") {
         return op::OMNI_AGGREGATION_TYPE_MAX;
     } else if (funcName == "avg") {
@@ -547,6 +549,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"dense_rank", {FUNCTION_OMNI_EXPR_TYPE, "dense_rank"}},
     {"count", {FUNCTION_OMNI_EXPR_TYPE, "count"}},
     {"sum", {FUNCTION_OMNI_EXPR_TYPE, "sum"}},
+    {"try_sum", {FUNCTION_OMNI_EXPR_TYPE, "try_sum"}},
     {"min", {FUNCTION_OMNI_EXPR_TYPE, "min"}},
     {"max", {FUNCTION_OMNI_EXPR_TYPE, "max"}},
     {"avg", {FUNCTION_OMNI_EXPR_TYPE, "avg"}},
@@ -628,7 +631,6 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"filter", {FUNCTION_OMNI_EXPR_TYPE, "filter"}},
     {"lambdafunction", {FUNCTION_OMNI_EXPR_TYPE, "lambdafunction"}},
     {"namedlambdavariable", {FUNCTION_OMNI_EXPR_TYPE, "namedlambdavariable"}},
-    {"map", {FUNCTION_OMNI_EXPR_TYPE, "map_from_arrays"}},
     {"map_from_arrays", {FUNCTION_OMNI_EXPR_TYPE, "map_from_arrays"}},
     {"map_zip_with", {FUNCTION_OMNI_EXPR_TYPE, "map_zip_with"}},
     {"acosh", {FUNCTION_OMNI_EXPR_TYPE, "acosh"}},

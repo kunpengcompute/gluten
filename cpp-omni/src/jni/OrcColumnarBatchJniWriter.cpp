@@ -38,6 +38,22 @@ static constexpr int32_t MINOR_VERSION_11 = 11;
 static constexpr int32_t MINOR_VERSION_12 = 12;
 static constexpr int32_t MAJOR_VERSION_0 = 0;
 
+static std::string getJsonString(JNIEnv *env, jobject json, jmethodID stringMethod, const char *key)
+{
+    jstring keyStr = env->NewStringUTF(key);
+    jstring valueStr = (jstring)env->CallObjectMethod(json, stringMethod, keyStr);
+    env->DeleteLocalRef(keyStr);
+    if (valueStr == NULL) {
+        return "";
+    }
+
+    const char *chars = env->GetStringUTFChars(valueStr, NULL);
+    std::string value(chars);
+    env->ReleaseStringUTFChars(valueStr, chars);
+    env->DeleteLocalRef(valueStr);
+    return value;
+}
+
 JNIEXPORT jlong JNICALL Java_com_huawei_boostkit_write_jni_OrcColumnarBatchJniWriter_initializeOutputStream(
     JNIEnv *env, jobject jObj, jobject uriJson)
 {
@@ -224,10 +240,23 @@ JNIEXPORT jlong JNICALL Java_com_huawei_boostkit_write_jni_OrcColumnarBatchJniWr
         std::cout << "[warning] OrcColumnarBatchJniWriter : timezone not found in writerOptions" << std::endl;
     }
 
+    std::unique_ptr<common::JulianGregorianRebase> timestampRebase;
+    std::string rebaseTz = getJsonString(env, writerOptionsJson, jsonMethodString, "timestamp rebase tz");
+    std::string rebaseSwitches = getJsonString(env, writerOptionsJson, jsonMethodString, "timestamp rebase switches");
+    std::string rebaseDiffs = getJsonString(env, writerOptionsJson, jsonMethodString, "timestamp rebase diffs");
+    if (!rebaseTz.empty() && !rebaseSwitches.empty() && !rebaseDiffs.empty()) {
+        nlohmann::json rebaseJson;
+        rebaseJson["tz"] = rebaseTz;
+        rebaseJson["switches"] = rebaseSwitches;
+        rebaseJson["diffs"] = rebaseDiffs;
+        timestampRebase = common::BuildJulianGregorianRebase(rebaseJson);
+    }
+
     ::orc::OutputStream *stream = (::orc::OutputStream *)outputStream;
     ::orc::Type *writeType = (::orc::Type *)schemaType;
 
-    std::unique_ptr<OmniWriter> writer = createOmniWriter((*writeType), stream, writerOptions);
+    std::unique_ptr<OmniWriter> writer = createOmniWriterWithTimestampRebase(
+        (*writeType), stream, writerOptions, std::move(timestampRebase));
     OmniWriter *writerNew = writer.release();
     return (jlong)(writerNew);
     JNI_FUNC_END(runtimeExceptionClass)

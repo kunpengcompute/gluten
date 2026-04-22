@@ -71,6 +71,48 @@ bool ValidatePattern(const std::string &pattern, std::string &error)
         __LINE__, __FUNCTION__, reason))
 
 const std::unordered_set<std::string> kBlackList = {"get_struct_field"};
+
+bool NeedCheckInputTypeForWindowAgg(op::FunctionType functionType)
+{
+    switch (functionType) {
+        case op::OMNI_AGGREGATION_TYPE_SUM:
+        case op::OMNI_AGGREGATION_TYPE_TRY_SUM:
+        case op::OMNI_AGGREGATION_TYPE_AVG:
+        case op::OMNI_AGGREGATION_TYPE_SAMP:
+        case op::OMNI_AGGREGATION_TYPE_STD_POP:
+        case op::OMNI_AGGREGATION_TYPE_VAR_SAMP:
+        case op::OMNI_AGGREGATION_TYPE_VAR_POP:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool IsValidTypeForWindowAgg(op::FunctionType functionType, const ::substrait::Expression &argExpr,
+    const DataTypesPtr &inputType,
+    SubstraitOmniExprConverter *exprConverter)
+{
+    if (!NeedCheckInputTypeForWindowAgg(functionType)) {
+        return true;
+    }
+
+    auto omniExpr = exprConverter->ToOmniExpr(argExpr, inputType);
+    if (omniExpr == nullptr) {
+        return true;
+    }
+
+    if (omniExpr->GetReturnTypeId() == OMNI_TIMESTAMP) {
+        return false;
+    }
+
+    const auto *funcExpr = dynamic_cast<const FuncExpr *>(omniExpr);
+    if (funcExpr != nullptr && funcExpr->funcName == "CAST" && !funcExpr->arguments.empty()) {
+        if (funcExpr->arguments[0]->GetReturnTypeId() == OMNI_TIMESTAMP) {
+            return false;
+        }
+    }
+    return true;
+}
 } // namespace
 
 bool SubstraitToOmniPlanValidator::ParseOmniType(
@@ -226,12 +268,8 @@ bool SubstraitToOmniPlanValidator::IsAllowedCast(const DataTypePtr &fromType, co
         case OMNI_INT:
         case OMNI_LONG:
         case OMNI_FLOAT:
-            if (fromTypeId == OMNI_DATE32 || fromTypeId == OMNI_TIMESTAMP) {
-                return false;
-            }
-            break;
         case OMNI_DOUBLE:
-            if (fromTypeId == OMNI_DATE32) {
+            if (fromTypeId == OMNI_DATE32 || fromTypeId == OMNI_TIMESTAMP) {
                 return false;
             }
             break;
@@ -519,7 +557,15 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::WindowRel &window
     funcSpecs.reserve(windowRel.measures().size());
     for (const auto &smea : windowRel.measures()) {
         const auto &windowFunction = smea.measure();
-        funcSpecs.emplace_back(planConverter.FindFuncSpec(windowFunction.function_reference()));
+        auto funcSpec = planConverter.FindFuncSpec(windowFunction.function_reference());
+        funcSpecs.emplace_back(funcSpec);
+        auto funcName = SubstraitParser::GetNameBeforeDelimiter(funcSpec);
+        std::vector<substrait::Expression> expressionNodes;
+        expressionNodes.reserve(windowFunction.arguments_size());
+        for (const auto &arg : windowFunction.arguments()) {
+            expressionNodes.emplace_back(arg.value());
+        }
+        auto functionType = SubstraitParser::ParseFunctionType(funcName, expressionNodes, false);
         SubstraitParser::ParseType(windowFunction.output_type());
         for (const auto &arg : windowFunction.arguments()) {
             auto typeCase = arg.value().rex_type_case();
@@ -536,6 +582,17 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::WindowRel &window
                     return false;
             }
         }
+
+        // Window aggregate functions should fallback early on invalid type timestamp input for avoiding invalid cast.
+        // This catches cases like SUM(timestamp_col) rewritten as CAST(timestamp_col AS DOUBLE).
+        if (windowFunction.arguments_size() > 0) {
+            if (!IsValidTypeForWindowAgg(functionType, windowFunction.arguments(0).value(), rowType, exprConverter_)) {
+                LOG_VALIDATION_MSG(
+                    "Unsupported timestamp input for window aggregate function: " + funcName);
+                return false;
+            }
+        }
+
         // Validate BoundType and Frame Type
         switch (windowFunction.window_type()) {
             case ::substrait::WindowType::ROWS:
@@ -765,6 +822,11 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::SortRel &sortRel)
     std::vector<DataTypePtr> types;
     if (!ParseOmniType(extension, inputRowType) || !FlattenSingleLevel(inputRowType, types)) {
         LOG_VALIDATION_MSG("Validation failed for input types in SortRel.");
+        return false;
+    }
+
+    if (types.empty()) {
+        LOG_VALIDATION_MSG("Validation failed for empty input schema in SortRel.");
         return false;
     }
 

@@ -472,6 +472,13 @@ class Spark34Shims extends SparkShims {
     }
   }
 
+  override def isTrySum(expr: Expression): Boolean = {
+    expr match {
+      case sum: Sum => sum.evalMode == EvalMode.TRY
+      case _ => false
+    }
+  }
+
   override def dateTimestampFormatInReadIsDefaultValue(
       csvOptions: CSVOptions,
       timeZone: String): Boolean = {

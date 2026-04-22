@@ -117,8 +117,8 @@ case class OmniFileSourceScanExecTransformer(
       case ReadFileFormat.OrcReadFormat =>
         val orcBuilder = new OrcPushFilterBuilder(relation.dataSchema, requiredSchema)
         orcBuilder.buildPushFilterJson(filter.orNull,
-          session.sessionState.conf.orcFilterPushDown,
-          session.sessionState.conf.getConf(COLUMNAR_OMNI_ENABLE_VEC_PREDICATE_FILTER)
+          session.sessionState.conf.getConf(COLUMNAR_OMNI_ENABLE_VEC_PREDICATE_FILTER),
+          session.sessionState.conf.orcFilterPushDown
         )
 
       // Parquet PushFilterJsonBuilder
@@ -144,8 +144,8 @@ case class OmniFileSourceScanExecTransformer(
         val parquetBuilder = new ParquetPushFilterBuilder(relation.dataSchema, requiredSchema,
           datetimeRebaseSpec, int96RebaseSpec)
         parquetBuilder.buildPushFilterJson(filter.orNull,
-          session.sessionState.conf.parquetFilterPushDown,
-          session.sessionState.conf.getConf(COLUMNAR_OMNI_ENABLE_VEC_PREDICATE_FILTER)
+          session.sessionState.conf.getConf(COLUMNAR_OMNI_ENABLE_VEC_PREDICATE_FILTER),
+          session.sessionState.conf.parquetFilterPushDown
         )
 
       case _ => "{}"

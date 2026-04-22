@@ -25,6 +25,7 @@ import org.apache.gluten.substrait.expression.{AggregateFunctionNode, Expression
 import org.apache.gluten.substrait.extensions.{AdvancedExtensionNode, ExtensionBuilder}
 import org.apache.gluten.substrait.rel.{RelBuilder, RelNode}
 import org.apache.gluten.substrait.{AggregationParams, SubstraitContext}
+import org.apache.gluten.sql.shims.SparkShimLoader
 import org.apache.spark.sql.catalyst.expressions.aggregate._
 import org.apache.spark.sql.catalyst.expressions.{Attribute, Expression, NamedExpression}
 import org.apache.spark.sql.execution.SparkPlan
@@ -170,7 +171,8 @@ case class OmniRollUpOptimizeTransformer(
       case other => Set.empty[Class[_]]
     }
 
-    if (supported.exists(_.isInstance(aggFunc))) {
+    if (supported.exists(_.isInstance(aggFunc)) ||
+      SparkShimLoader.getSparkShims.isTrySum(aggFunc)) {
       true
     } else if (OmniExpressionAdaptor.isRegrAggregateByClassName(aggFunc)) {
       true
