@@ -173,7 +173,11 @@ case class OmniRollUpOptimizeTransformer(
 
     if (supported.exists(_.isInstance(aggFunc)) ||
       SparkShimLoader.getSparkShims.isTrySum(aggFunc)) {
-      true
+      aggFunc match {
+        case ap: ApproximatePercentile =>
+          OmniExpressionAdaptor.isApproxPercentileValueTypeSupportedByOmni(ap.children.head)
+        case _ => true
+      }
     } else if (OmniExpressionAdaptor.isRegrAggregateByClassName(aggFunc)) {
       true
     } else {
