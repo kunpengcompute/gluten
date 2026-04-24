@@ -1,7 +1,7 @@
 package org.apache.gluten.execution
 
 import io.substrait.proto.CrossRel
-import org.apache.gluten.extension.ValidationResult
+
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.expressions.Expression
 import org.apache.spark.sql.catalyst.optimizer.{BuildRight, BuildSide}
@@ -34,20 +34,6 @@ case class OmniBroadcastNestedLoopJoinExecTransformer(
       if (buildSide == BuildRight) CrossRel.JoinType.JOIN_TYPE_RIGHT else CrossRel.JoinType.JOIN_TYPE_LEFT
     case _ =>
       CrossRel.JoinType.UNRECOGNIZED
-  }
-
-  override def validateJoinTypeAndBuildSide(): ValidationResult = {
-    val result = joinType match {
-      case Inner | LeftOuter | RightOuter | FullOuter => ValidationResult.succeeded
-      case _ =>
-        ValidationResult.failed(s"$joinType join is not supported with BroadcastNestedLoopJoin")
-    }
-
-    if (!result.ok()) {
-      return result
-    }
-
-    ValidationResult.succeeded // continue
   }
     
   override def columnarInputRDDs: Seq[RDD[ColumnarBatch]] = {
