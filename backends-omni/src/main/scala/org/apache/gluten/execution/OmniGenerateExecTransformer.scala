@@ -226,7 +226,7 @@ object OmniPullOutGenerateProjectHelper extends PullOutProjectHelper {
                   case Some(path) =>
                     GetJsonObject(jsonObj, Literal.create(JSON_PATH_PREFIX + path))
                   case _ =>
-                    Literal.create(null)
+                    Literal.create(null, jsonPath.dataType)
                 }
               case jsonPath =>
                 // TODO: The prefix is just for adapting to GetJsonObject.
