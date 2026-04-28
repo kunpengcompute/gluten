@@ -66,7 +66,9 @@ case class OmniShuffledHashJoinExecTransformer(
           case Some(reason) =>
             ValidationResult.failed(s"Found schema check failure for right schema ${right.schema}: $reason")
           case None =>
-            ValidationResult.succeeded
+            // Reuse hash-join base validation so unsupported join conditions
+            // (e.g. InSubqueryExec) can be detected and fallback early.
+            super.doValidateInternal()
         }
     }
   }
