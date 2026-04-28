@@ -234,7 +234,7 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::WindowRe
                     nthOffset = SubstraitParser::GetLiteralValue<int32_t>(offsetArg.literal());
                 }
             }
-            op::WindowFrameInfo frame(op::OMNI_FRAME_TYPE_ROWS,
+            op::WindowFrameInfo frame(op::OMNI_FRAME_TYPE_RANGE,
                 op::OMNI_FRAME_BOUND_UNBOUNDED_PRECEDING, nthOffset,
                 op::OMNI_FRAME_BOUND_CURRENT_ROW, -1);
             windowFrameInfos.push_back(std::move(frame));
@@ -533,12 +533,6 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::CrossRel
             break;
         case ::substrait::CrossRel_JoinType::CrossRel_JoinType_JOIN_TYPE_LEFT:
             joinType = omniruntime::JoinType::OMNI_JOIN_TYPE_LEFT;
-            break;
-        case ::substrait::CrossRel_JoinType::CrossRel_JoinType_JOIN_TYPE_RIGHT:
-            joinType = omniruntime::JoinType::OMNI_JOIN_TYPE_RIGHT;
-            break;
-        case ::substrait::CrossRel_JoinType::CrossRel_JoinType_JOIN_TYPE_OUTER:
-            joinType = omniruntime::JoinType::OMNI_JOIN_TYPE_FULL;
             break;
         default:
             OMNI_THROW("Substrait Error", "Unsupported Join type: {}", std::to_string(crossRel.type()));

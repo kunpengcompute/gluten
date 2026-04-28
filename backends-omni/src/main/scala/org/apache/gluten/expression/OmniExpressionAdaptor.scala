@@ -1066,6 +1066,17 @@ object OmniExpressionAdaptor extends Logging {
   def isRegrAggregateByClassName(aggregateFunction: AggregateFunction): Boolean =
     REGR_AGG_CLASS_NAMES.contains(aggregateFunction.getClass.getName)
 
+  /**
+   * Omni native `approx_percentile` only supports BYTE/SHORT/INT/LONG/FLOAT/DOUBLE as the value column
+   * (see `ApproxPercentileAggregatorFactory` in OmniOperator). For TIMESTAMP, DECIMAL, STRING, etc.,
+   * Gluten validation should fail so the plan falls back to vanilla Spark.
+   */
+  def isApproxPercentileValueTypeSupportedByOmni(valueExpr: Expression): Boolean =
+    valueExpr.dataType match {
+      case ByteType | ShortType | IntegerType | LongType | FloatType | DoubleType => true
+      case _ => false
+    }
+
   def getRegrAggFunTypeByClassName(aggregateFunction: AggregateFunction): Option[FunctionType] =
     aggregateFunction.getClass.getName match {
       case "org.apache.spark.sql.catalyst.expressions.aggregate.RegrSXX" =>
