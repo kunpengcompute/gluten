@@ -57,6 +57,9 @@ public class TimestampUtil {
     }
 
     public JulianGregorianRebase getJulianObject(String timeZone) {
+        if ("Etc/GMT-8".equals(timeZone) || "GMT+08:00".equals(timeZone) || "GMT+8".equals(timeZone)) {
+            return julianMap.get("Asia/Shanghai");
+        }
         return julianMap.get(timeZone);
     }
 

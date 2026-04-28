@@ -167,7 +167,7 @@ class SingleDirectoryDataWriter(
           .initialize(description.allColumns, description.dataColumns)
       case _: OmniOrcOutputWriter =>
         currentWriter.asInstanceOf[OmniOrcOutputWriter]
-          .initialize(description.allColumns, description.dataColumns)
+          .initialize(description.allColumns, description.dataColumns, description.timeZoneId)
       case _ =>
     }
 
@@ -325,7 +325,7 @@ abstract class BaseDynamicPartitionDataWriter(
           .initialize(description.allColumns, description.dataColumns)
       case _: OmniOrcOutputWriter =>
         currentWriter.asInstanceOf[OmniOrcOutputWriter]
-          .initialize(description.allColumns, description.dataColumns)
+          .initialize(description.allColumns, description.dataColumns, description.timeZoneId)
       case _ =>
     }
 

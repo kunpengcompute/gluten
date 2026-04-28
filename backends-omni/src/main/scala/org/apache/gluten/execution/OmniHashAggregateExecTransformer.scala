@@ -28,6 +28,7 @@ import org.apache.gluten.substrait.expression.{AggregateFunctionNode, Expression
 import org.apache.gluten.substrait.extensions.{AdvancedExtensionNode, ExtensionBuilder}
 import org.apache.gluten.substrait.rel.{RelBuilder, RelNode}
 import org.apache.gluten.substrait.{AggregationParams, SubstraitContext}
+import org.apache.gluten.sql.shims.SparkShimLoader
 import org.apache.spark.sql.catalyst.expressions.aggregate._
 
 import org.apache.spark.sql.catalyst.expressions.{Attribute, Expression, NamedExpression}
@@ -169,7 +170,8 @@ abstract class HashAggregateExecTransformer(
         sparkTypeToOmniTypeWithComplex(attr.dataType, attr.metadata)
     }
 
-    if (supported.exists(_.isInstance(agg.aggregateFunction))) {
+    if (supported.exists(_.isInstance(agg.aggregateFunction)) ||
+      SparkShimLoader.getSparkShims.isTrySum(agg.aggregateFunction)) {
       toOmniAggFunType(agg)
       true
     } else if (OmniExpressionAdaptor.isRegrAggregateByClassName(agg.aggregateFunction)) {

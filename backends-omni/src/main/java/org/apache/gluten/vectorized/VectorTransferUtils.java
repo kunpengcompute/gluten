@@ -100,6 +100,9 @@ public class VectorTransferUtils {
     }
 
     private static TypeNode getTypeNode(Type type) {
+        if (type.hasNothing()) {
+            return new NothingNode();
+        }
         Type.KindCase kindCase = type.getKindCase();
         switch (kindCase) {
             case BOOL:
