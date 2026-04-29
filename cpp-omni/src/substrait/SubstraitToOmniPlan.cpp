@@ -186,11 +186,13 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::WindowRe
     std::vector<int32_t> windowFrameStartChannels;
     std::vector<int32_t> windowFrameEndTypes;
     std::vector<int32_t> windowFrameEndChannels;
+    std::vector<op::WindowFunctionOptions> windowFunctionOptions;
 
     std::vector<op::WindowFrameInfo> windowFrameInfos;
 
     for (const auto& smea : windowRel.measures()) {
         const auto& windowFunction = smea.measure();
+        op::WindowFunctionOptions options;
         std::vector<substrait::Expression> expressionNodes;
         for (const auto& arg : windowFunction.arguments()) {
             expressionNodes.emplace_back(arg.value());
@@ -217,6 +219,12 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::WindowRe
                 argumentKeys.emplace_back(defaultExpr);
                 defaultEndChannel = -2;
             }
+            for (const auto& option : windowFunction.options()) {
+                if (option.name() == "ignoreNulls") {
+                    options.flags |= op::WindowFunctionOptions::IGNORE_NULLS;
+                    break;
+                }
+            }
             op::WindowFrameInfo frame(op::OMNI_FRAME_TYPE_ROWS,
                 op::OMNI_FRAME_BOUND_UNBOUNDED_PRECEDING, static_cast<int32_t>(leadLagOffset),
                 op::OMNI_FRAME_BOUND_UNBOUNDED_FOLLOWING, defaultEndChannel);
@@ -227,16 +235,20 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::WindowRe
                     windowFunction.arguments(0).value(), childNode->OutputType());
                 argumentKeys.emplace_back(expression);
             }
-            int32_t nthOffset = 1;
             if (windowFunction.arguments_size() >= 2) {
                 const auto& offsetArg = windowFunction.arguments(1).value();
-                if (offsetArg.has_literal()) {
-                    nthOffset = SubstraitParser::GetLiteralValue<int32_t>(offsetArg.literal());
+                auto offsetExpression = exprConverter->ToOmniExpr(offsetArg, childNode->OutputType());
+                argumentKeys.emplace_back(offsetExpression);
+                options.nthValueOffsetChannel = op::WindowFunctionOptions::PENDING_CHANNEL;
+            }
+            for (const auto& option : windowFunction.options()) {
+                if (option.name() == "ignoreNulls") {
+                    options.flags |= op::WindowFunctionOptions::IGNORE_NULLS;
+                    break;
                 }
             }
-            op::WindowFrameInfo frame(op::OMNI_FRAME_TYPE_RANGE,
-                op::OMNI_FRAME_BOUND_UNBOUNDED_PRECEDING, nthOffset,
-                op::OMNI_FRAME_BOUND_CURRENT_ROW, -1);
+            auto frame = createWindowFrameInfo(windowFunction.lower_bound(), windowFunction.upper_bound(),
+                windowFunction.window_type());
             windowFrameInfos.push_back(std::move(frame));
         } else if (functionType == op::OMNI_WINDOW_TYPE_NTILE) {
             int32_t numBuckets = 1;
@@ -257,6 +269,7 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::WindowRe
             }
         }
         windowFunctionTypes.push_back(functionType);
+        windowFunctionOptions.push_back(options);
         auto windowFunctionReturnType = SubstraitParser::ParseType(windowFunction.output_type());
         windowFunctionReturnTypesVec.push_back(windowFunctionReturnType);
         allTypesVec.push_back(windowFunctionReturnType);
@@ -293,7 +306,7 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::WindowRe
     return std::make_shared<WindowNode>(NextPlanNodeId(), windowFunctionTypes, partitionCols, preGroupedCols,
         sortingKeys, sortingOrders, sortNullFirsts, preSortedChannelPreFix, expectedPositionsCount,
         windowFunctionReturnTypes, allTypes, argumentKeys, windowFrameTypes, windowFrameStartTypes,
-        windowFrameStartChannels, windowFrameEndTypes, windowFrameEndChannels, childNode);
+        windowFrameStartChannels, windowFrameEndTypes, windowFrameEndChannels, windowFunctionOptions, childNode);
 }
 
 PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::WindowGroupLimitRel &windowGroupLimitRel)
