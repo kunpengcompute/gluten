@@ -74,12 +74,6 @@ case class OmniFromUnixTimeTransformer(
     original: FromUnixTime)
   extends ExpressionTransformer {
 
-  private val timeFormatSet: Set[String] = Set(
-    "yyyy", "MM", "dd", "HH", "mm", "ss",
-    "HH:mm", "HH:mm:ss", "HHmm", "HHmmss",
-    "yyyy-MM", "yyyy-MM-dd", "yyyy-MM-dd HH", "yyyy-MM-dd HH:mm", "yyyy-MM-dd HH:mm:ss",
-    "yyyyMM", "yyyyMMdd", "yyyyMMddHH", "yyyyMMddHHmm", "yyyyMMddHHmmss"
-  )
   private val timeZoneSet: Set[String] = Set("GMT+08:00", "Asia/Shanghai")
 
   private def unsupportedUnixTimeFunction(timeFormat: String, timeZone: String): Unit = {
@@ -94,9 +88,6 @@ case class OmniFromUnixTimeTransformer(
     */
     if (!timeZoneSet.contains(timeZone)) {
       throw new GlutenNotSupportException(s"Unsupported Time Zone: $timeZone")
-    }
-    if (!timeFormatSet.contains(timeFormat)) {
-      throw new GlutenNotSupportException(s"Unsupported Time Format: $timeFormat")
     }
   }
 
@@ -121,12 +112,6 @@ case class OmniUnixTimestampTransformer(
                                         original: UnixTimestamp)
   extends ExpressionTransformer {
 
-  private val timeFormatSet: Set[String] = Set(
-    "yyyy", "MM", "dd", "HH", "mm", "ss",
-    "HH:mm", "HH:mm:ss", "HHmm", "HHmmss",
-    "yyyy-MM", "yyyy-MM-dd", "yyyy-MM-dd HH", "yyyy-MM-dd HH:mm", "yyyy-MM-dd HH:mm:ss",
-    "yyyyMM", "yyyyMMdd", "yyyyMMddHH", "yyyyMMddHHmm", "yyyyMMddHHmmss"
-  )
   private val timeZoneSet: Set[String] = Set("GMT+08:00", "Asia/Shanghai")
 
   private def unsupportedUnixTimeFunction(timeFormat: String, timeZone: String): Unit = {
@@ -141,9 +126,6 @@ case class OmniUnixTimestampTransformer(
     */
     if (!timeZoneSet.contains(timeZone)) {
       throw new GlutenNotSupportException(s"Unsupported Time Zone: $timeZone")
-    }
-    if (!timeFormatSet.contains(timeFormat)) {
-      throw new GlutenNotSupportException(s"Unsupported Time Format: $timeFormat")
     }
   }
 
