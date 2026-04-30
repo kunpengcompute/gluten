@@ -74,18 +74,12 @@ case class OmniFromUnixTimeTransformer(
     original: FromUnixTime)
   extends ExpressionTransformer {
 
-  private val timeZoneSet: Set[String] = Set("GMT+08:00", "Asia/Shanghai")
+  private val timeZoneSet: Set[String] = Set("GMT+08:00", "Asia/Beijing", "Asia/Shanghai")
 
   private def unsupportedUnixTimeFunction(timeFormat: String, timeZone: String): Unit = {
     if (!GlutenConfig.get.enableOmniUnixTimeFunc) {
       throw new GlutenNotSupportException(s"Not Enable Omni UnixTime Function")
     }
-    // TODO: LEGACY need to be supported
-    /*
-    if (GlutenConfig.get.timeParserPolicy == "LEGACY") {
-      throw new GlutenNotSupportException(s"Unsupported Time Parser Policy: LEGACY")
-    }
-    */
     if (!timeZoneSet.contains(timeZone)) {
       throw new GlutenNotSupportException(s"Unsupported Time Zone: $timeZone")
     }
@@ -98,8 +92,10 @@ case class OmniFromUnixTimeTransformer(
     val funcName: String =
       ConverterUtils.makeFuncName(substraitExprName, original.children.map(_.dataType))
     val functionId = ExpressionBuilder.newScalarFunction(functionMap, funcName)
-    val newChildren =
+    val policy = GlutenConfig.get.timeParserPolicy
+    var newChildren =
       children :+ LiteralTransformer(Literal(UTF8String.fromString(timeZone), StringType))
+    newChildren = newChildren :+ LiteralTransformer(Literal(UTF8String.fromString(policy), StringType))
     val childNodes = newChildren.map(_.doTransform(args)).asJava
     val typeNode = ConverterUtils.getTypeNode(dataType, nullable)
     ExpressionBuilder.makeScalarFunction(functionId, childNodes, typeNode)
