@@ -82,7 +82,7 @@ object OmniExpressionAdaptor extends Logging {
     "yyyy-MM", "yyyy-MM-dd", "yyyy-MM-dd HH", "yyyy-MM-dd HH:mm", "yyyy-MM-dd HH:mm:ss",
     "yyyyMM", "yyyyMMdd", "yyyyMMddHH", "yyyyMMddHHmm", "yyyyMMddHHmmss"
   )
-  private val timeZoneSet: Set[String] = Set("GMT+08:00", "Asia/Shanghai")
+  private val timeZoneSet: Set[String] = Set("GMT+08:00", "Asia/Beijing", "Asia/Shanghai")
 
   private def unsupportedUnixTimeFunction(timeFormat: String, timeZone: String): Unit = {
     if (!GlutenConfig.get.enableOmniUnixTimeFunc) {
@@ -93,6 +93,15 @@ object OmniExpressionAdaptor extends Logging {
     }
     if (!timeFormatSet.contains(timeFormat)) {
       throw new UnsupportedOperationException(s"Unsupported Time Format: $timeFormat")
+    }
+  }
+
+  private def unsupportedFromUnixTimeFunction(timeZone: String): Unit = {
+    if (!GlutenConfig.get.enableOmniUnixTimeFunc) {
+      throw new UnsupportedOperationException(s"Not Enabled Omni UnixTime Function")
+    }
+    if (!timeZoneSet.contains(timeZone)) {
+      throw new UnsupportedOperationException(s"Unsupported Time Zone: $timeZone")
     }
   }
 
@@ -621,7 +630,8 @@ object OmniExpressionAdaptor extends Logging {
 
       case fromUnixTime: FromUnixTime =>
         val timeZone = fromUnixTime.timeZoneId.getOrElse("")
-        unsupportedUnixTimeFunction(fromUnixTime.format.toString, timeZone)
+        unsupportedFromUnixTimeFunction(timeZone)
+        val policy = GlutenConfig.get.timeParserPolicy
         new JsonObject()
           .put("exprType", "FUNCTION")
           .addOmniExpJsonType("returnType", fromUnixTime.dataType)
@@ -630,8 +640,8 @@ object OmniExpressionAdaptor extends Logging {
             "arguments",
             new JsonArray()
               .put(rewriteToOmniJsonExpressionLiteralJsonObject(fromUnixTime.sec, exprsIndexMap))
-              .put(new JsonParser().parse(toOmniTimeFormat(
-                rewriteToOmniJsonExpressionLiteral(fromUnixTime.format, exprsIndexMap))))
+              .put(new JsonParser().parse(
+                rewriteToOmniJsonExpressionLiteral(fromUnixTime.format, exprsIndexMap)))
               .put(
                 new JsonObject()
                   .put("exprType", "LITERAL")
@@ -639,6 +649,13 @@ object OmniExpressionAdaptor extends Logging {
                   .put("isNull", timeZone.isEmpty())
                   .put("value", timeZone)
                   .put("width", timeZone.length))
+              .put(
+                new JsonObject()
+                  .put("exprType", "LITERAL")
+                  .put("dataType", 15)
+                  .put("isNull", policy.isEmpty())
+                  .put("value", policy)
+                  .put("width", policy.length))
           )
 
       // for like
