@@ -89,6 +89,7 @@ object DateTimeExpressionsTransformer {
     scala.reflect.classTag[DayOfYear].runtimeClass -> "DAY_OF_YEAR",
     scala.reflect.classTag[Hour].runtimeClass -> "HOUR",
     scala.reflect.classTag[Minute].runtimeClass -> "MINUTE",
-    scala.reflect.classTag[Second].runtimeClass -> "SECOND"
+    scala.reflect.classTag[Second].runtimeClass -> "SECOND",
+    scala.reflect.classTag[SecondWithFraction].runtimeClass -> "SECOND"
   )
 }
