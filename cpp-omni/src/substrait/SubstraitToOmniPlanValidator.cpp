@@ -15,6 +15,25 @@ namespace omniruntime {
 namespace {
 const char *ExtractFileName(const char *file) { return strrchr(file, '/') ? strrchr(file, '/') + 1 : file; }
 
+std::string ExtractReasonFromOmniException(const char *what)
+{
+    if (what == nullptr) {
+        return "Unknown validation error";
+    }
+    std::string message(what);
+    const std::string reasonPrefix = "Reason: ";
+    auto reasonStart = message.find(reasonPrefix);
+    if (reasonStart == std::string::npos) {
+        return message;
+    }
+    reasonStart += reasonPrefix.size();
+    auto reasonEnd = message.find('\n', reasonStart);
+    if (reasonEnd == std::string::npos) {
+        return message.substr(reasonStart);
+    }
+    return message.substr(reasonStart, reasonEnd - reasonStart);
+}
+
 std::unique_ptr<re2::RE2> CompilePattern(const std::string &pattern)
 {
     return std::make_unique<re2::RE2>(re2::StringPiece(pattern), RE2::Quiet);
@@ -1261,7 +1280,7 @@ bool SubstraitToOmniPlanValidator::Validate(const ::substrait::Plan &plan)
 
         return false;
     } catch (const OmniException &err) {
-        LOG_VALIDATION_MSG(err.what());
+        LOG_VALIDATION_MSG(ExtractReasonFromOmniException(err.what()));
         return false;
     }
 }
