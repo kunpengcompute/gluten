@@ -289,6 +289,14 @@ bool SubstraitToOmniPlanValidator::IsAllowedCast(const DataTypePtr &fromType, co
                 return false;
             }
             break;
+        case OMNI_VARBINARY:
+            if (fromTypeId != OMNI_BYTE || fromTypeId != OMNI_SHORT || fromTypeId != OMNI_INT
+                || fromTypeId != OMNI_LONG || fromTypeId != OMNI_VARCHAR) {
+                return false;
+            }
+            break;
+        default:
+            return false;
     }
     return true;
 }
