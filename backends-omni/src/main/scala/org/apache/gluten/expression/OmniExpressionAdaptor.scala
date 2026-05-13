@@ -726,6 +726,17 @@ object OmniExpressionAdaptor extends Logging {
               .put(rewriteToOmniJsonExpressionLiteralJsonObject(truncDate.right, exprsIndexMap))
           )
 
+      case ptd: ParseToDate =>
+        val toDateArgs = new JsonArray()
+        ptd.children.foreach { c =>
+          toDateArgs.put(rewriteToOmniJsonExpressionLiteralJsonObject(c, exprsIndexMap))
+        }
+        new JsonObject()
+          .put("exprType", "FUNCTION")
+          .addOmniExpJsonType("returnType", ptd.dataType)
+          .put("function_name", "to_date")
+          .put("arguments", toDateArgs)
+
       case md5: Md5 =>
         md5.child match {
           case Cast(inputExpression, outputType, _, _) if outputType == BinaryType =>
