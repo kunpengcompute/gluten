@@ -15,6 +15,72 @@ OmniPlanConverter::OmniPlanConverter(const std::vector<std::shared_ptr<ResultIte
     substraitOmniPlanConverter_.setInputIters(std::move(inputIters));
 }
 
+std::shared_ptr<IcebergSplitInfo> parseIcebergSplitInfo(
+    const substrait::ReadRel_LocalFiles_FileOrFiles& file,
+    std::shared_ptr<SplitInfo> splitInfo)
+{
+    using SubstraitFileFormatCase =
+        ::substrait::ReadRel_LocalFiles_FileOrFiles::IcebergReadOptions::FileFormatCase;
+    using SubstraitDeleteFileFormatCase =
+        ::substrait::ReadRel_LocalFiles_FileOrFiles::IcebergReadOptions::DeleteFile::FileFormatCase;
+
+    auto icebergSplitInfo = std::dynamic_pointer_cast<IcebergSplitInfo>(splitInfo);
+    if (icebergSplitInfo == nullptr) {
+        icebergSplitInfo = std::make_shared<IcebergSplitInfo>(*splitInfo);
+    }
+
+    auto icebergReadOption = file.iceberg();
+    switch (icebergReadOption.file_format_case()) {
+        case SubstraitFileFormatCase::kParquet:
+            icebergSplitInfo->format = FileFormat::PARQUET;
+            break;
+        case SubstraitFileFormatCase::kOrc:
+            icebergSplitInfo->format = FileFormat::ORC;
+            break;
+        default:
+            icebergSplitInfo->format = FileFormat::UNKNOWN;
+            break;
+    }
+
+    std::vector<IcebergDeleteFileInfo> deletes;
+    deletes.reserve(icebergReadOption.delete_files_size());
+    for (int i = 0; i < icebergReadOption.delete_files_size(); i++) {
+        auto deleteFile = icebergReadOption.delete_files().Get(i);
+        FileFormat deleteFormat;
+        switch (deleteFile.file_format_case()) {
+            case SubstraitDeleteFileFormatCase::kParquet:
+                deleteFormat = FileFormat::PARQUET;
+                break;
+            case SubstraitDeleteFileFormatCase::kOrc:
+                deleteFormat = FileFormat::ORC;
+                break;
+            default:
+                deleteFormat = FileFormat::UNKNOWN;
+                break;
+        }
+
+        IcebergDeleteContent fileContent;
+        switch (deleteFile.filecontent()) {
+            case ::substrait::ReadRel_LocalFiles_FileOrFiles_IcebergReadOptions_FileContent_POSITION_DELETES:
+                fileContent = IcebergDeleteContent::kPositionDeletes;
+                break;
+            case ::substrait::ReadRel_LocalFiles_FileOrFiles_IcebergReadOptions_FileContent_EQUALITY_DELETES:
+                fileContent = IcebergDeleteContent::kEqualityDeletes;
+                break;
+            default:
+                fileContent = IcebergDeleteContent::kData;
+                break;
+        }
+        deletes.emplace_back(
+            fileContent,
+            deleteFormat,
+            deleteFile.filepath(),
+            deleteFile.recordcount(),
+            deleteFile.filesize());
+    }
+    icebergSplitInfo->deleteFilesVec.emplace_back(std::move(deletes));
+    return icebergSplitInfo;
+}
 
 std::shared_ptr<SplitInfo> parseScanSplitInfo(
     const google::protobuf::RepeatedPtrField<substrait::ReadRel_LocalFiles_FileOrFiles>& fileList)
@@ -54,6 +120,9 @@ std::shared_ptr<SplitInfo> parseScanSplitInfo(
                 break;
             case SubstraitFileFormatCase::kParquet:
                 splitInfo->format = FileFormat::PARQUET;
+                break;
+            case SubstraitFileFormatCase::kIceberg:
+                splitInfo = parseIcebergSplitInfo(file, std::move(splitInfo));
                 break;
             default:
                 splitInfo->format = FileFormat::UNKNOWN;

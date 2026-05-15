@@ -8,11 +8,69 @@
 #include "config/OmniConfig.h"
 #include "compute/plannode_stats.h"
 #include "Runtime.h"
+#include <nlohmann/json.hpp>
 
 namespace omniruntime {
 std::string BoolToString(const bool value)
 {
     return value ? "true" : "false";
+}
+
+std::string IcebergDeleteContentToString(IcebergDeleteContent content)
+{
+    switch (content) {
+        case IcebergDeleteContent::kPositionDeletes:
+            return "position";
+        case IcebergDeleteContent::kEqualityDeletes:
+            return "equality";
+        default:
+            return "data";
+    }
+}
+
+std::string FileFormatToString(FileFormat format)
+{
+    switch (format) {
+        case FileFormat::PARQUET:
+            return "parquet";
+        case FileFormat::ORC:
+            return "orc";
+        default:
+            return "unknown";
+    }
+}
+
+std::unordered_map<std::string, std::string> BuildIcebergCustomSplitInfo(
+    const std::shared_ptr<SplitInfo>& scanInfo,
+    int idx)
+{
+    auto icebergSplitInfo = std::dynamic_pointer_cast<IcebergSplitInfo>(scanInfo);
+    if (icebergSplitInfo == nullptr) {
+        return {};
+    }
+    std::unordered_map<std::string, std::string> customSplitInfo = {
+        {"table_format", "iceberg"}
+    };
+    if (idx >= icebergSplitInfo->deleteFilesVec.size()) {
+        return customSplitInfo;
+    }
+    const auto& deleteFiles = icebergSplitInfo->deleteFilesVec[idx];
+    if (deleteFiles.empty()) {
+        return customSplitInfo;
+    }
+
+    nlohmann::json deleteFilesJson = nlohmann::json::array();
+    for (const auto& deleteFile : deleteFiles) {
+        deleteFilesJson.push_back({
+            {"content", IcebergDeleteContentToString(deleteFile.content)},
+            {"format", FileFormatToString(deleteFile.format)},
+            {"path", deleteFile.path},
+            {"recordCount", deleteFile.recordCount},
+            {"fileSize", deleteFile.fileSize}
+        });
+    }
+    customSplitInfo["iceberg_delete_files"] = deleteFilesJson.dump();
+    return customSplitInfo;
 }
 
 WholeStageResultIterator::WholeStageResultIterator(MemoryManager *memoryManager,
@@ -61,7 +119,7 @@ WholeStageResultIterator::WholeStageResultIterator(MemoryManager *memoryManager,
                 starts[idx],
                 lengths[idx],
                 partitionKeys,
-                std::unordered_map<std::string, std::string>(),
+                BuildIcebergCustomSplitInfo(scanInfo, idx),
                 nullptr,
                 std::unordered_map<std::string, std::string>(),
                 std::unordered_map<std::string, std::string>(),

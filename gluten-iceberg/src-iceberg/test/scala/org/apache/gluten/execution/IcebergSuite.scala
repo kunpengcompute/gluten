@@ -58,6 +58,40 @@ abstract class IcebergSuite extends WholeStageTransformerSuite {
     }
   }
 
+  Seq("parquet", "orc").foreach {
+    format =>
+      test(s"iceberg $format read position delete") {
+        val table = s"iceberg_${format}_position_delete_tb"
+        withTable(table) {
+          withSQLConf(GlutenConfig.GLUTEN_ENABLED_KEY -> "false") {
+            spark.sql(s"""
+                         |create table $table (
+                         |  id int,
+                         |  name string,
+                         |  p string
+                         |) using iceberg
+                         |tblproperties (
+                         |  'format-version' = '2',
+                         |  'write.format.default' = '$format',
+                         |  'write.delete.format.default' = '$format',
+                         |  'write.delete.mode' = 'merge-on-read'
+                         |)
+                         |partitioned by (p)
+                         |""".stripMargin)
+            spark.sql(s"""
+                         |insert into table $table values
+                         |(1, 'a1', 'p1'), (2, 'a2', 'p1'), (3, 'a3', 'p2'), (4, 'a4', 'p2')
+                         |""".stripMargin)
+            spark.sql(s"delete from $table where id in (2, 4)")
+          }
+
+          runQueryAndCompare(s"select id, name, p from $table order by id") {
+            checkGlutenOperatorMatch[IcebergScanTransformer]
+          }
+        }
+      }
+  }
+
   testWithSpecifiedSparkVersion("iceberg bucketed join", Some("3.4")) {
     val leftTable = "p_str_tb"
     val rightTable = "p_int_tb"
