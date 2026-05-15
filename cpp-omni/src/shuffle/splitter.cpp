@@ -360,11 +360,11 @@ void Splitter::SplitBinaryVector(BaseVector *varcharVector, int col_schema) {
             constStrLen = static_cast<uint32_t>(constValue.length());
         }
         cached_vectorbatch_size_ += num_rows * (sizeof(bool) + sizeof(int32_t));
+        cached_vectorbatch_size_ += constStrLen;
         for (auto &pid : partition_used_) {
             auto pos = partition_row_offset_base_[pid];
             auto end = partition_row_offset_base_[pid + 1];
             for (; pos < end; ++pos) {
-                cached_vectorbatch_size_ += constStrLen;
                 if ((vc_partition_array_buffers_[pid][col_schema].size() != 0) &&
                     (vc_partition_array_buffers_[pid][col_schema].back().getVcList().size() <
                         options_.spill_batch_row_num)) {
