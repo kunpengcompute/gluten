@@ -10,6 +10,7 @@ import org.apache.gluten.connector.write.{
   OmniHudiDataWriteFactory
 }
 
+import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.types.StructType
 
 import org.apache.gluten.backendsapi.omni.HudiWriteUtil
@@ -24,11 +25,16 @@ import org.apache.gluten.backendsapi.omni.HudiWriteUtil
 
 abstract class AbstractHudiWriteExec extends HudiWriteExec {
 
+  override protected def run(): Seq[InternalRow] = {
+    super.run()
+  }
+
   private def createOmniHudiDataWriteFactory(schema: StructType): OmniHudiDataWriteFactory = {
     OmniHudiDataWriteFactory(
       schema,
       HudiWriteUtil.getDirectory(write),
       HudiWriteUtil.getCodec(write),
+      HudiWriteUtil.getFileFormat(write),
       HudiWriteUtil.getQueryId(write)
     )
   }

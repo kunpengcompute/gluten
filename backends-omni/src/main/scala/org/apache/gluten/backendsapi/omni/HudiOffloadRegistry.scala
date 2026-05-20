@@ -4,35 +4,36 @@
 package org.apache.gluten.backendsapi.omni
 
 import org.apache.gluten.extension.columnar.offload.OffloadSingleNode
+import org.apache.gluten.extension.injector.GlutenInjector.LegacyInjector
+
+import org.apache.spark.sql.catalyst.rules.Rule
+import org.apache.spark.sql.execution.SparkPlan
 
 /**
- * Aggregates Hudi columnar offload rules for the Omni backend.
- *
- * Scan rules come from the `gluten-hudi` module ([[org.apache.gluten.execution.OffloadHudiScan]]);
- * write rules from `backends-omni` `src-hudi` ([[org.apache.gluten.extension.columnar.offload.OffloadHudiWrite]]).
- * Uses reflection so the Omni module compiles when `-Phudi` is off.
- *
- * @since 2026
+ * Hudi offload rules for Omni: scan via pre-transform (before [[org.apache.gluten.extension.columnar.offload.OffloadOthers]]),
+ * write via reflection from `src-hudi`.
  */
-
 object HudiOffloadRegistry {
 
-  /** All Hudi-related [[OffloadSingleNode]] rules (scan + write); empty seq if classes are absent. */
-  def offloads: Seq[OffloadSingleNode] = {
-    val scanOffloads = loadScanOffloads()
-    val writeOffloads = loadWriteOffloads()
-    scanOffloads ++ writeOffloads
+  /** Write rules only; Hudi scan uses [[injectPreTransformRules]]. */
+  def offloads: Seq[OffloadSingleNode] = loadWriteOffloads()
+
+  def injectPreTransformRules(injector: LegacyInjector): Unit = {
+    loadScanPreRule().foreach { rule =>
+      injector.injectPreTransform(_ => rule)
+    }
   }
 
-  private def loadScanOffloads(): Seq[OffloadSingleNode] = {
+  private def loadScanPreRule(): Option[Rule[SparkPlan]] = {
     try {
-      val clazz = Class.forName("org.apache.gluten.execution.OffloadHudiScan")
-      val ctor = clazz.getConstructor()
-      val instance = ctor.newInstance().asInstanceOf[OffloadSingleNode]
-      Seq(instance)
+      val clazz = Class.forName("org.apache.gluten.extension.columnar.offload.OffloadOmniHudiScanPreRule$")
+      Class.forName("org.apache.gluten.execution.HudiScanTransformer")
+      val module = clazz.getField("MODULE$").get(null)
+      val method = clazz.getMethod("apply")
+      Some(method.invoke(module).asInstanceOf[Rule[SparkPlan]])
     } catch {
-      case _: ClassNotFoundException | _: NoSuchMethodException =>
-        Seq.empty
+      case _: ClassNotFoundException | _: NoSuchFieldException | _: NoSuchMethodException =>
+        None
     }
   }
 

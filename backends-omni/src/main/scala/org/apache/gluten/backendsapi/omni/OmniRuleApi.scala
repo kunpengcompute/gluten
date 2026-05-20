@@ -81,6 +81,7 @@ object OmniRuleApi {
     injector.injectPreTransform(c => FallbackBroadcastHashJoin.apply(c.session))
 //    injector.injectPreTransform(c => BloomFilterMightContainJointRewriteRule.apply(c.session))
 //    injector.injectPreTransform(c => ArrowScanReplaceRule.apply(c.session))
+    HudiOffloadRegistry.injectPreTransformRules(injector)
 
     // Legacy: The legacy transform rule.
     val offloads = Seq(OffloadOthers(), OffloadExchange(), OffloadJoin(), OffloadWrite()) ++ IcebergOffloadRegistry.offloads ++ HudiOffloadRegistry.offloads

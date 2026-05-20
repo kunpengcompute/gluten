@@ -21,7 +21,8 @@ import org.apache.spark.sql.vectorized.ColumnarBatch
  * @since 2026
  * @param schema    output schema for this write
  * @param directory Hudi base path (task output directory)
- * @param codec     parquet compression codec label from Hudi options
+ * @param codec     compression codec label from Hudi options
+ * @param fileFormat Hudi base file format, parquet or orc
  * @param queryId   Spark query id used to build unique writer operation id
  */
 
@@ -29,7 +30,10 @@ case class OmniHudiDataWriteFactory(
     schema: StructType,
     directory: String,
     codec: String,
-    queryId: String)
+    fileFormat: String,
+    queryId: String,
+    partitionColumns: Seq[String] = Seq.empty,
+    recordKeyColumns: Seq[String] = Seq.empty)
   extends ColumnarBatchDataWriterFactory
   with ColumnarStreamingDataWriterFactory {
 
@@ -46,7 +50,7 @@ case class OmniHudiDataWriteFactory(
       partitionId: Int,
       taskId: Long,
       epochId: Long): DataWriter[ColumnarBatch] = {
-    val operationId = queryId + "-" + epochId
+    val operationId = if (epochId == 0L) queryId else queryId + "-" + epochId
     val jniWrapper = getJniWrapper(schema, directory, codec, partitionId, taskId, operationId)
     OmniHudiColumnarBatchDataWriter(jniWrapper)
   }
@@ -65,10 +69,13 @@ case class OmniHudiDataWriteFactory(
     val params = new HudiWriteJniWrapper.HudiWriterInitParams(
       directory,
       codec,
+      fileFormat,
       partitionId,
       taskId,
       operationId,
-      SQLConf.get.getConf(SQLConf.PARQUET_REBASE_MODE_IN_WRITE) == "LEGACY")
+      SQLConf.get.getConf(SQLConf.PARQUET_REBASE_MODE_IN_WRITE) == "LEGACY",
+      partitionColumns.toArray,
+      recordKeyColumns.toArray)
     jniWrapper.init(localSchema, omniTypes, params)
     jniWrapper
   }

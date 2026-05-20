@@ -81,6 +81,24 @@ object HudiWriteUtil {
     }
   }
 
+  /** Hudi base file format selected by write options, defaults to parquet. */
+  def getFileFormat(write: Write): String = {
+    val w = write.getClass
+    try {
+      val opts = getOptionsField(write, w)
+      if (opts != null) {
+        val format = Option(opts.get("hoodie.datasource.write.file.format"))
+          .orElse(Option(opts.get("hoodie.table.base.file.format")))
+          .getOrElse("parquet")
+        format.toLowerCase(java.util.Locale.ROOT)
+      } else {
+        "parquet"
+      }
+    } catch {
+      case _: Throwable => "parquet"
+    }
+  }
+
   private def getOptionsField(write: Write, w: Class[_]): java.util.Map[String, String] = {
     try {
       val f = w.getDeclaredField("options")

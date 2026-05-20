@@ -10,24 +10,31 @@ import org.apache.spark.sql.connector.write.WriterCommitMessage
 import org.apache.gluten.connector.write.HudiFileInfoJson
 
 /**
- * Builds Hudi WriterCommitMessage from columnar write result (file info JSON array).
- * Uses reflection to instantiate Hudi's HoodieWriterCommitMessage so we stay compatible
- * across Hudi versions.
+ * Carries Hudi [[org.apache.hudi.client.WriteStatus]] list from executors to the driver.
+ * Driver code ([[org.apache.gluten.execution.OmniHudiInsertIntoCommandExec]]) collects statuses
+ * via `getWriteStatuses()`; we use a Gluten-local type so tasks do not depend on
+ * `org.apache.spark.sql.hudi.command.HoodieWriterCommitMessage` being on the executor classpath.
  *
  * @since 2026
  */
+case class OmniHudiWriterCommitMessage(writeStatuses: java.util.List[Object])
+  extends WriterCommitMessage {
+  def getWriteStatuses: java.util.List[Object] = writeStatuses
+}
 
+/**
+ * Builds [[WriterCommitMessage]] from columnar write result (file info JSON array).
+ * Wraps reflected [[org.apache.hudi.client.WriteStatus]] instances in [[OmniHudiWriterCommitMessage]].
+ *
+ * @since 2026
+ */
 object HudiCommitMessageBuilder {
 
   private val mapper = new ObjectMapper()
 
-  /**
-   * Parses fileInfoJsonArray (each element is HudiFileInfoJson JSON) and builds
-   * WriterCommitMessage that Hudi's BatchWrite.commit() accepts.
-   */
   def buildCommitMessage(fileInfoJsonArray: Array[String]): WriterCommitMessage = {
     if (fileInfoJsonArray == null || fileInfoJsonArray.isEmpty) {
-      return buildViaReflection(java.util.Collections.emptyList[Object]())
+      return OmniHudiWriterCommitMessage(java.util.Collections.emptyList[Object]())
     }
     val writeStatusList = new java.util.ArrayList[Object]()
     for (json <- fileInfoJsonArray) {
@@ -37,18 +44,18 @@ object HudiCommitMessageBuilder {
         writeStatusList.add(writeStatus)
       }
     }
-    buildViaReflection(writeStatusList)
+    OmniHudiWriterCommitMessage(writeStatusList)
   }
 
   private def createWriteStatusFromFileInfo(info: HudiFileInfoJson): Object = {
     try {
-      // Hudi: WriteStatus with HoodieWriteStat (path, record count, file size)
       val writeStatusClass = Class.forName("org.apache.hudi.client.WriteStatus")
-      val writeStatus = writeStatusClass.getConstructor().newInstance()
-      val setStat = writeStatusClass.getMethod("setStat", Class.forName("org.apache.hudi.client.HoodieWriteStat"))
-      val hoodieWriteStatClass = Class.forName("org.apache.hudi.client.HoodieWriteStat")
-      val stat = hoodieWriteStatClass.getConstructor().newInstance()
-      hoodieWriteStatClass.getMethod("setPath", classOf[String]).invoke(stat, info.getPath)
+      val writeStatus = writeStatusClass.getConstructor().newInstance().asInstanceOf[Object]
+      val hoodieWriteStatClass = loadHoodieWriteStatClass()
+      val setStat = writeStatusClass.getMethod("setStat", hoodieWriteStatClass)
+      val stat = hoodieWriteStatClass.getConstructor().newInstance().asInstanceOf[Object]
+      val path = if (info.getPath != null) info.getPath else ""
+      hoodieWriteStatClass.getMethod("setPath", classOf[String]).invoke(stat, path)
       hoodieWriteStatClass.getMethod("setNumWrites", classOf[Long]).invoke(stat, java.lang.Long.valueOf(info.getRecordCount))
       hoodieWriteStatClass.getMethod("setFileSizeInBytes", classOf[Long]).invoke(stat, java.lang.Long.valueOf(info.getFileSizeInBytes))
       setStat.invoke(writeStatus, stat)
@@ -58,23 +65,12 @@ object HudiCommitMessageBuilder {
     }
   }
 
-  private def buildViaReflection(writeStatusList: java.util.List[Object]): WriterCommitMessage = {
+  private def loadHoodieWriteStatClass(): Class[_] = {
     try {
-      val msgClass = Class.forName("org.apache.spark.sql.hudi.command.HoodieWriterCommitMessage")
-      val ctor = msgClass.getConstructor(classOf[java.util.List[_]])
-      ctor.newInstance(writeStatusList).asInstanceOf[WriterCommitMessage]
+      Class.forName("org.apache.hudi.common.model.HoodieWriteStat")
     } catch {
-      case e: Throwable =>
-        try {
-          val msgClass = Class.forName("org.apache.hudi.internal.HoodieWriterCommitMessage")
-          val ctor = msgClass.getConstructor(classOf[java.util.List[_]])
-          ctor.newInstance(writeStatusList).asInstanceOf[WriterCommitMessage]
-        } catch {
-          case _: Throwable =>
-            throw new IllegalStateException(
-              "Failed to build Hudi WriterCommitMessage from columnar write result. " +
-                "Hudi commit message type may have changed.", e)
-        }
+      case _: ClassNotFoundException =>
+        Class.forName("org.apache.hudi.client.HoodieWriteStat")
     }
   }
 }

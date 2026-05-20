@@ -25,6 +25,9 @@ case class OmniHudiAppendDataExec(
     write: Write)
   extends AbstractHudiWriteExec {
 
+  /** Shown in Spark UI / EXPLAIN so Hudi columnar write is distinguishable from generic AppendData. */
+  override def nodeName: String = "OmniColumnarHudiWrite"
+
   override protected def withNewChildInternal(newChild: SparkPlan): SparkPlan =
     copy(query = newChild)
 }
