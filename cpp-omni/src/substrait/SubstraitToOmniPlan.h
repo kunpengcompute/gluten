@@ -20,6 +20,7 @@
 #include <optional>
 #include <string>
 #include <tuple>
+#include <utility>
 #include "SubstraitParser.h"
 #include "SubstraitToOmniExpr.h"
 #include "compute/ResultIterator.h"
@@ -75,6 +76,42 @@ struct SplitInfo {
 
     /// Make SplitInfo polymorphic
     virtual ~SplitInfo() = default;
+};
+
+enum class IcebergDeleteContent {
+    kPositionDeletes,
+    kEqualityDeletes,
+    kData
+};
+
+struct IcebergDeleteFileInfo {
+    IcebergDeleteContent content;
+    FileFormat format;
+    std::string path;
+    uint64_t recordCount;
+    uint64_t fileSize;
+
+    IcebergDeleteFileInfo(
+        IcebergDeleteContent content,
+        FileFormat format,
+        std::string path,
+        uint64_t recordCount,
+        uint64_t fileSize)
+        : content(content),
+          format(format),
+          path(std::move(path)),
+          recordCount(recordCount),
+          fileSize(fileSize)
+    {}
+};
+
+struct IcebergSplitInfo : SplitInfo {
+    std::vector<std::vector<IcebergDeleteFileInfo>> deleteFilesVec;
+
+    explicit IcebergSplitInfo(const SplitInfo& splitInfo) : SplitInfo(splitInfo)
+    {
+        deleteFilesVec.reserve(splitInfo.paths.size());
+    }
 };
 /// This class is used to convert the Substrait plan into Omni plan.
 using SortWithExprTuple =
