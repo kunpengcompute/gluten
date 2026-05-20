@@ -650,7 +650,7 @@ SubstraitParser::substraitOmniFunctionMap = {
     {"corr", {FUNCTION_OMNI_EXPR_TYPE, "corr"}},
     {"covar_pop", {FUNCTION_OMNI_EXPR_TYPE, "covar_pop"}},
     {"covar_samp", {FUNCTION_OMNI_EXPR_TYPE, "covar_samp"}},
-    {"cbrt", {FUNCTION_OMNI_EXPR_TYPE, "cbrt"}},
+//     {"cbrt", {FUNCTION_OMNI_EXPR_TYPE, "cbrt"}},
     {"ceil", {FUNCTION_OMNI_EXPR_TYPE, "ceil"}},
     {"log1p", {FUNCTION_OMNI_EXPR_TYPE, "log1p"}},
     {"log2", {FUNCTION_OMNI_EXPR_TYPE, "log2"}},
