@@ -8,7 +8,6 @@
 #include "config/OmniConfig.h"
 #include "compute/plannode_stats.h"
 #include "Runtime.h"
-#include <iostream>
 
 namespace omniruntime {
 std::string BoolToString(const bool value)
@@ -26,7 +25,6 @@ WholeStageResultIterator::WholeStageResultIterator(MemoryManager *memoryManager,
     omniCfg_(std::make_shared<config::ConfigBase>(std::unordered_map<std::string, std::string>(confMap))),
     scanNodeIds_(scanNodeIds), streamIds_(streamIds), scanInfos_(scanSplitInfos), partitionId_(partitionId)
 {
-    std::cout << "[DEBUG WholeStageResultIterator] Constructor: partitionId=" << partitionId_ << std::endl;
     // Create task instance.
     config::QueryConfig queryConfig(GetQueryContextConf(spillDir));
     std::unordered_set<PlanNodeId> emptySet;
@@ -159,7 +157,6 @@ std::unordered_map<std::string, std::string> WholeStageResultIterator::GetQueryC
     std::unordered_map<std::string, std::string> configs = {};
 
     configs[config::QueryConfig::kSparkPartitionId] = std::to_string(partitionId_);
-    std::cout << "[DEBUG GetQueryContextConf] Setting spark.partition_id=" << partitionId_ << std::endl;
 
     try {
         if (omniCfg_->ValueExists(kDefaultSessionTimezone)) {

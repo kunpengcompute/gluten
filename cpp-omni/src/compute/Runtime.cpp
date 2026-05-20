@@ -3,7 +3,6 @@
  */
 
 #include <utility>
-#include <iostream>
 #include "compute/ProtobufUtils.h"
 #include "Runtime.h"
 
@@ -50,8 +49,7 @@ std::unique_ptr<ResultIterator> Runtime::CreateResultIterator(const std::string 
 
     auto wholeStageIter = std::make_unique<WholeStageResultIterator>(MemoryManager::GetGlobalMemoryManager(), omniPlan_,
         scanIds, streamIds, spillDir, confMap_, scanInfos, taskInfo_.partitionId);
-    std::cout << "[DEBUG Runtime] CreateResultIterator: passing partitionId=" << taskInfo_.partitionId 
-              << " to WholeStageResultIterator" << std::endl;
+
     return std::move(std::make_unique<ResultIterator>(std::move(wholeStageIter)));
 }
 }
