@@ -51,7 +51,8 @@ public:
     WholeStageResultIterator(MemoryManager *memoryManager, const std::shared_ptr<const PlanNode> &planNode,
         const std::vector<PlanNodeId> &scanNodeIds, const std::vector<PlanNodeId> &streamIds,
         const std::string& spillDir, const std::unordered_map<std::string, std::string> &confMap,
-        const std::vector<std::shared_ptr<SplitInfo>>& scanSplitInfos);
+        const std::vector<std::shared_ptr<SplitInfo>>& scanSplitInfos,
+        int32_t partitionId = 0);
 
     ~WholeStageResultIterator() override
     {
@@ -115,5 +116,6 @@ private:
     void CollectMetrics();
     std::vector<std::shared_ptr<SplitInfo>> scanInfos_;
     std::vector<std::vector<Split>> splits_;
+    int32_t partitionId_;
 };
 }

@@ -19,6 +19,7 @@
 
 #include <fcntl.h>
 #include <unistd.h>
+#include <iostream>
 
 #include "io/SparkFile.hh"
 #include "io/ColumnWriter.hh"
@@ -297,6 +298,9 @@ JNIEXPORT jlong JNICALL Java_org_apache_gluten_vectorized_OmniPlanEvaluatorJniWr
         auto buf = getByteArrayElementsSafe(env, planArr);
         auto planSize = env->GetArrayLength(planArr);
         ctx->ParsePlan(buf, planSize, std::nullopt);
+        ctx->setSparkTaskInfo({stageId, partitionId, taskId});
+        std::cout << "[DEBUG SparkJniWrapper] setSparkTaskInfo: stageId=" << stageId 
+                  << ", partitionId=" << partitionId << ", taskId=" << taskId << std::endl;
 
         // Handle the Java iters
         jsize itersLen = env->GetArrayLength(iterArr);
