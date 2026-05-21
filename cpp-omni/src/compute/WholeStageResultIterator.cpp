@@ -77,10 +77,11 @@ WholeStageResultIterator::WholeStageResultIterator(MemoryManager *memoryManager,
     const std::shared_ptr<const PlanNode> &planNode, const std::vector<PlanNodeId> &scanNodeIds,
     const std::vector<PlanNodeId> &streamIds, const std::string &spillDir,
     const std::unordered_map<std::string, std::string> &confMap,
-    const std::vector<std::shared_ptr<SplitInfo>>& scanSplitInfos)
+    const std::vector<std::shared_ptr<SplitInfo>>& scanSplitInfos,
+    int32_t partitionId)
     : memoryManager_(memoryManager), omniPlan_(planNode),
     omniCfg_(std::make_shared<config::ConfigBase>(std::unordered_map<std::string, std::string>(confMap))),
-    scanNodeIds_(scanNodeIds), streamIds_(streamIds), scanInfos_(scanSplitInfos)
+    scanNodeIds_(scanNodeIds), streamIds_(streamIds), scanInfos_(scanSplitInfos), partitionId_(partitionId)
 {
     // Create task instance.
     config::QueryConfig queryConfig(GetQueryContextConf(spillDir));
@@ -212,6 +213,8 @@ std::unordered_map<std::string, std::string> WholeStageResultIterator::GetQueryC
     const std::string &spillDir) const
 {
     std::unordered_map<std::string, std::string> configs = {};
+
+    configs[config::QueryConfig::kSparkPartitionId] = std::to_string(partitionId_);
 
     try {
         if (omniCfg_->ValueExists(kDefaultSessionTimezone)) {

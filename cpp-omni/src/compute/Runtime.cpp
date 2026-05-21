@@ -48,7 +48,8 @@ std::unique_ptr<ResultIterator> Runtime::CreateResultIterator(const std::string 
     }
 
     auto wholeStageIter = std::make_unique<WholeStageResultIterator>(MemoryManager::GetGlobalMemoryManager(), omniPlan_,
-        scanIds, streamIds, spillDir, confMap_, scanInfos);
+        scanIds, streamIds, spillDir, confMap_, scanInfos, taskInfo_.partitionId);
+
     return std::move(std::make_unique<ResultIterator>(std::move(wholeStageIter)));
 }
 }

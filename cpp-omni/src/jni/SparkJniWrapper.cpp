@@ -297,6 +297,7 @@ JNIEXPORT jlong JNICALL Java_org_apache_gluten_vectorized_OmniPlanEvaluatorJniWr
         auto buf = getByteArrayElementsSafe(env, planArr);
         auto planSize = env->GetArrayLength(planArr);
         ctx->ParsePlan(buf, planSize, std::nullopt);
+        ctx->setSparkTaskInfo({stageId, partitionId, taskId});
 
         // Handle the Java iters
         jsize itersLen = env->GetArrayLength(iterArr);

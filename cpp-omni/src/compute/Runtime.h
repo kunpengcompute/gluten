@@ -22,6 +22,13 @@
 #include "OmniPlanConverter.h"
 
 namespace omniruntime {
+
+struct SparkTaskInfo {
+    int32_t stageId{0};
+    int32_t partitionId{0};
+    int64_t taskId{0};
+};
+
 class Runtime {
 public:
     explicit Runtime(std::string kind, const std::unordered_map<std::string, std::string> &confMap);
@@ -51,6 +58,17 @@ public:
     {
         localFiles_ = localFiles;
     }
+
+    void setSparkTaskInfo(SparkTaskInfo taskInfo)
+    {
+        taskInfo_ = taskInfo;
+    }
+
+    const SparkTaskInfo& getSparkTaskInfo() const
+    {
+        return taskInfo_;
+    }
+
 private:
     std::string kind_;
     std::unordered_map<std::string, std::string> confMap_;
@@ -58,5 +76,6 @@ private:
     std::shared_ptr<config::ConfigBase> omniCfg_;
     ::substrait::Plan substraitPlan_;
     std::vector<::substrait::ReadRel_LocalFiles> localFiles_;
+    SparkTaskInfo taskInfo_;
 };
 }
