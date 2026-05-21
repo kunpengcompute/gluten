@@ -246,6 +246,13 @@ bool SubstraitToOmniPlanValidator::ValidateLiteral(
                 return false;
             }
         }
+    } else if (literal.has_struct_()) {
+        for (auto child : literal.struct_().fields()) {
+            if (!ValidateLiteral(child, inputType)) {
+                // the error msg has been set, so do not need to set it again.
+                return false;
+            }
+        }
     } else if (literal.has_map()) {
         for (auto child : literal.map().key_values()) {
             if (!ValidateLiteral(child.key(), inputType) || !ValidateLiteral(child.value(), inputType)) {
@@ -289,6 +296,14 @@ bool SubstraitToOmniPlanValidator::IsAllowedCast(const DataTypePtr &fromType, co
                 return false;
             }
             break;
+        case OMNI_VARBINARY:
+            if (fromTypeId != OMNI_BYTE || fromTypeId != OMNI_SHORT || fromTypeId != OMNI_INT
+                || fromTypeId != OMNI_LONG || fromTypeId != OMNI_VARCHAR) {
+                return false;
+            }
+            break;
+        default:
+            return false;
     }
     return true;
 }

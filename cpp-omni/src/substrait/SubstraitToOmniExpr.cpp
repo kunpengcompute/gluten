@@ -67,6 +67,29 @@ DataTypePtr GetScalarType(const ::substrait::Expression::Literal &literal)
             const auto &first = *list.values().begin();
             return std::make_shared<type::ArrayType>(GetScalarType(first));
         }
+        case ::substrait::Expression_Literal::LiteralTypeCase::kStruct: {
+            const auto &structVal = literal.struct_();
+            if (structVal.fields().empty()) {
+                return std::make_shared<type::RowType>(std::vector<type::DataTypePtr>(), std::vector<std::string>());
+            }
+            std::vector<type::DataTypePtr> fieldTypes;
+            std::vector<std::string> fieldNames;
+            for (size_t i = 0; i < structVal.fields().size(); i++) {
+                fieldTypes.push_back(GetScalarType(structVal.fields()[i]));
+                fieldNames.push_back("field" + std::to_string(i));
+            }
+            return std::make_shared<type::RowType>(std::move(fieldTypes), std::move(fieldNames));
+        }
+        case ::substrait::Expression_Literal::LiteralTypeCase::kMap: {
+            const auto &mapVal = literal.map();
+            if (mapVal.key_values().empty()) {
+                return std::make_shared<type::MapType>(DoubleType(), DoubleType());
+            }
+            const auto &firstKv = mapVal.key_values()[0];
+            auto keyType = GetScalarType(firstKv.key());
+            auto valueType = GetScalarType(firstKv.value());
+            return std::make_shared<type::MapType>(keyType, valueType);
+        }
         case ::substrait::Expression_Literal::LiteralTypeCase::kString:
             return VarcharType();
         case ::substrait::Expression_Literal::LiteralTypeCase::kVarChar:
@@ -474,6 +497,55 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(const ::substrait::Expressio
             DataTypePtr elemType = args[0]->GetReturnType();
             DataTypePtr arrayType = std::make_shared<type::ArrayType>(elemType);
             return new FuncExpr("array", args, arrayType);
+        }
+        case ::substrait::Expression_Literal::LiteralTypeCase::kStruct: {
+            const auto &structVal = substraitLit.struct_();
+            std::vector<Expr *> args;
+            for (const auto &childExpr : structVal.fields()) {
+                args.push_back(ToOmniExpr(childExpr, nullptr));
+            }
+            if (args.empty()) {
+                DataTypePtr rowType = (defaultType != nullptr && defaultType->GetId() == type::OMNI_ROW)
+                    ? defaultType
+                    : std::make_shared<type::RowType>(std::vector<type::DataTypePtr>(), std::vector<std::string>());
+                return new LiteralExpr(0, rowType);
+            }
+            std::vector<type::DataTypePtr> fieldTypes;
+            std::vector<std::string> fieldNames;
+            for (size_t i = 0; i < args.size(); i++) {
+                fieldTypes.push_back(args[i]->GetReturnType());
+                fieldNames.push_back("field" + std::to_string(i));
+            }
+            DataTypePtr rowType = std::make_shared<type::RowType>(std::move(fieldTypes), std::move(fieldNames));
+            return new FuncExpr("named_struct", args, rowType);
+        }
+        case ::substrait::Expression_Literal::LiteralTypeCase::kMap: {
+            const auto &mapVal = substraitLit.map();
+            std::vector<Expr *> keys;
+            std::vector<Expr *> values;
+            for (const auto &kv : mapVal.key_values()) {
+                keys.push_back(ToOmniExpr(kv.key(), nullptr));
+                values.push_back(ToOmniExpr(kv.value(), nullptr));
+            }
+            if (keys.empty()) {
+                DataTypePtr keyType = DoubleType();
+                DataTypePtr valueType = DoubleType();
+                if (defaultType != nullptr && defaultType->GetId() == type::OMNI_MAP) {
+                    auto mapType = std::dynamic_pointer_cast<type::MapType>(defaultType);
+                    keyType = mapType->Key();
+                    valueType = mapType->Value();
+                }
+                DataTypePtr mapType = std::make_shared<type::MapType>(keyType, valueType);
+                return new LiteralExpr(0, mapType);
+            }
+            DataTypePtr keyType = keys[0]->GetReturnType();
+            DataTypePtr valueType = values[0]->GetReturnType();
+            auto keyArrayType = std::make_shared<type::ArrayType>(keyType);
+            auto valueArrayType = std::make_shared<type::ArrayType>(valueType);
+            auto keysArray = new FuncExpr("array", keys, std::move(keyArrayType));
+            auto valuesArray = new FuncExpr("array", values, std::move(valueArrayType));
+            DataTypePtr mapType = std::make_shared<type::MapType>(keyType, valueType);
+            return new FuncExpr("map_from_arrays", {keysArray, valuesArray}, std::move(mapType));
         }
         default:
             throw omniruntime::exception::OmniException(SUBSTRAIT_PARSE_ERROR,
