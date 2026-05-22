@@ -23,6 +23,8 @@ import org.apache.gluten.component.Component.BuildInfo
 import org.apache.gluten.config.GlutenConfig
 import org.apache.gluten.datasources.orc.OmniOrcFileFormat
 import org.apache.gluten.datasources.parquet.OmniParquetFileFormat
+import org.apache.gluten.execution.JoinUtils
+import org.apache.gluten.expression.OmniExpressionAdaptor
 import org.apache.gluten.extension.ValidationResult
 import org.apache.gluten.extension.columnar.transition.Convention
 import org.apache.gluten.sql.shims.SparkShimLoader
@@ -34,7 +36,7 @@ import org.apache.gluten.vectorized.OmniNativePlanEvaluator
 import org.apache.spark.shuffle.OmniShuffleUtil
 import org.apache.spark.sql.catalyst.catalog.BucketSpec
 import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, Average, Count, First, Last, Max, Min, StddevSamp, StddevPop, VarianceSamp, VariancePop, Sum}
-import org.apache.spark.sql.catalyst.expressions.{Alias, Attribute, CurrentRow, CumeDist, DenseRank, Lag, Lead, Literal, NamedExpression, NthValue, NTile, Rank, PercentRank, RowNumber, SpecifiedWindowFrame, UnboundedFollowing, UnboundedPreceding, WindowExpression}
+import org.apache.spark.sql.catalyst.expressions.{Alias, Attribute, CurrentRow, CumeDist, DenseRank, Expression, Lag, Lead, Literal, NamedExpression, NthValue, NTile, Rank, PercentRank, RowNumber, SpecifiedWindowFrame, UnboundedFollowing, UnboundedPreceding, WindowExpression}
 import org.apache.spark.sql.catalyst.plans.physical.Partitioning
 import org.apache.spark.sql.connector.read.Scan
 import org.apache.spark.sql.execution.SparkPlan
@@ -395,6 +397,70 @@ class OmniValidatorApi extends ValidatorApi {
         None
       case _ =>
         Some(s"Schema / data type not supported: $schema")
+    }
+  }
+
+  /** Validate SortMergeJoin before native execution. */
+  def doSortMergeJoinValidate(
+      leftKeys: Seq[Expression],
+      rightKeys: Seq[Expression],
+      left: SparkPlan,
+      right: SparkPlan): Option[String] = {
+    try {
+      doSchemaValidateForSmj(left.schema)
+        .orElse(doSchemaValidateForSmj(right.schema))
+        .orElse(validateSmjJoinKeyExpressions(leftKeys, left.output))
+        .orElse(validateSmjJoinKeyExpressions(rightKeys, right.output))
+    } catch {
+      case e: Exception =>
+        Some(s"Omni SMJ not supported for: ${e.getMessage}")
+    }
+  }
+
+  /**
+   * SortMergeJoinScanner initializes compare functions for all columns in the projected batch.
+   * MapType columns are not supported and cause runtime failure.
+   */
+  private def doSchemaValidateForSmj(schema: DataType): Option[String] = {
+    schema match {
+      case struct: StructType =>
+        for (f <- struct.fields) {
+          val reason = f.dataType match {
+            case _: MapType =>
+              Some(s"Unsupported MapType column '${f.name}' for SortMergeJoin")
+            case nested: StructType =>
+              doSchemaValidateForSmj(nested)
+            case ArrayType(elementType, _) =>
+              doSchemaValidateForSmj(elementType)
+            case _ =>
+              None
+          }
+          if (reason.isDefined) {
+            return reason
+          }
+        }
+        None
+      case _: MapType =>
+        Some("Unsupported MapType for SortMergeJoin")
+      case _ =>
+        None
+    }
+  }
+
+  /** Mirror shuffle expression validation for non-trivial join keys (e.g. c_map['number']). */
+  private def validateSmjJoinKeyExpressions(
+      keys: Seq[Expression],
+      output: Seq[Attribute]): Option[String] = {
+    if (!JoinUtils.preProjectionNeeded(keys)) {
+      return None
+    }
+    try {
+      val exprIdMap = OmniExpressionAdaptor.getExprIdMap(output)
+      keys.foreach(key => OmniExpressionAdaptor.rewriteToOmniJsonExpressionLiteral(key, exprIdMap))
+      None
+    } catch {
+      case e: Exception =>
+        Some(e.getMessage)
     }
   }
 }
