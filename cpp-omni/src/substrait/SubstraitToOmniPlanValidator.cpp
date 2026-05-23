@@ -295,6 +295,8 @@ bool SubstraitToOmniPlanValidator::IsAllowedCast(const DataTypePtr &fromType, co
         case OMNI_LONG:
         case OMNI_FLOAT:
         case OMNI_DOUBLE:
+        case OMNI_DECIMAL64:
+        case OMNI_DECIMAL128:
             if (fromTypeId == OMNI_DATE32 || fromTypeId == OMNI_TIMESTAMP) {
                 return false;
             }
@@ -309,17 +311,8 @@ bool SubstraitToOmniPlanValidator::IsAllowedCast(const DataTypePtr &fromType, co
                 return false;
             }
             break;
-        case OMNI_DECIMAL64:
-        case OMNI_DECIMAL128:
-            if (fromTypeId == OMNI_DATE32 || fromTypeId == OMNI_TIMESTAMP) {
-                return false;
-            }
-            break;
+        case OMNI_DATE32:
         case OMNI_VARBINARY:
-            if (fromTypeId != OMNI_BYTE || fromTypeId != OMNI_SHORT || fromTypeId != OMNI_INT
-                || fromTypeId != OMNI_LONG || fromTypeId != OMNI_VARCHAR) {
-                return false;
-            }
             break;
         default:
             return false;
