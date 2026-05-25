@@ -51,9 +51,28 @@ public:
         this->vcb_total_len = 0;
     }
 
-    ~VCBatchInfo() {
-        vc_list.clear();
+    VCBatchInfo(VCBatchInfo&& other) noexcept
+        : vc_list(std::move(other.vc_list)),
+          vcb_capacity(other.vcb_capacity),
+          vcb_total_len(other.vcb_total_len),
+          hasNullFlag(other.hasNullFlag) {
+        other.vcb_capacity = 0;
+        other.vcb_total_len = 0;
     }
+
+    VCBatchInfo& operator=(VCBatchInfo&& other) noexcept {
+        if (this != &other) {
+            vc_list = std::move(other.vc_list);
+            vcb_capacity = other.vcb_capacity;
+            vcb_total_len = other.vcb_total_len;
+            hasNullFlag = other.hasNullFlag;
+            other.vcb_capacity = 0;
+            other.vcb_total_len = 0;
+        }
+        return *this;
+    }
+
+    ~VCBatchInfo() = default;
 
     uint32_t getVcbCapacity() {
         return vcb_capacity;
