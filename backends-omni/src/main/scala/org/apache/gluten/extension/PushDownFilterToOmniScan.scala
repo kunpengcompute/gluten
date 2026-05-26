@@ -58,7 +58,11 @@ object PushDownFilterToOmniScan extends Rule[SparkPlan] with PredicateHelper {
           } else {
             filter
           }
-        case _ => filter
+        case _ =>
+          PushDownFilterToOmniScanRegistry.pushDown(filter) match {
+            case Some(filterPushedPlan) => filterPushedPlan
+            case None => filter
+          }
       }
   }
 
