@@ -19,8 +19,7 @@
 package org.apache.gluten.datasources.parquet
 
 import com.huawei.boostkit.spark.jni.ParquetColumnarBatchWriter
-import org.apache.gluten.execution.DeltaNativeParquetWrite
-import org.apache.gluten.expression.OmniExpressionAdaptor.perBatchColumnOmniTypeIds
+import org.apache.gluten.expression.OmniExpressionAdaptor.sparkTypeToOmniTypeWithComplex
 import org.apache.hadoop.fs.Path
 import org.apache.hadoop.mapreduce._
 import org.apache.spark.sql.catalyst.InternalRow
@@ -38,64 +37,32 @@ class OmniParquetOutputWriter(path: String, dataSchema: StructType,
   private val datetimeRebaseMode = SQLConf.get.getConf(SQLConf.PARQUET_REBASE_MODE_IN_WRITE)
 
   val writer = new ParquetColumnarBatchWriter(datetimeRebaseMode == "LEGACY")
+  var omniTypes: Array[Int] = emptyIntArray
   var dataColumnsIds: Array[Boolean] = emptyBooleanArray
-  /** Same contract as Iceberg write: ids per `ColumnarBatch` column (here includes partition cols). */
-  var batchColumnOmniTypeIds: Array[Int] = emptyIntArray
-
-  /** When true (Delta transactional Parquet only), JNI uses Iceberg-style write after projecting batch. */
-  private var projectDataColumnsOnly: Boolean = false
-  private var dataColumnIndicesInBatch: Array[Int] = _
-  private var fileOmniTypeIds: Array[Int] = _
+  var allOmniTypes: Array[Int] = emptyIntArray
 
   def initialize(allColumns: Seq[Attribute], dataColumns: Seq[Attribute]): Unit = {
     val filePath = new Path(path)
     writer.initializeSchemaJava(dataSchema)
     writer.initializeWriterJava(filePath)
-    projectDataColumnsOnly =
-      context != null &&
-        context.getConfiguration.getBoolean(DeltaNativeParquetWrite.JOB_CONF_PROJECT_DATA_COLUMNS, false)
-    if (projectDataColumnsOnly) {
-      fileOmniTypeIds = perBatchColumnOmniTypeIds(dataSchema)
-      val colsSeq = allColumns.toIndexedSeq
-      dataColumnIndicesInBatch = dataColumns.map { dc =>
-        val idx = colsSeq.indexWhere(_.exprId == dc.exprId)
-        if (idx < 0) {
-          throw new IllegalStateException(
-            s"OmniParquetOutputWriter (Delta projection): data column ${dc.name} not in output order")
-        }
-        idx
-      }.toArray
-      if (dataColumnIndicesInBatch.length != dataSchema.length) {
-        throw new IllegalStateException(
-          "OmniParquetOutputWriter (Delta projection): data column count != dataSchema length")
-      }
-    } else {
-      batchColumnOmniTypeIds = perBatchColumnOmniTypeIds(allColumns.toStructType)
-      dataColumnsIds = allColumns.map(x => dataColumns.contains(x)).toArray
-    }
+    omniTypes = dataSchema.fields
+      .map(field => sparkTypeToOmniTypeWithComplex(field.dataType, field.metadata).getId.toValue())
+      .toArray
+    allOmniTypes = allColumns.toStructType.fields
+      .map(field => sparkTypeToOmniTypeWithComplex(field.dataType, field.metadata).getId.toValue())
+      .toArray
+    dataColumnsIds = allColumns.map(x => dataColumns.contains(x)).toArray
   }
 
   override def write(row: InternalRow): Unit = {
     assert(row.isInstanceOf[FakeRow])
-    val batch = row.asInstanceOf[FakeRow].batch
-    if (projectDataColumnsOnly) {
-      val projected = DeltaNativeParquetWrite.projectDataColumns(batch, dataColumnIndicesInBatch)
-      DeltaNativeParquetWrite.writeLikeIceberg(writer, fileOmniTypeIds, projected)
-    } else {
-      writer.write(batchColumnOmniTypeIds, dataColumnsIds, batch)
-    }
+    writer.write(omniTypes, dataColumnsIds, row.asInstanceOf[FakeRow].batch)
   }
 
   def spiltWrite(row: InternalRow, startPos: Long, endPos: Long): Unit = {
     assert(row.isInstanceOf[FakeRow])
-    val batch = row.asInstanceOf[FakeRow].batch
-    if (projectDataColumnsOnly) {
-      val projected = DeltaNativeParquetWrite.projectDataColumns(batch, dataColumnIndicesInBatch)
-      DeltaNativeParquetWrite.splitWriteLikeIceberg(writer, fileOmniTypeIds, projected, startPos, endPos)
-    } else {
-      writer.splitWrite(batchColumnOmniTypeIds, batchColumnOmniTypeIds, dataColumnsIds,
-        batch, startPos, endPos)
-    }
+    writer.splitWrite(omniTypes, allOmniTypes, dataColumnsIds,
+      row.asInstanceOf[FakeRow].batch, startPos, endPos)
   }
 
   override def close(): Unit = {

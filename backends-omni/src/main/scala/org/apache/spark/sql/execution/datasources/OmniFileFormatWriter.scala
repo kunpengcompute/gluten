@@ -20,7 +20,7 @@ package org.apache.spark.sql.execution.datasources
 import org.apache.gluten.datasources.OmniOrcFormatWriterInjects
 import org.apache.gluten.datasources.orc.OmniOrcFileFormat
 import org.apache.gluten.datasources.parquet.{OmniParquetFileFormat, OmniParquetFormatWriterInjects}
-import org.apache.gluten.execution.{DeltaNativeParquetWrite, TransformSupport}
+import org.apache.gluten.execution.TransformSupport
 import org.apache.gluten.execution.datasource.GlutenFormatFactory
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileAlreadyExistsException, Path}
@@ -101,8 +101,7 @@ object OmniFileFormatWriter extends Logging {
              bucketSpec: Option[BucketSpec],
              statsTrackers: Seq[WriteJobStatsTracker],
              options: Map[String, String],
-             numStaticPartitionCols: Int = 0,
-             deltaNativeParquetProjectDataColumns: Boolean = false)
+             numStaticPartitionCols: Int = 0)
   : Set[String] = {
     require(partitionColumns.size >= numStaticPartitionCols)
     val writeFilesOpt = V1WritesUtils.getWriteFilesOpt(plan)
@@ -110,9 +109,6 @@ object OmniFileFormatWriter extends Logging {
       "true" == sparkSession.sparkContext.getLocalProperty("isNativeApplicable")
 
     if (writeFilesOpt.isEmpty && nativeEnabled && !(plan.isInstanceOf[TransformSupport] || plan.isInstanceOf[FakeRowAdaptor])) {
-      logInfo(
-        s"[Omni-Proof][WriteExec] native write disabled before file write because " +
-          s"plan is neither TransformSupport nor FakeRowAdaptor; plan=${plan.nodeName}")
       sparkSession.sparkContext.setLocalProperty("isNativeApplicable", "false");
       nativeEnabled = false
     }
@@ -126,9 +122,6 @@ object OmniFileFormatWriter extends Logging {
     job.setOutputKeyClass(classOf[Void])
     job.setOutputValueClass(classOf[InternalRow])
     FileOutputFormat.setOutputPath(job, new Path(outputSpec.outputPath))
-    if (deltaNativeParquetProjectDataColumns) {
-      job.getConfiguration.setBoolean(DeltaNativeParquetWrite.JOB_CONF_PROJECT_DATA_COLUMNS, true)
-    }
 
     val partitionSet = AttributeSet(partitionColumns)
     // cleanup the internal metadata information of
@@ -287,9 +280,6 @@ object OmniFileFormatWriter extends Logging {
 
       val rdd = planToExecute match {
         case glutenPlan: TransformSupport =>
-          logInfo(
-            s"[Omni-Proof][WriteExec] executing native write through TransformSupport; " +
-              s"plan=${glutenPlan.nodeName}")
           FakeRowAdaptor(glutenPlan).execute()
         case p => p.execute()
       }

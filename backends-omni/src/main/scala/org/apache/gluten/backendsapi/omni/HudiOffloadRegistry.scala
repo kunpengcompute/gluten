@@ -51,6 +51,14 @@ object HudiOffloadRegistry {
     }
   }
 
+  def pushDownFilterToScan(plan: SparkPlan): Option[SparkPlan] = {
+    if (!hudiRuntimeAvailable) {
+      return None
+    }
+    loadHudiFilterPushDown()
+      .flatMap(_(plan))
+  }
+
   private def readSparkConf(key: String, default: String = ""): String = {
     Try(SparkContext.getOrCreate().getConf.getOption(key)).toOption.flatten.getOrElse(default)
   }
@@ -95,6 +103,18 @@ object HudiOffloadRegistry {
     } catch {
       case _: ClassNotFoundException | _: NoSuchMethodException =>
         Seq.empty
+    }
+  }
+
+  private def loadHudiFilterPushDown(): Option[SparkPlan => Option[SparkPlan]] = {
+    try {
+      val clazz = Class.forName("org.apache.gluten.extension.PushDownFilterToOmniHudiScan$")
+      val module = clazz.getField("MODULE$").get(null)
+      val method = clazz.getMethod("tryPushDown", classOf[SparkPlan])
+      Some((plan: SparkPlan) => method.invoke(module, plan).asInstanceOf[Option[SparkPlan]])
+    } catch {
+      case _: ClassNotFoundException | _: NoSuchFieldException | _: NoSuchMethodException =>
+        None
     }
   }
 }

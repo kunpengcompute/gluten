@@ -1,72 +1,37 @@
 /*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 package org.apache.gluten.execution
 
 import org.apache.spark.sql.Row
 
+/** Omni backend Delta coverage reuses the shared gluten-delta DeltaSuite and adds Omni node checks. */
 class OmniDeltaSuite extends DeltaSuite {
 
-  testWithSpecifiedSparkVersion("delta 3.3: create insert read with order by", Some("3.3")) {
-    withTable("t_delta_users") {
+  testWithSpecifiedSparkVersion("omni delta: insert and scan offload", Some("3.5")) {
+    withTable("omni_delta_insert_scan") {
       spark.sql(
         """
-          |CREATE TABLE t_delta_users (
-          |  id INT,
-          |  name STRING,
-          |  age INT
-          |) USING delta
+          |CREATE TABLE omni_delta_insert_scan(id BIGINT, name STRING, part STRING)
+          |USING DELTA
+          |PARTITIONED BY (part)
           |""".stripMargin)
-
       spark.sql(
         """
-          |INSERT INTO t_delta_users VALUES
-          |  (3, 'cathy', 30),
-          |  (1, 'alice', 18),
-          |  (2, 'bob', 24)
+          |INSERT INTO omni_delta_insert_scan VALUES
+          |(1, 'a', 'p1'),
+          |(2, 'b', 'p2'),
+          |(3, 'c', 'p1')
           |""".stripMargin)
 
-      val df = runQueryAndCompare("SELECT * FROM t_delta_users ORDER BY id") { _ => }
-      checkLengthAndPlan(df, 3)
-      checkAnswer(df, Seq(Row(1, "alice", 18), Row(2, "bob", 24), Row(3, "cathy", 30)))
-    }
-  }
-
-  testWithSpecifiedSparkVersion("delta 3.5: create insert read with order by", Some("3.5")) {
-    withTable("t_delta_users") {
-      spark.sql(
-        """
-          |CREATE TABLE t_delta_users (
-          |  id INT,
-          |  name STRING,
-          |  age INT
-          |) USING delta
-          |""".stripMargin)
-
-      spark.sql(
-        """
-          |INSERT INTO t_delta_users VALUES
-          |  (3, 'cathy', 30),
-          |  (1, 'alice', 18),
-          |  (2, 'bob', 24)
-          |""".stripMargin)
-
-      val df = runQueryAndCompare("SELECT * FROM t_delta_users ORDER BY id") { _ => }
-      checkLengthAndPlan(df, 3)
-      checkAnswer(df, Seq(Row(1, "alice", 18), Row(2, "bob", 24), Row(3, "cathy", 30)))
+      val df = runQueryAndCompare("SELECT id, name, part FROM omni_delta_insert_scan WHERE part = 'p1'") {
+        _ =>
+      }
+      val scans = df.queryExecution.executedPlan.collect {
+        case scan: OmniDeltaScanExecTransformer => scan
+      }
+      assert(scans.nonEmpty, "Expected OmniDeltaScanExecTransformer in executed plan")
+      checkAnswer(df, Row(1, "a", "p1") :: Row(3, "c", "p1") :: Nil)
     }
   }
 }
