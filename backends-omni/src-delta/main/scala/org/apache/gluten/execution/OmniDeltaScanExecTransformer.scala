@@ -8,6 +8,7 @@ import com.huawei.boostkit.spark.jni.ParquetPushFilterBuilder
 import org.apache.gluten.backendsapi.BackendsApiManager
 import org.apache.gluten.config.GlutenConfig.COLUMNAR_OMNI_ENABLE_VEC_PREDICATE_FILTER
 import org.apache.gluten.expression.{ConverterUtils, ExpressionConverter}
+import org.apache.gluten.extension.PushDownFilterToOmniScan
 import org.apache.gluten.extension.ValidationResult
 import org.apache.gluten.sql.shims.SparkShimLoader
 import org.apache.gluten.substrait.SubstraitContext
@@ -178,7 +179,7 @@ object OmniDeltaScanExecTransformer {
       scanExec.partitionFilters,
       scanExec.optionalBucketSet,
       scanExec.optionalNumCoalescedBuckets,
-      scanExec.dataFilters,
+      PushDownFilterToOmniScan.getPushedFilter(scanExec.dataFilters),
       scanExec.tableIdentifier,
       scanExec.disableBucketedScan)
   }
