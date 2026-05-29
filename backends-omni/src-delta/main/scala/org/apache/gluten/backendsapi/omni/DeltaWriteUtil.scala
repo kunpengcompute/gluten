@@ -14,9 +14,19 @@ import org.apache.spark.sql.execution.SparkPlan
 object DeltaWriteUtil {
   private val AppendDataExecV1ClassName =
     "org.apache.spark.sql.execution.datasources.v2.AppendDataExecV1"
+  private val OverwriteByExpressionExecV1ClassName =
+    "org.apache.spark.sql.execution.datasources.v2.OverwriteByExpressionExecV1"
 
   def isDeltaAppendDataExecV1(plan: SparkPlan): Boolean = {
-    if (plan == null || plan.getClass.getName != AppendDataExecV1ClassName) {
+    isDeltaWritePlan(plan, AppendDataExecV1ClassName)
+  }
+
+  def isDeltaOverwriteByExpressionExecV1(plan: SparkPlan): Boolean = {
+    isDeltaWritePlan(plan, OverwriteByExpressionExecV1ClassName)
+  }
+
+  private def isDeltaWritePlan(plan: SparkPlan, className: String): Boolean = {
+    if (plan == null || plan.getClass.getName != className) {
       return false
     }
     val planText = plan.toString().toLowerCase(java.util.Locale.ROOT)
