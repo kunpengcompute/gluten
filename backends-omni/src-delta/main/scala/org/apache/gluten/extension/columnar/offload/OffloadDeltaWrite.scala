@@ -4,7 +4,10 @@
 package org.apache.gluten.extension.columnar.offload
 
 import org.apache.gluten.backendsapi.omni.DeltaWriteUtil
-import org.apache.gluten.execution.OmniDeltaAppendDataExecV1
+import org.apache.gluten.execution.{
+  OmniDeltaAppendDataExecV1,
+  OmniDeltaOverwriteByExpressionExecV1
+}
 import org.apache.gluten.extension.columnar.FallbackTags
 
 import org.apache.spark.internal.Logging
@@ -30,10 +33,28 @@ case class OffloadDeltaAppendDataExecV1() extends OffloadSingleNode with Logging
   }
 }
 
+/** Offloads Spark 3.5 + Delta 3.2 INSERT OVERWRITE write plans. */
+case class OffloadDeltaOverwriteByExpressionExecV1() extends OffloadSingleNode with Logging {
+  override def offload(plan: SparkPlan): SparkPlan = plan match {
+    case p if FallbackTags.nonEmpty(p) =>
+      p
+    case p if DeltaWriteUtil.isDeltaOverwriteByExpressionExecV1(p) =>
+      logWarning(
+        s"[Gluten][Delta+Omni] Offload OverwriteByExpressionExecV1 -> " +
+          s"OmniDeltaOverwriteByExpressionExecV1 (plan=${p.nodeName}).")
+      OmniDeltaOverwriteByExpressionExecV1(p)
+    case other =>
+      other
+  }
+}
+
 /**
  * Provides Delta write offload rules for reflective registration by
  * [[org.apache.gluten.backendsapi.omni.DeltaOffloadRegistry]].
  */
 object OffloadDeltaWrite {
-  def offloads: Seq[OffloadSingleNode] = Seq(OffloadDeltaAppendDataExecV1())
+  def offloads: Seq[OffloadSingleNode] = Seq(
+    OffloadDeltaAppendDataExecV1(),
+    OffloadDeltaOverwriteByExpressionExecV1()
+  )
 }
