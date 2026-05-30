@@ -16,6 +16,7 @@
  */
 package org.apache.gluten.sql.shims.spark34
 
+import org.apache.gluten.config.GlutenConfig.ENABLE_FILES_SPLIT_SINGLE_FILE
 import org.apache.gluten.expression.{ExpressionNames, Sig}
 import org.apache.gluten.expression.ExpressionNames.KNOWN_NULLABLE
 import org.apache.gluten.sql.shims.{ShimDescriptor, SparkShims}
@@ -351,10 +352,11 @@ class Spark34Shims extends SparkShims {
       relation: HadoopFsRelation,
       filePath: Path,
       sparkSchema: StructType): Boolean = {
+    relation.sparkSession.sessionState.conf.getConf(ENABLE_FILES_SPLIT_SINGLE_FILE) &&
     // SPARK-39634: Allow file splitting in combination with row index generation once
     // the fix for PARQUET-2161 is available.
-    relation.fileFormat
-      .isSplitable(relation.sparkSession, relation.options, filePath) &&
+      relation.fileFormat
+        .isSplitable(relation.sparkSession, relation.options, filePath) &&
     !(RowIndexUtil.findRowIndexColumnIndexInSchema(sparkSchema) >= 0)
   }
 
