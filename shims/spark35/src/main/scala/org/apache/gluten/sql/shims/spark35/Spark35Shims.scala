@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 package org.apache.gluten.sql.shims.spark35
+import org.apache.gluten.config.GlutenConfig.ENABLE_FILES_SPLIT_SINGLE_FILE
 import org.apache.gluten.execution.datasource.GlutenFormatFactory
 import org.apache.spark.sql.execution.datasources._
 import org.apache.gluten.expression.{ExpressionNames, Sig}
@@ -381,8 +382,9 @@ class Spark35Shims extends SparkShims {
       relation: HadoopFsRelation,
       filePath: Path,
       sparkSchema: StructType): Boolean = {
-    relation.fileFormat
-      .isSplitable(relation.sparkSession, relation.options, filePath)
+    relation.sparkSession.sessionState.conf.getConf(ENABLE_FILES_SPLIT_SINGLE_FILE) &&
+      relation.fileFormat
+        .isSplitable(relation.sparkSession, relation.options, filePath)
   }
 
   def isRowIndexMetadataColumn(name: String): Boolean =

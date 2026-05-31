@@ -2687,5 +2687,5 @@ object GlutenConfig {
     .internal()
     .doc("enable or disable split single file when scan from hive")
     .booleanConf
-    .createWithDefault(true)
+    .createWithDefault(false)
 }
