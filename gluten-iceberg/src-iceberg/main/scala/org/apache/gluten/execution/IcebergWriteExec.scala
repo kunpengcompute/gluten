@@ -15,7 +15,6 @@ import org.apache.iceberg.TableProperties.{
 }
 import org.apache.iceberg.avro.AvroSchemaUtil
 import org.apache.iceberg.spark.source.IcebergWriteUtil
-import org.apache.iceberg.types.Type.TypeID
 
 import scala.collection.JavaConverters._
 
@@ -58,8 +57,7 @@ trait IcebergWriteExec extends ColumnarV2TableWriteExec {
 
   private def validatePartitionType(schema: Schema, field: PartitionField): Boolean = {
     val partitionType = schema.findType(field.sourceId())
-    val unSupportType = Seq(TypeID.DOUBLE, TypeID.FLOAT)
-    !unSupportType.contains(partitionType.typeId())
+    partitionType.isPrimitiveType
   }
 
   /** Validates: write type, data types, partition types, format, codec, column names, acceptAnySchema, mergeSchema, etc. */
