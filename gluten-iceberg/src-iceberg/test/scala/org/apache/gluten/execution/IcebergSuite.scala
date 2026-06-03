@@ -523,6 +523,37 @@ abstract class IcebergSuite extends WholeStageTransformerSuite {
     }
   }
 
+  test("iceberg write partition type - float and double") {
+    Seq("float", "double").foreach {
+      partitionType =>
+        val table = s"part_by_$partitionType"
+        withTable(table) {
+          spark.sql(s"""
+                       |create table $table (
+                       |  id int,
+                       |  c_double double,
+                       |  p $partitionType
+                       |) using iceberg
+                       |tblproperties (
+                       |  'write.format.default' = 'orc'
+                       |)
+                       |partitioned by (p);
+                       |""".stripMargin)
+
+          spark.sql(s"""
+                       |insert into table $table
+                       |values (0, cast(0.488924031289 as double), cast(0.31205 as $partitionType));
+                       |""".stripMargin)
+
+          val expectedPartitionValue = partitionType match {
+            case "float" => Row(0, 0.488924031289D, 0.31205F)
+            case "double" => Row(0, 0.488924031289D, 0.31205D)
+          }
+          checkAnswer(spark.sql(s"select * from $table"), expectedPartitionValue :: Nil)
+        }
+    }
+  }
+
   test("test read v1 iceberg with partition drop") {
     val testTable = "test_table_with_partition"
     withTable(testTable) {

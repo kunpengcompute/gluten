@@ -222,12 +222,20 @@ public class OrcColumnarBatchWriter {
         writerOptionsJson.put("columns use bloom filter", options.getBloomFilterColumns());
         writerOptionsJson.put("bloom filter fpp", options.getBloomFilterFpp());
 
-        String tzId = Optional.ofNullable(sessionTimeZone)
-                .filter(tz -> !tz.isEmpty())
-                .orElseGet(() -> getSessionTimeZoneFromSqlConf()
-                        .orElseGet(() -> getTimeZoneFromWriterOptions(options)
-                                .orElseGet(() -> java.util.TimeZone.getDefault().getID())));
-        tzId = normalizeTimeZone(tzId);
+        String tzId;
+        if (shouldWriteTimestampAsInstant) {
+            // TIMESTAMP_INSTANT stores Spark TIMESTAMP values as instants. Using the session
+            // timezone here leaks historical local offsets (for example Asia/Shanghai LMT) into
+            // ORC metadata and can shift old timestamps when they are read back.
+            tzId = "GMT";
+        } else {
+            tzId = Optional.ofNullable(sessionTimeZone)
+                    .filter(tz -> !tz.isEmpty())
+                    .orElseGet(() -> getSessionTimeZoneFromSqlConf()
+                            .orElseGet(() -> getTimeZoneFromWriterOptions(options)
+                                    .orElseGet(() -> java.util.TimeZone.getDefault().getID())));
+            tzId = normalizeTimeZone(tzId);
+        }
         writerOptionsJson.put("timezone", tzId);
         putTimestampRebaseInfo(writerOptionsJson, tzId);
 
