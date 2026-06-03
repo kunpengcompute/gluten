@@ -30,11 +30,63 @@ import org.apache.iceberg._
 import org.apache.iceberg.spark.SparkSchemaUtil
 
 import java.lang.{Long => JLong}
+import java.util.Locale
 import java.util.{ArrayList => JArrayList, HashMap => JHashMap, List => JList, Map => JMap}
 
 import scala.collection.JavaConverters._
 
 object GlutenIcebergSourceUtil {
+  private val IcebergDefaultWriteFormatKey = "write.format.default"
+
+  private def getFirstFileScanTask(scan: SparkBatchQueryScan): Option[FileScanTask] = {
+    asFileScanTask(scan.tasks().asScala.toList).headOption
+  }
+
+  private def toReadFileFormat(format: String): ReadFileFormat = {
+    format.toLowerCase(Locale.ROOT) match {
+      case "parquet" => ReadFileFormat.ParquetReadFormat
+      case "orc" => ReadFileFormat.OrcReadFormat
+      case _ =>
+        throw new GlutenNotSupportException("Iceberg Only support parquet and orc file format.")
+    }
+  }
+
+  private def buildReadPartitionSchema(
+      scan: SparkBatchQueryScan,
+      spec: PartitionSpec): StructType = {
+    if (!spec.isPartitioned) {
+      return new StructType()
+    }
+
+    val readFields = scan.readSchema().fields.map(_.name).toSet
+    // Iceberg will generate some non-table fields as partition fields, such as x_bucket,
+    // which will not appear in readFields, they also cannot be filtered.
+    val tableFields = spec.schema().columns().asScala.map(_.name()).toSet
+    val voidTransformFields = scan
+      .table()
+      .spec()
+      .fields()
+      .asScala
+      .filter(
+        f => {
+          f.transform().isVoid
+        })
+      .map(_.name())
+      .toSet
+    val partitionFields =
+      spec
+        .partitionType()
+        .fields()
+        .asScala
+        .filter(f => !tableFields.contains(f.name) || readFields.contains(f.name()))
+        .filter(f => !voidTransformFields.contains(f.name()))
+    partitionFields.foreach {
+      field => TypeUtil.validatePartitionColumnType(field.`type`().typeId())
+    }
+
+    val icebergSchema = new Schema(partitionFields.toList.asJava)
+    SparkSchemaUtil.convert(icebergSchema)
+  }
 
   def genSplitInfo(
       inputPartition: InputPartition,
@@ -86,61 +138,32 @@ object GlutenIcebergSourceUtil {
 
   def getFileFormat(sparkScan: Scan): ReadFileFormat = sparkScan match {
     case scan: SparkBatchQueryScan =>
-      val tasks = scan.tasks().asScala
-      asFileScanTask(tasks.toList).foreach {
-        task =>
+      getFirstFileScanTask(scan) match {
+        case Some(task) =>
           task.file().format() match {
-            case FileFormat.PARQUET => return ReadFileFormat.ParquetReadFormat
-            case FileFormat.ORC => return ReadFileFormat.OrcReadFormat
+            case FileFormat.PARQUET => ReadFileFormat.ParquetReadFormat
+            case FileFormat.ORC => ReadFileFormat.OrcReadFormat
             case _ =>
+              throw new GlutenNotSupportException(
+                "Iceberg Only support parquet and orc file format.")
           }
+        case None =>
+          val format = scan
+            .table()
+            .properties()
+            .getOrDefault(IcebergDefaultWriteFormatKey, FileFormat.PARQUET.name())
+          toReadFileFormat(format)
       }
-      throw new GlutenNotSupportException("Iceberg Only support parquet and orc file format.")
     case _ =>
       throw new GlutenNotSupportException("Only support iceberg SparkBatchQueryScan.")
   }
 
   def getReadPartitionSchema(sparkScan: Scan): StructType = sparkScan match {
     case scan: SparkBatchQueryScan =>
-      val tasks = scan.tasks().asScala
-      asFileScanTask(tasks.toList).foreach {
-        task =>
-          val spec = task.spec()
-          if (spec.isPartitioned) {
-            val readFields = scan.readSchema().fields.map(_.name).toSet
-            // Iceberg will generate some non-table fields as partition fields, such as x_bucket,
-            // which will not appear in readFields, they also cannot be filtered.
-            val tableFields = spec.schema().columns().asScala.map(_.name()).toSet
-            val voidTransformFields = scan
-              .table()
-              .spec()
-              .fields()
-              .asScala
-              .filter(
-                f => {
-                  f.transform().isVoid
-                })
-              .map(_.name())
-              .toSet
-            val partitionFields =
-              spec
-                .partitionType()
-                .fields()
-                .asScala
-                .filter(f => !tableFields.contains(f.name) || readFields.contains(f.name()))
-                .filter(f => !voidTransformFields.contains(f.name()))
-            partitionFields.foreach {
-              field => TypeUtil.validatePartitionColumnType(field.`type`().typeId())
-            }
-
-            val icebergSchema = new Schema(partitionFields.toList.asJava)
-            return SparkSchemaUtil.convert(icebergSchema)
-          } else {
-            return new StructType()
-          }
+      getFirstFileScanTask(scan) match {
+        case Some(task) => buildReadPartitionSchema(scan, task.spec())
+        case None => buildReadPartitionSchema(scan, scan.table().spec())
       }
-      throw new UnsupportedOperationException(
-        "Failed to get partition schema from iceberg SparkBatchQueryScan.")
     case _ =>
       throw new UnsupportedOperationException("Only support iceberg SparkBatchQueryScan.")
   }
