@@ -33,7 +33,8 @@ case class OmniHudiDataWriteFactory(
     fileFormat: String,
     queryId: String,
     partitionColumns: Seq[String] = Seq.empty,
-    recordKeyColumns: Seq[String] = Seq.empty)
+    recordKeyColumns: Seq[String] = Seq.empty,
+    preCombineColumn: Option[String] = None)
   extends ColumnarBatchDataWriterFactory
   with ColumnarStreamingDataWriterFactory {
 
@@ -66,6 +67,7 @@ case class OmniHudiDataWriteFactory(
     val runtime = OmniRuntimes.contextInstance(
       BackendsApiManager.getBackendName, "HudiWrite#write")
     val jniWrapper = new HudiWriteJniWrapper(runtime)
+    val sqlConf = SQLConf.get
     val params = new HudiWriteJniWrapper.HudiWriterInitParams(
       directory,
       codec,
@@ -73,9 +75,11 @@ case class OmniHudiDataWriteFactory(
       partitionId,
       taskId,
       operationId,
-      SQLConf.get.getConf(SQLConf.PARQUET_REBASE_MODE_IN_WRITE) == "LEGACY",
+      sqlConf.getConf(SQLConf.PARQUET_REBASE_MODE_IN_WRITE) == "LEGACY",
       partitionColumns.toArray,
-      recordKeyColumns.toArray)
+      recordKeyColumns.toArray,
+      sqlConf.sessionLocalTimeZone,
+      preCombineColumn.orNull)
     jniWrapper.init(localSchema, omniTypes, params)
     jniWrapper
   }

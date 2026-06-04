@@ -56,12 +56,35 @@ object HudiCommitMessageBuilder {
       val stat = hoodieWriteStatClass.getConstructor().newInstance().asInstanceOf[Object]
       val path = if (info.getPath != null) info.getPath else ""
       hoodieWriteStatClass.getMethod("setPath", classOf[String]).invoke(stat, path)
+      invokeIfExists(hoodieWriteStatClass, stat, "setFileId", classOf[String], info.getFileId)
+      invokeIfExists(
+        hoodieWriteStatClass,
+        stat,
+        "setPartitionPath",
+        classOf[String],
+        if (info.getPartitionPath == null) "" else info.getPartitionPath)
       hoodieWriteStatClass.getMethod("setNumWrites", classOf[Long]).invoke(stat, java.lang.Long.valueOf(info.getRecordCount))
       hoodieWriteStatClass.getMethod("setFileSizeInBytes", classOf[Long]).invoke(stat, java.lang.Long.valueOf(info.getFileSizeInBytes))
       setStat.invoke(writeStatus, stat)
       writeStatus
     } catch {
       case _: Throwable => null
+    }
+  }
+
+  private def invokeIfExists(
+      targetClass: Class[_],
+      target: Object,
+      methodName: String,
+      argClass: Class[_],
+      value: Object): Unit = {
+    if (value == null) {
+      return
+    }
+    try {
+      targetClass.getMethod(methodName, argClass).invoke(target, value)
+    } catch {
+      case _: NoSuchMethodException =>
     }
   }
 

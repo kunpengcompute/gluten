@@ -13,17 +13,28 @@ import org.apache.hudi.common.table.timeline.HoodieActiveTimeline
 import org.apache.hudi.config.HoodieWriteConfig
 import org.apache.hudi.hadoop.fs.HadoopFSUtils
 import org.apache.hudi.internal.DataSourceInternalWriterHelper
+import org.apache.hadoop.fs.Path
 import org.apache.spark.{SparkException, TaskContext}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{AnalysisException, Row, SaveMode, SparkSession}
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.catalog.HoodieCatalogTable
-import org.apache.spark.sql.catalyst.expressions.{Alias, Cast, Literal, NamedExpression}
-import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, Project}
+import org.apache.spark.sql.catalyst.expressions.{
+  Alias,
+  And,
+  Attribute,
+  Cast,
+  EqualTo,
+  Literal,
+  NamedExpression
+}
+import org.apache.spark.sql.catalyst.plans.LeftAnti
+import org.apache.spark.sql.catalyst.plans.logical.{Join, JoinHint, LogicalPlan, Project, RepartitionByExpression, Union}
 import org.apache.spark.sql.connector.write.WriterCommitMessage
 import org.apache.spark.sql.datasources.v2.{DataWritingColumnarBatchSparkTask, DataWritingColumnarBatchSparkTaskResult}
 import org.apache.spark.sql.execution.{CommandExecutionMode, SparkPlan}
 import org.apache.spark.sql.execution.datasources.v2.LeafV2CommandExec
+import org.apache.spark.sql.functions.col
 import org.apache.spark.sql.hudi.HoodieSqlCommonUtils._
 import org.apache.spark.sql.hudi.ProvidesHoodieConfig
 import org.apache.spark.sql.hudi.command.InsertIntoHoodieTableCommand
@@ -100,13 +111,28 @@ object OmniHudiInsertIntoCommandExec extends ProvidesHoodieConfig {
       catalogTable,
       command.partitionSpec,
       sparkSession.sessionState.conf)
+    val (mergedQuery, oldBaseFiles) = buildCrossCommitUpsertQuery(
+      sparkSession,
+      table.identifier.unquotedString,
+      catalogTable,
+      alignedQuery,
+      config)
+    val writeQuery = repartitionByRecordKey(
+      mergedQuery,
+      config,
+      sparkSession.sessionState.conf)
 
     hudiLog.warn(
       "[OmniHudi][command-offload] InsertIntoHoodieTableCommand -> OmniHudiInsertIntoCommandExec; " +
         "table=" + table.identifier.unquotedString + " basePath=" + catalogTable.tableLocation +
         " mode=" + mode.name())
 
-    writeAndCommit(sparkSession, table.identifier.unquotedString, catalogTable, alignedQuery, config)
+    writeAndCommit(
+      sparkSession,
+      catalogTable,
+      writeQuery,
+      config,
+      oldBaseFiles)
     sparkSession.catalog.refreshTable(table.identifier.unquotedString)
     Seq.empty[Row]
   }
@@ -116,10 +142,10 @@ object OmniHudiInsertIntoCommandExec extends ProvidesHoodieConfig {
    */
   private def writeAndCommit(
       sparkSession: SparkSession,
-      tableName: String,
       catalogTable: HoodieCatalogTable,
       alignedQuery: LogicalPlan,
-      config: Map[String, String]): Unit = {
+      config: Map[String, String],
+      oldBaseFiles: Seq[Path]): Unit = {
     val sourceSchema = alignedQuery.schema
     val rawPlan = sparkSession.sessionState.executePlan(alignedQuery, CommandExecutionMode.SKIP).executedPlan
     // Apply columnar heuristic transform (consistent with other Gluten operators)
@@ -160,6 +186,7 @@ object OmniHudiInsertIntoCommandExec extends ProvidesHoodieConfig {
 
     try {
       helper.commit(writeStatuses)
+      deleteOldBaseFiles(sparkSession, oldBaseFiles)
     } catch {
       case t: Throwable =>
         helper.abort()
@@ -204,7 +231,8 @@ object OmniHudiInsertIntoCommandExec extends ProvidesHoodieConfig {
         .getOrElse("parquet"),
       instantTime,
       partitionColumns,
-      recordKeyColumns(config))
+      recordKeyColumns(config),
+      preCombineColumn(config))
 
     try {
       sparkSession.sparkContext.runJob(
@@ -247,6 +275,122 @@ object OmniHudiInsertIntoCommandExec extends ProvidesHoodieConfig {
       .flatMap(_.split(","))
       .map(_.trim)
       .filter(_.nonEmpty)
+  }
+
+  private def preCombineColumn(config: Map[String, String]): Option[String] = {
+    config
+      .get("hoodie.datasource.write.precombine.field")
+      .orElse(config.get("preCombineField"))
+      .map(_.trim)
+      .filter(_.nonEmpty)
+  }
+
+  private def buildCrossCommitUpsertQuery(
+      sparkSession: SparkSession,
+      tableName: String,
+      catalogTable: HoodieCatalogTable,
+      alignedQuery: LogicalPlan,
+      config: Map[String, String]): (LogicalPlan, Seq[Path]) = {
+    val keyColumns = recordKeyColumns(config)
+    val preCombine = preCombineColumn(config)
+    if (keyColumns.isEmpty || preCombine.isEmpty) {
+      return (alignedQuery, Nil)
+    }
+
+    val oldBaseFiles = listBaseFiles(
+      sparkSession,
+      catalogTable.tableLocation,
+      config
+        .get("hoodie.datasource.write.file.format")
+        .orElse(config.get("hoodie.table.base.file.format"))
+        .getOrElse("parquet"))
+    if (oldBaseFiles.isEmpty) {
+      return (alignedQuery, Nil)
+    }
+
+    val dataColumns = catalogTable.tableSchemaWithoutMetaFields.fieldNames
+    val existingRows = sparkSession.table(tableName).select(dataColumns.map(col): _*).queryExecution.analyzed
+    val incomingKeys = Project(keyColumns.map(resolveAttribute(alignedQuery.output, _)), alignedQuery)
+    val joinCondition = keyColumns
+      .map { key =>
+        EqualTo(resolveAttribute(existingRows.output, key), resolveAttribute(incomingKeys.output, key))
+      }
+      .reduce[org.apache.spark.sql.catalyst.expressions.Expression](And)
+    val existingWithoutIncomingKeys =
+      Join(existingRows, incomingKeys, LeftAnti, Some(joinCondition), JoinHint.NONE)
+    val mergedRows = Union(existingWithoutIncomingKeys :: alignedQuery :: Nil)
+    hudiLog.warn(
+      "[OmniHudi][command-offload] Build cross-commit COW upsert input; " +
+        "oldFiles=" + oldBaseFiles.size +
+        " keys=" + keyColumns.mkString(",") +
+        " preCombine=" + preCombine.get)
+    (mergedRows, oldBaseFiles)
+  }
+
+  private def listBaseFiles(
+      sparkSession: SparkSession,
+      basePath: String,
+      fileFormat: String): Seq[Path] = {
+    val root = new Path(basePath)
+    val fs = root.getFileSystem(sparkSession.sessionState.newHadoopConf)
+    if (!fs.exists(root)) {
+      return Nil
+    }
+    val suffix = "." + fileFormat.toLowerCase(java.util.Locale.ROOT)
+    val files = scala.collection.mutable.ArrayBuffer[Path]()
+    val iterator = fs.listFiles(root, true)
+    while (iterator.hasNext) {
+      val status = iterator.next()
+      val path = status.getPath
+      val pathString = path.toString
+      if (!pathString.contains("/.hoodie/") && pathString.toLowerCase(java.util.Locale.ROOT).endsWith(suffix)) {
+        files += path
+      }
+    }
+    files.toSeq
+  }
+
+  private def deleteOldBaseFiles(sparkSession: SparkSession, oldBaseFiles: Seq[Path]): Unit = {
+    if (oldBaseFiles.isEmpty) {
+      return
+    }
+    val conf = sparkSession.sessionState.newHadoopConf
+    oldBaseFiles.foreach { path =>
+      try {
+        val fs = path.getFileSystem(conf)
+        if (fs.exists(path) && !fs.delete(path, false)) {
+          hudiLog.warn("[OmniHudi][command-offload] Failed to delete old Hudi base file: " + path)
+        }
+      } catch {
+        case e: Throwable =>
+          hudiLog.warn("[OmniHudi][command-offload] Failed to delete old Hudi base file: " + path, e)
+      }
+    }
+  }
+
+  private def repartitionByRecordKey(
+      alignedQuery: LogicalPlan,
+      config: Map[String, String],
+      conf: SQLConf): LogicalPlan = {
+    val keyColumns = recordKeyColumns(config)
+    if (keyColumns.isEmpty) {
+      return alignedQuery
+    }
+
+    val keyAttributes = keyColumns.map(resolveAttribute(alignedQuery.output, _))
+    hudiLog.warn(
+      "[OmniHudi][command-offload] Repartition Hudi INSERT by record key for writer-side combine; " +
+        "keys=" + keyColumns.mkString(","))
+    RepartitionByExpression(keyAttributes, alignedQuery, Some(conf.numShufflePartitions))
+  }
+
+  private def resolveAttribute(output: Seq[Attribute], name: String): Attribute = {
+    output
+      .find(_.name == name)
+      .orElse(output.find(_.name.equalsIgnoreCase(name)))
+      .getOrElse {
+        throw new IllegalArgumentException(s"Hudi column not found: $name")
+      }
   }
 
   /**
