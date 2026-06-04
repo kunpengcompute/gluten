@@ -45,6 +45,11 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -84,9 +89,13 @@ import java.util.UUID;
  * @since 2026
  */
 public class HudiWriteJniWrapper implements RuntimeAware {
+    private static final String DEFAULT_PARTITION_PATH = "__HIVE_DEFAULT_PARTITION__";
+
     private static final Logger LOG = LoggerFactory.getLogger(HudiWriteJniWrapper.class);
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final DateTimeFormatter TIMESTAMP_PARTITION_FORMATTER =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final String COMMIT_TIME_METADATA_FIELD = "_hoodie_commit_time";
     private static final String COMMIT_SEQNO_METADATA_FIELD = "_hoodie_commit_seqno";
     private static final String RECORD_KEY_METADATA_FIELD = "_hoodie_record_key";
@@ -243,6 +252,16 @@ public class HudiWriteJniWrapper implements RuntimeAware {
         public final String[] recordKeyColumns;
 
         /**
+         * Spark session timezone used to render timestamp partition values.
+         */
+        public final String sessionTimeZone;
+
+        /**
+         * Hudi preCombine field used to merge duplicate record keys.
+         */
+        public final String preCombineColumn;
+
+        /**
          * Delegates to the 9-argument constructor with empty partition and record-key arrays
          * (non-partitioned table; record key = first data column).
          *
@@ -294,6 +313,20 @@ public class HudiWriteJniWrapper implements RuntimeAware {
         public HudiWriterInitParams(String directory, String codec, String fileFormat, int partitionId, long taskId,
                                     String operationId, boolean isLegacyDatetimeRebase, String[] partitionColumns,
                                     String[] recordKeyColumns) {
+            this(directory, codec, fileFormat, partitionId, taskId, operationId, isLegacyDatetimeRebase,
+                    partitionColumns, recordKeyColumns, ZoneId.systemDefault().getId());
+        }
+
+        public HudiWriterInitParams(String directory, String codec, String fileFormat, int partitionId, long taskId,
+                                    String operationId, boolean isLegacyDatetimeRebase, String[] partitionColumns,
+                                    String[] recordKeyColumns, String sessionTimeZone) {
+            this(directory, codec, fileFormat, partitionId, taskId, operationId, isLegacyDatetimeRebase,
+                    partitionColumns, recordKeyColumns, sessionTimeZone, null);
+        }
+
+        public HudiWriterInitParams(String directory, String codec, String fileFormat, int partitionId, long taskId,
+                                    String operationId, boolean isLegacyDatetimeRebase, String[] partitionColumns,
+                                    String[] recordKeyColumns, String sessionTimeZone, String preCombineColumn) {
             this.directory = directory;
             this.codec = codec;
             this.fileFormat = fileFormat;
@@ -303,6 +336,12 @@ public class HudiWriteJniWrapper implements RuntimeAware {
             this.isLegacyDatetimeRebase = isLegacyDatetimeRebase;
             this.partitionColumns = partitionColumns == null ? new String[0] : partitionColumns.clone();
             this.recordKeyColumns = recordKeyColumns == null ? new String[0] : recordKeyColumns.clone();
+            this.sessionTimeZone = sessionTimeZone == null || sessionTimeZone.isEmpty()
+                    ? ZoneId.systemDefault().getId()
+                    : sessionTimeZone;
+            this.preCombineColumn = preCombineColumn == null || preCombineColumn.isEmpty()
+                    ? null
+                    : preCombineColumn;
         }
     }
 
@@ -323,6 +362,8 @@ public class HudiWriteJniWrapper implements RuntimeAware {
         private final boolean isLegacyDatetimeRebase;
         private final String[] partitionColumns;
         private final String[] recordKeyColumns;
+        private final String preCombineColumn;
+        private final ZoneId sessionTimeZone;
 
         /**
          * True when input schema lacks Hoodie metadata columns and we must prepend them for file layout.
@@ -338,6 +379,8 @@ public class HudiWriteJniWrapper implements RuntimeAware {
         private int fileIndex;
         private final List<String> fileInfoJsonList = new ArrayList<>();
         private final Map<String, FileWriterInfo> partitionWriters = new LinkedHashMap<>();
+        private final Map<String, RowReference> combinedRows = new LinkedHashMap<>();
+        private long inputSequence;
         private long totalBytesWritten;
         private int numFiles;
 
@@ -363,6 +406,22 @@ public class HudiWriteJniWrapper implements RuntimeAware {
             this.isLegacyDatetimeRebase = params.isLegacyDatetimeRebase;
             this.partitionColumns = params.partitionColumns.clone();
             this.recordKeyColumns = params.recordKeyColumns.clone();
+            this.preCombineColumn = params.preCombineColumn;
+            this.sessionTimeZone = ZoneId.of(params.sessionTimeZone);
+        }
+
+        private static final class RowReference {
+            final ColumnarBatch batch;
+            final int row;
+            final Optional<Comparable> orderingValue;
+            final long sequence;
+
+            RowReference(ColumnarBatch batch, int row, Optional<Comparable> orderingValue, long sequence) {
+                this.batch = batch;
+                this.row = row;
+                this.orderingValue = orderingValue;
+                this.sequence = sequence;
+            }
         }
 
         private static final class FileWriterInfo {
@@ -376,6 +435,10 @@ public class HudiWriteJniWrapper implements RuntimeAware {
              */
             final String path;
 
+            final String fileId;
+
+            final String partitionPath;
+
             /**
              * Rows written through this writer for commit statistics.
              */
@@ -386,10 +449,14 @@ public class HudiWriteJniWrapper implements RuntimeAware {
              *
              * @param writer native Parquet or Orc writer handle
              * @param path absolute output file path
+             * @param fileId Hudi file id associated with the output file
+             * @param partitionPath Hudi partition path segment for the output file
              */
-            FileWriterInfo(Object writer, String path) {
+            FileWriterInfo(Object writer, String path, String fileId, String partitionPath) {
                 this.writer = writer;
                 this.path = path;
+                this.fileId = fileId;
+                this.partitionPath = partitionPath;
                 this.recordCount = 0L;
             }
         }
@@ -443,11 +510,52 @@ public class HudiWriteJniWrapper implements RuntimeAware {
          * @param batch input columnar batch to write
          */
         void write(ColumnarBatch batch) {
+            if (shouldCombineRecords()) {
+                combineBatch(batch);
+                return;
+            }
             if (partitionColumns.length > 0) {
                 writePartitioned(batch);
                 return;
             }
             writeUnpartitioned(batch);
+        }
+
+        private boolean shouldCombineRecords() {
+            return recordKeyColumns.length > 0 && preCombineColumn != null;
+        }
+
+        private void combineBatch(ColumnarBatch batch) {
+            for (int row = 0; row < batch.numRows(); row++) {
+                String key = recordKey(batch, row);
+                RowReference incoming = new RowReference(
+                        batch,
+                        row,
+                        preCombineValue(batch, row),
+                        inputSequence++);
+                RowReference existing = combinedRows.get(key);
+                if (existing == null || shouldReplace(existing, incoming)) {
+                    combinedRows.put(key, incoming);
+                }
+            }
+        }
+
+        private boolean shouldReplace(RowReference existing, RowReference incoming) {
+            int orderingCompare = compareOrdering(existing.orderingValue, incoming.orderingValue);
+            return orderingCompare < 0 || (orderingCompare == 0 && incoming.sequence > existing.sequence);
+        }
+
+        private static int compareOrdering(Optional<Comparable> left, Optional<Comparable> right) {
+            if (!left.isPresent() && !right.isPresent()) {
+                return 0;
+            }
+            if (!left.isPresent()) {
+                return -1;
+            }
+            if (!right.isPresent()) {
+                return 1;
+            }
+            return left.get().compareTo(right.get());
         }
 
         /**
@@ -648,11 +756,35 @@ public class HudiWriteJniWrapper implements RuntimeAware {
             String[] keys = recordKeyColumns.length == 0 ? new String[] {schema.fieldNames()[0]} : recordKeyColumns;
             List<String> values = new ArrayList<>(keys.length);
             for (String key : keys) {
-                int columnIndex = schema.fieldIndex(key);
+                int columnIndex = schemaFieldIndex(key);
                 values.add(String.valueOf(partitionValue(
                         batch.column(columnIndex), schema.fields()[columnIndex].dataType(), row).orElse(null)));
             }
             return String.join(",", values);
+        }
+
+        private Optional<Comparable> preCombineValue(ColumnarBatch batch, int row) {
+            int columnIndex = schemaFieldIndex(preCombineColumn);
+            Optional<Object> value = partitionValue(
+                    batch.column(columnIndex), schema.fields()[columnIndex].dataType(), row);
+            if (!value.isPresent()) {
+                return Optional.empty();
+            }
+            Object actualValue = value.get();
+            if (actualValue instanceof Comparable) {
+                return Optional.of((Comparable) actualValue);
+            }
+            return Optional.of(String.valueOf(actualValue));
+        }
+
+        private int schemaFieldIndex(String fieldName) {
+            String[] fieldNames = schema.fieldNames();
+            for (int i = 0; i < fieldNames.length; i++) {
+                if (fieldNames[i].equals(fieldName) || fieldNames[i].equalsIgnoreCase(fieldName)) {
+                    return i;
+                }
+            }
+            throw new IllegalArgumentException("Hudi column not found: " + fieldName);
         }
 
         /**
@@ -704,10 +836,13 @@ public class HudiWriteJniWrapper implements RuntimeAware {
         private String partitionPath(ColumnarBatch batch, int row) {
             List<String> segments = new ArrayList<>(partitionColumns.length);
             for (String column : partitionColumns) {
-                int columnIndex = schema.fieldIndex(column);
-                Object value = partitionValue(batch.column(columnIndex), schema.fields()[columnIndex].dataType(), row)
-                        .orElse("default");
-                segments.add(column + "=" + String.valueOf(value));
+                int columnIndex = schemaFieldIndex(column);
+                DataType dataType = schema.fields()[columnIndex].dataType();
+                String value = partitionValue(batch.column(columnIndex), dataType, row)
+                        .map(String::valueOf)
+                        .filter(partitionValue -> !partitionValue.isEmpty())
+                        .orElse(DEFAULT_PARTITION_PATH);
+                segments.add(column + "=" + partitionPathValue(value, dataType));
             }
             return String.join("/", segments);
         }
@@ -720,7 +855,7 @@ public class HudiWriteJniWrapper implements RuntimeAware {
          * @param row row id to read
          * @return optional Java value, empty when the cell is null
          */
-        private static Optional<Object> partitionValue(ColumnVector column, DataType dataType, int row) {
+        private Optional<Object> partitionValue(ColumnVector column, DataType dataType, int row) {
             if (column.isNullAt(row)) {
                 return Optional.empty();
             }
@@ -733,11 +868,17 @@ public class HudiWriteJniWrapper implements RuntimeAware {
             if (dataType instanceof ShortType) {
                 return Optional.of(column.getShort(row));
             }
-            if (dataType instanceof IntegerType || dataType instanceof DateType) {
+            if (dataType instanceof IntegerType) {
                 return Optional.of(column.getInt(row));
             }
-            if (dataType instanceof LongType || dataType instanceof TimestampType) {
+            if (dataType instanceof DateType) {
+                return Optional.of(LocalDate.ofEpochDay(column.getInt(row)).toString());
+            }
+            if (dataType instanceof LongType) {
                 return Optional.of(column.getLong(row));
+            }
+            if (dataType instanceof TimestampType) {
+                return Optional.of(formatTimestampPartitionValue(column.getLong(row)));
             }
             if (dataType instanceof FloatType) {
                 return Optional.of(column.getFloat(row));
@@ -746,10 +887,12 @@ public class HudiWriteJniWrapper implements RuntimeAware {
                 return Optional.of(column.getDouble(row));
             }
             if (dataType instanceof StringType || dataType instanceof CharType || dataType instanceof VarcharType) {
-                return Optional.of(column.getUTF8String(row).toString());
+                String value = column.getUTF8String(row).toString();
+                return value.isEmpty() ? Optional.empty() : Optional.of(value);
             }
             if (dataType instanceof BinaryType) {
-                return Optional.of(new String(column.getBinary(row)));
+                String value = new String(column.getBinary(row));
+                return value.isEmpty() ? Optional.empty() : Optional.of(value);
             }
             if (dataType instanceof DecimalType) {
                 DecimalType decimalType = (DecimalType) dataType;
@@ -757,6 +900,53 @@ public class HudiWriteJniWrapper implements RuntimeAware {
                         .toJavaBigDecimal());
             }
             throw new UnsupportedOperationException("Unsupported Hudi partition column type: " + dataType);
+        }
+
+        private String formatTimestampPartitionValue(long micros) {
+            long seconds = Math.floorDiv(micros, 1000000L);
+            int microsOfSecond = (int) Math.floorMod(micros, 1000000L);
+            LocalDateTime dateTime = LocalDateTime.ofInstant(
+                    Instant.ofEpochSecond(seconds, microsOfSecond * 1000L),
+                    sessionTimeZone);
+            String value = TIMESTAMP_PARTITION_FORMATTER.format(dateTime);
+            if (microsOfSecond == 0) {
+                return value;
+            }
+            String fraction = String.format(Locale.ROOT, "%06d", microsOfSecond)
+                    .replaceFirst("0+$", "");
+            return value + "." + fraction;
+        }
+
+        private static String partitionPathValue(String value, DataType dataType) {
+            if (dataType instanceof TimestampType && !DEFAULT_PARTITION_PATH.equals(value)) {
+                return escapePathName(value);
+            }
+            return value;
+        }
+
+        private static String escapePathName(String value) {
+            StringBuilder builder = new StringBuilder(value.length());
+            value.codePoints().forEach(codePoint -> {
+                if (needsPathEscape(codePoint)) {
+                    byte[] bytes = new String(Character.toChars(codePoint)).getBytes(StandardCharsets.UTF_8);
+                    for (byte b : bytes) {
+                        builder.append('%');
+                        String hex = Integer.toHexString(b & 0xff).toUpperCase(Locale.ROOT);
+                        if (hex.length() == 1) {
+                            builder.append('0');
+                        }
+                        builder.append(hex);
+                    }
+                } else {
+                    builder.appendCodePoint(codePoint);
+                }
+            });
+            return builder.toString();
+        }
+
+        private static boolean needsPathEscape(int codePoint) {
+            return codePoint >= 0 && codePoint < 32
+                    || "\"#%&'*+/:;<=>?[]\\^`{|}".indexOf(codePoint) >= 0;
         }
 
         /**
@@ -782,7 +972,7 @@ public class HudiWriteJniWrapper implements RuntimeAware {
             if (!pathSegment.isEmpty()) {
                 writePartitionMetadata(pathSegment);
             }
-            info = new FileWriterInfo(writer, path);
+            info = new FileWriterInfo(writer, path, fileId, pathSegment);
             partitionWriters.put(pathSegment, info);
             return info;
         }
@@ -926,7 +1116,7 @@ public class HudiWriteJniWrapper implements RuntimeAware {
             }
             totalBytesWritten += fileSize;
             numFiles++;
-            addFileInfo(currentPath, fileSize, currentRecordCount);
+            addFileInfo(currentPath, fileSize, currentRecordCount, currentFileId, "");
             currentWriter = null;
         }
 
@@ -949,7 +1139,7 @@ public class HudiWriteJniWrapper implements RuntimeAware {
                 }
                 totalBytesWritten += fileSize;
                 numFiles++;
-                addFileInfo(info.path, fileSize, info.recordCount);
+                addFileInfo(info.path, fileSize, info.recordCount, info.fileId, info.partitionPath);
             }
             partitionWriters.clear();
         }
@@ -960,12 +1150,21 @@ public class HudiWriteJniWrapper implements RuntimeAware {
          * @param path output base file path
          * @param fileSize size of the base file in bytes
          * @param recordCount number of records written into the base file
+         * @param fileId Hudi file id associated with the output file
+         * @param partitionPath Hudi partition path segment for the output file
          */
-        private void addFileInfo(String path, long fileSize, long recordCount) {
+        private void addFileInfo(
+                String path,
+                long fileSize,
+                long recordCount,
+                String fileId,
+                String partitionPath) {
             HudiFileInfoJson info = new HudiFileInfoJson();
             info.setPath(path);
             info.setFileSizeInBytes(fileSize);
             info.setRecordCount(recordCount);
+            info.setFileId(fileId);
+            info.setPartitionPath(partitionPath == null ? "" : partitionPath);
             try {
                 fileInfoJsonList.add(MAPPER.writeValueAsString(info));
             } catch (JsonProcessingException e) {
@@ -980,12 +1179,43 @@ public class HudiWriteJniWrapper implements RuntimeAware {
          * @return JSON lines describing written files
          */
         List<String> commit() {
+            if (shouldCombineRecords()) {
+                writeCombinedRows();
+            }
             if (partitionColumns.length > 0) {
                 closePartitionFiles();
             } else {
                 closeCurrentFile();
             }
             return new ArrayList<>(fileInfoJsonList);
+        }
+
+        private void writeCombinedRows() {
+            if (combinedRows.isEmpty()) {
+                return;
+            }
+            boolean[] dataColumnsIds = new boolean[schema.fields().length];
+            Arrays.fill(dataColumnsIds, true);
+            if (partitionColumns.length > 0) {
+                for (RowReference rowReference : combinedRows.values()) {
+                    FileWriterInfo info = getOrCreatePartitionWriter(
+                            partitionPath(rowReference.batch, rowReference.row));
+                    splitWriteBatch(info, dataColumnsIds, rowReference.batch,
+                            new int[] {rowReference.row, rowReference.row + 1});
+                    info.recordCount++;
+                }
+            } else {
+                if (currentWriter == null) {
+                    openNewFile();
+                }
+                FileWriterInfo info = new FileWriterInfo(currentWriter, currentPath, currentFileId, "");
+                for (RowReference rowReference : combinedRows.values()) {
+                    splitWriteBatch(info, dataColumnsIds, rowReference.batch,
+                            new int[] {rowReference.row, rowReference.row + 1});
+                    currentRecordCount++;
+                }
+            }
+            combinedRows.clear();
         }
 
         /**

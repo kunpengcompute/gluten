@@ -23,6 +23,12 @@ public class HudiFileInfoJson {
     @JsonProperty("recordCount")
     private long recordCount;
 
+    @JsonProperty("fileId")
+    private String fileId;
+
+    @JsonProperty("partitionPath")
+    private String partitionPath;
+
     /**
      * Absolute or FS path of the written Parquet file.
      *
@@ -68,5 +74,23 @@ public class HudiFileInfoJson {
 
     public void setRecordCount(long recordCount) {
         this.recordCount = recordCount;
+    }
+
+    @JsonProperty("fileId")
+    public String getFileId() {
+        return fileId;
+    }
+
+    public void setFileId(String fileId) {
+        this.fileId = fileId;
+    }
+
+    @JsonProperty("partitionPath")
+    public String getPartitionPath() {
+        return partitionPath;
+    }
+
+    public void setPartitionPath(String partitionPath) {
+        this.partitionPath = partitionPath;
     }
 }
