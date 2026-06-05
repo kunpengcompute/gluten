@@ -407,7 +407,7 @@ public class IcebergWriteJniWrapper implements RuntimeAware {
                 }
                 writer = pw;
             } else {
-                // Iceberg ORC requires timestamp instant semantics for Spark TIMESTAMP columns.
+                // Iceberg ORC: use corrected timestamp write mode; plain Omni ORC uses default writer.
                 OrcColumnarBatchWriter ow = new OrcColumnarBatchWriter(true);
                 Path pathObj = new Path(path);
                 Configuration conf = new Configuration();
@@ -442,7 +442,7 @@ public class IcebergWriteJniWrapper implements RuntimeAware {
                 }
                 currentWriter = pw;
             } else {
-                // Iceberg ORC requires timestamp instant semantics for Spark TIMESTAMP columns.
+                // Iceberg ORC: use corrected timestamp write mode; plain Omni ORC uses default writer.
                 OrcColumnarBatchWriter ow = new OrcColumnarBatchWriter(true);
                 Path pathObj = new Path(currentPath);
                 Configuration conf = new Configuration();

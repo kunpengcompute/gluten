@@ -62,19 +62,28 @@ public class OrcColumnarBatchWriter {
     private static final String GMT_PLUS_8_TIME_ZONE = "Etc/GMT-8";
 
     /**
-     * ORC has two timestamp flavors: TIMESTAMP (no timezone) and TIMESTAMP_INSTANT (timestamp with
-     * local timezone semantics). Some writers (e.g. Iceberg) require TIMESTAMP_INSTANT for Spark
-     * TIMESTAMP columns to avoid schema projection/promotion issues when reading.
+     * Iceberg ORC only: Spark TimestampType arrives as UTC micros and must be written with
+     * corrected instant semantics. Plain Omni ORC keeps this false and uses session timezone
+     * plus legacy Julian/Gregorian rebase.
      */
-    private final boolean shouldWriteTimestampAsInstant;
+    private final boolean shouldUseIcebergTimestampWrite;
 
+    /**
+     * Creates a writer with default Omni ORC timestamp semantics.
+     */
     public OrcColumnarBatchWriter() {
         this(false);
     }
 
-    public OrcColumnarBatchWriter(boolean shouldWriteTimestampAsInstant) {
+    /**
+     * Creates an ORC columnar batch writer.
+     *
+     * @param shouldUseIcebergTimestampWrite pass true only from Iceberg ORC write path
+     *                                         ({@code IcebergWriteJniWrapper})
+     */
+    public OrcColumnarBatchWriter(boolean shouldUseIcebergTimestampWrite) {
+        this.shouldUseIcebergTimestampWrite = shouldUseIcebergTimestampWrite;
         jniWriter = new OrcColumnarBatchJniWriter();
-        this.shouldWriteTimestampAsInstant = shouldWriteTimestampAsInstant;
     }
 
     /**
@@ -223,10 +232,9 @@ public class OrcColumnarBatchWriter {
         writerOptionsJson.put("bloom filter fpp", options.getBloomFilterFpp());
 
         String tzId;
-        if (shouldWriteTimestampAsInstant) {
-            // TIMESTAMP_INSTANT stores Spark TIMESTAMP values as instants. Using the session
-            // timezone here leaks historical local offsets (for example Asia/Shanghai LMT) into
-            // ORC metadata and can shift old timestamps when they are read back.
+        if (shouldUseIcebergTimestampWrite) {
+            // Iceberg ORC: input micros are already UTC; do not reinterpret with session tz
+            // (e.g. Asia/Shanghai LMT) or legacy Julian/Gregorian rebase.
             tzId = "GMT";
         } else {
             tzId = Optional.ofNullable(sessionTimeZone)
@@ -237,7 +245,11 @@ public class OrcColumnarBatchWriter {
             tzId = normalizeTimeZone(tzId);
         }
         writerOptionsJson.put("timezone", tzId);
-        putTimestampRebaseInfo(writerOptionsJson, tzId);
+        if (shouldUseIcebergTimestampWrite) {
+            putIdentityTimestampRebaseInfo(writerOptionsJson);
+        } else {
+            putTimestampRebaseInfo(writerOptionsJson, tzId);
+        }
 
         writer = jniWriter.initializeWriter(outputStream, schemaType, writerOptionsJson);
     }
@@ -280,6 +292,18 @@ public class OrcColumnarBatchWriter {
         writerOptionsJson.put("timestamp rebase tz", rebase.getTz());
         writerOptionsJson.put("timestamp rebase switches", joinLongs(rebase.getSwitches()));
         writerOptionsJson.put("timestamp rebase diffs", joinLongs(rebase.getDiffs()));
+    }
+
+    /**
+     * Iceberg ORC only: supply a no-op rebase table so native writer keeps micros unchanged.
+     * Empty rebase fields would fall back to default Gregorian-to-Julian conversion.
+     *
+     * @param writerOptionsJson ORC writer options passed to the native layer
+     */
+    private static void putIdentityTimestampRebaseInfo(JSONObject writerOptionsJson) {
+        writerOptionsJson.put("timestamp rebase tz", "GMT");
+        writerOptionsJson.put("timestamp rebase switches", Long.toString(Long.MIN_VALUE));
+        writerOptionsJson.put("timestamp rebase diffs", "0");
     }
 
     private static String joinLongs(long[] values) {
@@ -353,7 +377,7 @@ public class OrcColumnarBatchWriter {
         } else if (dataType instanceof ByteType) {
             return OrcLibTypeKind.BYTE.ordinal();
         } else if (dataType instanceof TimestampType) {
-            return shouldWriteTimestampAsInstant
+            return shouldUseIcebergTimestampWrite
                     ? OrcLibTypeKind.TIMESTAMP_INSTANT.ordinal()
                     : OrcLibTypeKind.TIMESTAMP.ordinal();
         } else if (dataType instanceof StructType) {
