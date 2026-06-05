@@ -1074,14 +1074,13 @@ public class HudiWriteJniWrapper implements RuntimeAware {
         }
 
         /**
-         * Native Orc writer: passes {@code false} for Spark-Orc local timezone mode to avoid
-         * TIMESTAMP LTZ issues on read-back for common Hudi deployments.
+         * Native Orc writer.
          *
          * @param path output base file path
          * @return initialized Orc writer
          */
         private OrcColumnarBatchWriter openOrcWriter(String path) {
-            OrcColumnarBatchWriter writer = new OrcColumnarBatchWriter(false);
+            OrcColumnarBatchWriter writer = new OrcColumnarBatchWriter();
             Path pathObj = new Path(path);
             Configuration conf = new Configuration();
             writer.initializeOutputStreamJava(pathObj.toUri());
