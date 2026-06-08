@@ -12,6 +12,12 @@ set(root_directory ${PROJECT_BINARY_DIR})
 
 set(CMAKE_CXX_FLAGS_DEBUG "-pipe -g -Wall -fPIC -fno-common -fno-stack-protector -Werror=return-type -fpermissive")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=armv8-a+crc -pipe -Wall -Wtrampolines -D_FORTIFY_SOURCE=2 -fPIC -finline-functions -fstack-protector-strong -s -Wl,-z,noexecstack -Wl,-z,relro,-z,now -Werror=return-type -fpermissive")
+# NO RPATH
+set(CMAKE_SKIP_RPATH ON)
+set(CMAKE_SKIP_BUILD_RPATH ON)
+set(CMAKE_SKIP_INSTALL_RPATH ON)
+set(CMAKE_INSTALL_RPATH "")
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH OFF)
 
 get_filename_component(GLUTEN_HOME ${CMAKE_SOURCE_DIR} DIRECTORY)
 
