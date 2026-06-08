@@ -150,6 +150,9 @@ std::unordered_set<std::shared_ptr<UdfLoader::UdfSignature>> UdfLoader::getRegis
 
             for (auto i = 0; i < numUdf; ++i) {
                 const auto &entry = udfEntries[i];
+                if (entry.dataType == nullptr || (entry.numArgs > 0 && entry.argTypes == nullptr)) {
+                    throw std::runtime_error("Invalid UDF entry: dataType is null, or argTypes is null with numArgs > 0");
+                }
                 auto dataType = toSubstraitTypeStr(entry.dataType);
                 auto argTypes = toSubstraitTypeStr(entry.numArgs, entry.argTypes);
                 signatures_.insert(std::make_shared<UdfSignature>(entry.name, dataType, argTypes, entry.variableArity,

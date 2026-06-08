@@ -128,6 +128,8 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
             auto inputColumnType = inputType;
             for (;;) {
                 auto idx = tmp->field();
+                OMNI_CHECK(idx >= 0 && idx < inputColumnType->GetSize(),
+                    "Field index {} out of range [0, {})", idx, inputColumnType->GetSize());
                 fieldAccess = new FieldExpr(idx, inputColumnType->GetType(idx), idx, fieldAccess);
 
                 if (!tmp->has_child()) {
@@ -288,6 +290,8 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
         }
         if (funcName == "might_contain") {
             LiteralExpr *childExpr = dynamic_cast<LiteralExpr *>(args[0]);
+            OMNI_CHECK(childExpr != nullptr,
+                "might_contain first argument must be a LiteralExpr");
             std::string *sp = childExpr->stringVal;
             if (*sp == "NULL") {
                 LiteralExpr *nChildExpr = new LiteralExpr(0L, LongType(), true);

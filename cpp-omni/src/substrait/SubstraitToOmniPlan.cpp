@@ -37,6 +37,8 @@ EmitInfo getEmitInfo(const ::substrait::RelCommon &relCommon, const PlanNodePtr 
     EmitInfo emitInfo;
     emitInfo.expressions.reserve(emitSize);
     const auto &outputType = node->OutputType();
+    OMNI_CHECK(emitSize <= outputType->GetSize(),
+        "Emit output_mapping_size {} exceeds output type size {}", emitSize, outputType->GetSize());
     for (int i = 0; i < emitSize; i++) {
         int32_t mapId = emit.output_mapping(i);
         emitInfo.expressions[i] = new FieldExpr(i, outputType->GetType(i));
@@ -740,6 +742,8 @@ PlanNodePtr SubstraitToOmniPlanConverter::ToOmniPlan(const ::substrait::ProjectR
         std::vector<TypedExprPtr> emitExpressions(emitSize);
         for (int i = 0; i < emitSize; i++) {
             int32_t mapId = emit.output_mapping(i);
+            OMNI_CHECK(mapId >= 0 && static_cast<size_t>(mapId) < expressions.size(),
+                "Output mapping index {} out of range [0, {})", mapId, expressions.size());
             emitExpressions[i] = expressions[mapId];
         }
         return std::make_shared<ProjectNode>(NextPlanNodeId(), std::move(emitExpressions), std::move(childNode));
