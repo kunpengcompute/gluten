@@ -315,6 +315,13 @@ TypedExprPtr SubstraitOmniExprConverter::ToOmniExpr(
             delete childExpr;
             return bfFuncExpr;
         }
+        // date_trunc(format, timestamp[, timeZoneId]): timezone comes from
+        // the session config (QueryConfig). Strip the optional third argument so
+        // that the 2-arg VectorFunction signature matches.
+        if (funcName == "date_trunc" && args.size() == 3) {
+            delete args[2];
+            args.resize(2);
+        }
         // check the signature matches
         std::vector<DataTypeId> argTypes(args.size());
         std::transform(args.begin(), args.end(), argTypes.begin(),
