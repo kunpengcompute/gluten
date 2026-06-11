@@ -262,6 +262,11 @@ public class HudiWriteJniWrapper implements RuntimeAware {
         public final String preCombineColumn;
 
         /**
+         * True for global Hudi indexes where record key alone identifies record location.
+         */
+        public final boolean isGlobalIndex;
+
+        /**
          * Delegates to the 9-argument constructor with empty partition and record-key arrays
          * (non-partitioned table; record key = first data column).
          *
@@ -327,6 +332,14 @@ public class HudiWriteJniWrapper implements RuntimeAware {
         public HudiWriterInitParams(String directory, String codec, String fileFormat, int partitionId, long taskId,
                                     String operationId, boolean isLegacyDatetimeRebase, String[] partitionColumns,
                                     String[] recordKeyColumns, String sessionTimeZone, String preCombineColumn) {
+            this(directory, codec, fileFormat, partitionId, taskId, operationId, isLegacyDatetimeRebase,
+                    partitionColumns, recordKeyColumns, sessionTimeZone, preCombineColumn, false);
+        }
+
+        public HudiWriterInitParams(String directory, String codec, String fileFormat, int partitionId, long taskId,
+                                    String operationId, boolean isLegacyDatetimeRebase, String[] partitionColumns,
+                                    String[] recordKeyColumns, String sessionTimeZone, String preCombineColumn,
+                                    boolean isGlobalIndex) {
             this.directory = directory;
             this.codec = codec;
             this.fileFormat = fileFormat;
@@ -342,6 +355,7 @@ public class HudiWriteJniWrapper implements RuntimeAware {
             this.preCombineColumn = preCombineColumn == null || preCombineColumn.isEmpty()
                     ? null
                     : preCombineColumn;
+            this.isGlobalIndex = isGlobalIndex;
         }
     }
 
@@ -363,6 +377,7 @@ public class HudiWriteJniWrapper implements RuntimeAware {
         private final String[] partitionColumns;
         private final String[] recordKeyColumns;
         private final String preCombineColumn;
+        private final boolean isGlobalIndex;
         private final ZoneId sessionTimeZone;
 
         /**
@@ -407,6 +422,7 @@ public class HudiWriteJniWrapper implements RuntimeAware {
             this.partitionColumns = params.partitionColumns.clone();
             this.recordKeyColumns = params.recordKeyColumns.clone();
             this.preCombineColumn = params.preCombineColumn;
+            this.isGlobalIndex = params.isGlobalIndex;
             this.sessionTimeZone = ZoneId.of(params.sessionTimeZone);
         }
 
@@ -527,7 +543,7 @@ public class HudiWriteJniWrapper implements RuntimeAware {
 
         private void combineBatch(ColumnarBatch batch) {
             for (int row = 0; row < batch.numRows(); row++) {
-                String key = recordKey(batch, row);
+                String key = combineKey(batch, row);
                 RowReference incoming = new RowReference(
                         batch,
                         row,
@@ -538,6 +554,14 @@ public class HudiWriteJniWrapper implements RuntimeAware {
                     combinedRows.put(key, incoming);
                 }
             }
+        }
+
+        private String combineKey(ColumnarBatch batch, int row) {
+            String key = recordKey(batch, row);
+            if (isGlobalIndex || partitionColumns.length == 0) {
+                return key;
+            }
+            return key + "\u0001" + partitionPath(batch, row);
         }
 
         private boolean shouldReplace(RowReference existing, RowReference incoming) {

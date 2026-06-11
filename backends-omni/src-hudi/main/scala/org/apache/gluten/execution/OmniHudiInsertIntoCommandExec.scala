@@ -25,6 +25,7 @@ import org.apache.spark.sql.catalyst.expressions.{
   Attribute,
   Cast,
   EqualTo,
+  If,
   Literal,
   NamedExpression
 }
@@ -41,6 +42,7 @@ import org.apache.spark.sql.hudi.command.InsertIntoHoodieTableCommand
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types.{StringType, StructField, StructType}
 import org.apache.spark.sql.vectorized.ColumnarBatch
+import org.apache.spark.unsafe.types.UTF8String
 
 import java.util
 
@@ -106,11 +108,13 @@ object OmniHudiInsertIntoCommandExec extends ProvidesHoodieConfig {
       staticOverwritePartitionPathOpt)
 
     // Align query output to table schema (including static partition columns), same as native command
-    val alignedQuery = alignQueryOutput(
-      command.query,
-      catalogTable,
-      command.partitionSpec,
-      sparkSession.sessionState.conf)
+    val alignedQuery = withEmptyStringPartitionValuesAsNull(
+      alignQueryOutput(
+        command.query,
+        catalogTable,
+        command.partitionSpec,
+        sparkSession.sessionState.conf),
+      catalogTable.partitionSchema)
     val (mergedQuery, oldBaseFiles) = buildCrossCommitUpsertQuery(
       sparkSession,
       table.identifier.unquotedString,
@@ -119,6 +123,7 @@ object OmniHudiInsertIntoCommandExec extends ProvidesHoodieConfig {
       config)
     val writeQuery = repartitionByRecordKey(
       mergedQuery,
+      catalogTable,
       config,
       sparkSession.sessionState.conf)
 
@@ -232,7 +237,8 @@ object OmniHudiInsertIntoCommandExec extends ProvidesHoodieConfig {
       instantTime,
       partitionColumns,
       recordKeyColumns(config),
-      preCombineColumn(config))
+      preCombineColumn(config),
+      isGlobalIndex(config))
 
     try {
       sparkSession.sparkContext.runJob(
@@ -285,13 +291,31 @@ object OmniHudiInsertIntoCommandExec extends ProvidesHoodieConfig {
       .filter(_.nonEmpty)
   }
 
+  private def isGlobalIndex(config: Map[String, String]): Boolean = {
+    config
+      .get("hoodie.index.type")
+      .orElse(config.get("hoodie.datasource.write.index.type"))
+      .exists(_.toUpperCase(java.util.Locale.ROOT).startsWith("GLOBAL_"))
+  }
+
+  private def recordLocationColumns(
+      config: Map[String, String],
+      catalogTable: HoodieCatalogTable): Seq[String] = {
+    val keyColumns = recordKeyColumns(config)
+    if (isGlobalIndex(config)) {
+      keyColumns
+    } else {
+      (keyColumns ++ catalogTable.partitionSchema.fieldNames).distinct
+    }
+  }
+
   private def buildCrossCommitUpsertQuery(
       sparkSession: SparkSession,
       tableName: String,
       catalogTable: HoodieCatalogTable,
       alignedQuery: LogicalPlan,
       config: Map[String, String]): (LogicalPlan, Seq[Path]) = {
-    val keyColumns = recordKeyColumns(config)
+    val keyColumns = recordLocationColumns(config, catalogTable)
     val preCombine = preCombineColumn(config)
     if (keyColumns.isEmpty || preCombine.isEmpty) {
       return (alignedQuery, Nil)
@@ -322,7 +346,7 @@ object OmniHudiInsertIntoCommandExec extends ProvidesHoodieConfig {
     hudiLog.warn(
       "[OmniHudi][command-offload] Build cross-commit COW upsert input; " +
         "oldFiles=" + oldBaseFiles.size +
-        " keys=" + keyColumns.mkString(",") +
+        " locationKeys=" + keyColumns.mkString(",") +
         " preCombine=" + preCombine.get)
     (mergedRows, oldBaseFiles)
   }
@@ -370,16 +394,17 @@ object OmniHudiInsertIntoCommandExec extends ProvidesHoodieConfig {
 
   private def repartitionByRecordKey(
       alignedQuery: LogicalPlan,
+      catalogTable: HoodieCatalogTable,
       config: Map[String, String],
       conf: SQLConf): LogicalPlan = {
-    val keyColumns = recordKeyColumns(config)
+    val keyColumns = recordLocationColumns(config, catalogTable)
     if (keyColumns.isEmpty) {
       return alignedQuery
     }
 
     val keyAttributes = keyColumns.map(resolveAttribute(alignedQuery.output, _))
     hudiLog.warn(
-      "[OmniHudi][command-offload] Repartition Hudi INSERT by record key for writer-side combine; " +
+      "[OmniHudi][command-offload] Repartition Hudi INSERT by record location for writer-side combine; " +
         "keys=" + keyColumns.mkString(","))
     RepartitionByExpression(keyAttributes, alignedQuery, Some(conf.numShufflePartitions))
   }
@@ -413,6 +438,32 @@ object OmniHudiInsertIntoCommandExec extends ProvidesHoodieConfig {
     val staticPartitionValuesExprs =
       createStaticPartitionValuesExpressions(staticPartitionValues, targetPartitionSchema, conf)
     Project(coercedQueryOutput.output ++ staticPartitionValuesExprs, coercedQueryOutput)
+  }
+
+  private def withEmptyStringPartitionValuesAsNull(
+      query: LogicalPlan,
+      partitionSchema: StructType): LogicalPlan = {
+    val stringPartitionNames = partitionSchema.fields
+      .filter(_.dataType == StringType)
+      .map(_.name.toLowerCase(java.util.Locale.ROOT))
+      .toSet
+    if (stringPartitionNames.isEmpty) {
+      return query
+    }
+    val projectList: Seq[NamedExpression] = query.output.map {
+      attr =>
+        if (stringPartitionNames.contains(attr.name.toLowerCase(java.util.Locale.ROOT))) {
+          Alias(
+            If(
+              EqualTo(attr, Literal(UTF8String.fromString(""), attr.dataType)),
+              Literal(null, attr.dataType),
+              attr),
+            attr.name)()
+        } else {
+          attr
+        }
+    }
+    Project(projectList, query)
   }
 
   /** Resolve output columns by name first; fall back to position (Spark write-table behavior). */
