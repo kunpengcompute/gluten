@@ -34,7 +34,8 @@ case class OmniHudiDataWriteFactory(
     queryId: String,
     partitionColumns: Seq[String] = Seq.empty,
     recordKeyColumns: Seq[String] = Seq.empty,
-    preCombineColumn: Option[String] = None)
+    preCombineColumn: Option[String] = None,
+    globalIndex: Boolean = false)
   extends ColumnarBatchDataWriterFactory
   with ColumnarStreamingDataWriterFactory {
 
@@ -79,7 +80,8 @@ case class OmniHudiDataWriteFactory(
       partitionColumns.toArray,
       recordKeyColumns.toArray,
       sqlConf.sessionLocalTimeZone,
-      preCombineColumn.orNull)
+      preCombineColumn.orNull,
+      globalIndex)
     jniWrapper.init(localSchema, omniTypes, params)
     jniWrapper
   }
