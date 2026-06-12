@@ -5,8 +5,6 @@ package org.apache.gluten.backendsapi.omni
 
 import org.apache.gluten.extension.columnar.offload.OffloadSingleNode
 
-import org.apache.spark.sql.execution.SparkPlan
-
 /**
  * Loads Iceberg scan and write offload rules via reflection; present only when -Piceberg and
  * src-iceberg are compiled.
@@ -14,11 +12,6 @@ import org.apache.spark.sql.execution.SparkPlan
 object IcebergOffloadRegistry {
 
   def offloads: Seq[OffloadSingleNode] = loadScanOffloads() ++ loadWriteOffloads()
-
-  def pushDownFilterToScan(plan: SparkPlan): Option[SparkPlan] = {
-    loadIcebergFilterPushDown()
-      .flatMap(_(plan))
-  }
 
   private def loadScanOffloads(): Seq[OffloadSingleNode] = {
     try {
@@ -39,18 +32,6 @@ object IcebergOffloadRegistry {
     } catch {
       case _: ClassNotFoundException | _: NoSuchMethodException =>
         Seq.empty
-    }
-  }
-
-  private def loadIcebergFilterPushDown(): Option[SparkPlan => Option[SparkPlan]] = {
-    try {
-      val clazz = Class.forName("org.apache.gluten.extension.PushDownFilterToOmniIcebergScan$")
-      val module = clazz.getField("MODULE$").get(null)
-      val method = clazz.getMethod("tryPushDown", classOf[SparkPlan])
-      Some((plan: SparkPlan) => method.invoke(module, plan).asInstanceOf[Option[SparkPlan]])
-    } catch {
-      case _: ClassNotFoundException | _: NoSuchFieldException | _: NoSuchMethodException =>
-        None
     }
   }
 }
